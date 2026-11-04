@@ -47,7 +47,6 @@ function client(url: string): pg.Client {
   return new pg.Client({ connectionString: url.replace(/[?&]sslmode=[^&]*/g, ''), ssl: sslOptions(), connectionTimeoutMillis: 10000 });
 }
 let caPem: string | undefined;
-// The Supabase pooler presents a publicly trusted certificate, so verification works with the system CAs.
 function sslOptions(): pg.ClientConfig['ssl'] { return caPem ? { ca: caPem, rejectUnauthorized: true } : { rejectUnauthorized: true }; }
 
 const APP_TABLES_ALLOWED_ROWS = new Set(['schema_migrations', 'users', 'user_accounts', 'web_sessions']);
@@ -133,8 +132,9 @@ async function provisionAdmin(db: pg.Client) {
 const command = process.argv[2];
 const actions: Record<string, (db: pg.Client) => Promise<void>> = { check, migrate, harden, verify, 'provision-admin': provisionAdmin };
 if (!command || !actions[command]) { console.error(`Usage: npx tsx ops/production-db.ts <${Object.keys(actions).join('|')}>`); process.exit(2); }
-const caFile = (await envFile('.env.supabase')).PROD_DATABASE_CA_FILE;
-if (caFile) caPem = await readFile(resolve(caFile), 'utf8');
+// Pinned to Supabase's public root CA (also set as DATABASE_CA_CERT on Vercel). Override with PROD_DATABASE_CA_FILE.
+const caFile = (await envFile('.env.supabase')).PROD_DATABASE_CA_FILE ?? 'ops/supabase-root-2021-ca.pem';
+caPem = await readFile(resolve(caFile), 'utf8');
 const db = client(await productionUrl());
 await db.connect();
 try { await actions[command]!(db); }
