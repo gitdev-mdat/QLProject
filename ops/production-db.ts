@@ -2,7 +2,7 @@
  * Production (Supabase) database operations. Never touches the local Docker database except to READ the one local
  * admin's login row for `provision-admin`.
  *
- * Reads PROD_DATABASE_URL from .env.supabase (git-ignored) — never from DATABASE_URL — so a local shell cannot be
+ * Reads PROD_DATABASE_URL from .env.supabase (git-ignored) ??? never from DATABASE_URL ??? so a local shell cannot be
  * pointed at production by accident, and production cannot be pointed at local.
  *
  *   npx tsx ops/production-db.ts check            connection + server facts (no writes)
@@ -47,7 +47,8 @@ function client(url: string): pg.Client {
   return new pg.Client({ connectionString: url.replace(/[?&]sslmode=[^&]*/g, ''), ssl: sslOptions(), connectionTimeoutMillis: 10000 });
 }
 let caPem: string | undefined;
-function sslOptions(): pg.ClientConfig['ssl'] { return caPem ? { ca: caPem, rejectUnauthorized: true } : { rejectUnauthorized: false }; }
+// The Supabase pooler presents a publicly trusted certificate, so verification works with the system CAs.
+function sslOptions(): pg.ClientConfig['ssl'] { return caPem ? { ca: caPem, rejectUnauthorized: true } : { rejectUnauthorized: true }; }
 
 const APP_TABLES_ALLOWED_ROWS = new Set(['schema_migrations', 'users', 'user_accounts', 'web_sessions']);
 
@@ -56,7 +57,7 @@ async function check(db: pg.Client) {
     (SELECT count(*)::int FROM pg_tables WHERE schemaname = 'public') AS public_tables,
     EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') AS supabase_roles,
     current_setting('ssl', true) AS ssl`);
-  console.log(JSON.stringify({ target: mask(await productionUrl()), ...info, tls_verified: Boolean(caPem) }, null, 2));
+  console.log(JSON.stringify({ target: mask(await productionUrl()), ...info, tls_verified: true }, null, 2));
 }
 
 async function migrate(db: pg.Client) {
