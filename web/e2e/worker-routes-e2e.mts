@@ -31,8 +31,9 @@ const token = randomBytes(32).toString('base64url');
 const { rows: [user] } = await db.query("INSERT INTO users(display_name) VALUES ('E2E Worker Routes') RETURNING id");
 const { rows: [profile] } = await db.query("INSERT INTO agent_connections(user_id, name, kind) VALUES ($1, 'E2E routes', 'search_profile') RETURNING id", [user.id]);
 await db.query(`INSERT INTO scan_configs(agent_connection_id, version, keywords, location, sources, frequency_minutes) VALUES ($1, 1, '["e2e quán mới"]', '', '["social.search"]', 30)`, [profile.id]);
-const { rows: [worker] } = await db.query("INSERT INTO muse_workers(name, credential_hash, status, authorized_sources, max_jobs_per_claim) VALUES ('E2E routes worker', $1, 'active', '[\"social.search\"]', 1) RETURNING id",
-  [createHash('sha256').update(token).digest('hex')]);
+const run = Date.now().toString(36);
+await db.query("INSERT INTO muse_workers(name, credential_hash, status, authorized_sources, max_jobs_per_claim) VALUES ($2, $1, 'active', '[\"social.search\"]', 1)",
+  [createHash('sha256').update(token).digest('hex'), `E2E routes worker ${run}`]);
 
 try {
   await step('health', async () => { const r = await call('GET', '/health'); assert.equal(r.status, 200); assert.deepEqual(r.json, { status: 'ok', database: 'connected' }); });
@@ -87,7 +88,7 @@ try {
   });
   await step('another worker cannot submit or fail this job', async () => {
     const other = randomBytes(32).toString('base64url');
-    await db.query("INSERT INTO muse_workers(name, credential_hash, status, authorized_sources) VALUES ('E2E other', $1, 'paused', '[\"social.search\"]')", [createHash('sha256').update(other).digest('hex')]);
+    await db.query("INSERT INTO muse_workers(name, credential_hash, status, authorized_sources) VALUES ($2, $1, 'paused', '[\"social.search\"]')", [createHash('sha256').update(other).digest('hex'), `E2E other ${run}`]);
     assert.equal((await call('POST', `/api/worker/jobs/${job.job_id}/results`, { token: other, body: payload })).status, 409);
     assert.equal((await call('POST', `/api/worker/jobs/${job.job_id}/failure`, { token: other, body: { scan_id: job.scan_id, code: 'execution_error' } })).status, 409);
   });
