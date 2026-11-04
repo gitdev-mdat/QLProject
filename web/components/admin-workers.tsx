@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { AdminHandoff, AdminOverview, AdminWorker } from '@/lib/server/admin';
-import { hookActivationPrompt, hookDeactivationPrompt, runPrompt, setupPrompt } from '@/lib/admin-prompts';
+import { connectorFor, hookActivationPrompt, hookDeactivationPrompt, runPrompt, setupPrompt, type ConnectorProfile } from '@/lib/admin-prompts';
+import { MuseConnect } from './muse-connect';
 import { Icon } from './visuals';
 
 const TZ = 'Asia/Ho_Chi_Minh';
+const TECH_KEY = "qlead:admin:muse-tech-open";
 const timeFmt = new Intl.DateTimeFormat('vi-VN', { timeZone: TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 const at = (value: string | null | undefined) => (value ? timeFmt.format(new Date(value)) : 'Chưa có');
 
@@ -70,6 +72,9 @@ export function AdminWorkers({ initial }: { initial: AdminOverview }) {
   const [secret, setSecret] = useState<{ workerName: string; credential: string } | null>(null);
   const [setupFor, setSetupFor] = useState<AdminWorker | null>(null);
   const [hookFor, setHookFor] = useState<AdminWorker | null>(null);
+  // "Chi tiết kỹ thuật" stays as the admin left it (per browser); an open handoff always shows it.
+  const [techOpen, setTechOpen] = useState(false);
+  useEffect(() => { try { setTechOpen(window.localStorage.getItem(TECH_KEY) === "1"); } catch { /* closed by default */ } }, []);
 
   const reload = useCallback(async () => {
     try { setData(await call('/api/admin/workers')); } catch (e) { setError((e as Error).message); }
@@ -89,17 +94,41 @@ export function AdminWorkers({ initial }: { initial: AdminOverview }) {
   const active = data.workers.find(w => w.status === 'active' || w.status === 'draining');
   const baseUrl = data.publicUrl;
 
+  const conn = connectorFor(data.environment);
+  const isProd = data.environment === 'production';
+
   return <div className="admin-page">
-    <div className="page-head">
-      <div><h1>Tài khoản Muse</h1><p>Tài khoản Muse chỉ là nơi thực thi tìm kiếm. Dữ liệu, nhu cầu theo dõi và lịch sử của khách luôn nằm trong QLead.</p></div>
-      <button type="button" className="btn btn-primary" onClick={() => setAdding(true)}><Icon name="plug" size={18}/>Thêm tài khoản Muse</button>
+    <div className="mc-head">
+      <div>
+        <h1>Kết nối Muse <span className={`mc-env ${isProd ? 'is-production' : ''}`}>{isProd ? 'Production' : 'Local'}</span></h1>
+        <p>Muse là nơi chạy các lượt tìm khách hàng cho QLead. Kết nối một lần, sau đó QLead tự giao việc; dữ liệu và lịch sử của khách luôn nằm trong QLead.</p>
+      </div>
     </div>
 
     {error && <div className="admin-alert admin-alert-error" role="alert"><Icon name="info" size={18}/><span>{error}</span><button type="button" className="btn btn-ghost btn-sm" onClick={() => setError(null)}>Đóng</button></div>}
     {notice && <div className="admin-alert admin-alert-ok" role="status"><Icon name="check" size={18}/><span>{notice}</span></div>}
-    {!baseUrl && <div className="admin-alert admin-alert-warn" role="note"><Icon name="info" size={18}/><span>Chưa cấu hình QLEAD_WORKER_PUBLIC_URL nên prompt Muse chưa có địa chỉ QLead. Thêm biến này vào môi trường của web rồi tải lại trang.</span></div>}
 
-    {open ? <HandoffPanel handoff={open} workers={data.workers} baseUrl={baseUrl} busy={busy}
+    <MuseConnect data={data} actions={{
+      busy, onReload: reload, onAdd: () => setAdding(true),
+      onActivate: w => setConfirm({
+        title: `Cho phép ${w.name} nhận việc?`, confirmLabel: 'Cho phép nhận việc',
+        lines: <><p>QLead sẽ giao lượt tìm cho {w.name}. Việc này <b>không</b> tự bật Hook trong Muse: sau đó hãy dán lại prompt kết nối vào Muse MAIN để Muse kiểm tra Hook.</p></>,
+        run: async () => act(() => call(`/api/admin/workers/${w.id}`, { action: 'activate' }), `${w.name} đã được phép nhận việc.`),
+      }),
+      onNewCredential: w => setConfirm({
+        title: `Tạo mã bảo mật cho ${w.name}?`, confirmLabel: 'Tạo mã bảo mật', danger: Boolean(w.connectionVerifiedAt),
+        lines: <><p>Mã chỉ hiện một lần. Nhập mã vào ô bí mật của connector <b>"{conn.connector}"</b> trong Muse, không dán vào chat hay prompt.</p>
+          {w.connectionVerifiedAt ? <p>Mã cũ sẽ ngừng hoạt động ngay và Muse phải xác minh lại.</p> : <p>Nếu trước đó đã có mã cho worker này, mã cũ sẽ ngừng hoạt động.</p>}</>,
+        run: async () => act(async () => { const r = await call(`/api/admin/workers/${w.id}`, { action: 'rotate' }); if (r.credential) setSecret({ workerName: w.name, credential: r.credential }); }, `Đã tạo mã bảo mật mới cho ${w.name}.`),
+      }),
+    }}/>
+
+    <details className="tech-details" open={techOpen || Boolean(open)} onToggle={e => { const v = (e.currentTarget as HTMLDetailsElement).open; setTechOpen(v); try { window.localStorage.setItem(TECH_KEY, v ? "1" : "0"); } catch { /* per view only */ } }}>
+      <summary>Chi tiết kỹ thuật <small>worker, hàng đợi, chuyển đổi, prompt riêng lẻ</small></summary>
+      <div className="tech-details-body">
+    <div className="mc-actions"><button type="button" className="btn btn-outline btn-sm" onClick={() => setAdding(true)}><Icon name="plug" size={16}/>Thêm tài khoản Muse</button></div>
+
+    {open ? <HandoffPanel handoff={open} workers={data.workers} baseUrl={baseUrl} conn={conn} busy={busy}
       onAction={(action, label, extra) => act(() => call(`/api/admin/handoffs/${open.id}`, { action, ...extra }), label)}
       onConfirm={setConfirm}/>
       : <StartHandoff workers={data.workers} busy={busy} onError={setError} onConfirm={setConfirm}
@@ -139,18 +168,20 @@ export function AdminWorkers({ initial }: { initial: AdminOverview }) {
           <span className="muted-text">Tạo {at(h.createdAt)}{h.cutoverAt ? ` · chuyển ${at(h.cutoverAt)}` : ''}{h.firstSuccessAt ? ` · job đầu tiên xong ${at(h.firstSuccessAt)}` : ''}{h.failureReason ? ` · ${h.failureReason}` : ''}</span>
         </li>)}</ol>}
     </section>
+      </div>
+    </details>
 
     {adding && <AddWorker busy={busy} onClose={() => setAdding(false)} onCreated={async (name, credential) => { setAdding(false); setSecret({ workerName: name, credential }); await reload(); }} onError={setError}/>}
-    {secret && <Modal title="Credential mới (chỉ hiện một lần)" onClose={() => setSecret(null)}>
-      <p>Copy credential của <b>{secret.workerName}</b> rồi dán thẳng vào <b>Secure Credentials Store</b> của connector "QLead Worker" trong Muse. Không dán vào chat, prompt hay file. Đóng hộp thoại này thì không xem lại được nữa; nếu làm mất, hãy tạo lại credential.</p>
+    {secret && <Modal title="Mã bảo mật mới (chỉ hiện một lần)" onClose={() => setSecret(null)}>
+      <p>Copy credential của <b>{secret.workerName}</b> rồi dán thẳng vào <b>Secure Credentials Store</b> của connector "{conn.connector}" trong Muse. Không dán vào chat, prompt hay file. Đóng hộp thoại này thì không xem lại được nữa; nếu làm mất, hãy tạo lại credential.</p>
       <CopyBlock text={secret.credential} label="Credential"/>
       <div className="modal-actions"><button type="button" className="btn btn-primary" onClick={() => setSecret(null)}>Tôi đã lưu vào Muse</button></div>
     </Modal>}
     {setupFor && <Modal title={`Kết nối ${setupFor.name} với QLead (một lần)`} onClose={() => setSetupFor(null)}>
-      <SetupGuide worker={setupFor} baseUrl={baseUrl}/>
+      <SetupGuide worker={setupFor} baseUrl={baseUrl} conn={conn}/>
     </Modal>}
     {hookFor && <Modal title={`Muse Personal Agent Hook · ${hookFor.name}`} onClose={() => setHookFor(null)}>
-      <HookGuide worker={hookFor} baseUrl={baseUrl}/>
+      <HookGuide worker={hookFor} baseUrl={baseUrl} conn={conn}/>
     </Modal>}
     {confirm && <Modal title={confirm.title} onClose={() => { setConfirm(null); setReason(''); }}>
       <div className="confirm-lines">{confirm.lines}</div>
@@ -208,34 +239,34 @@ function WorkerCard({ worker: w, inHandoff, anyActive, busy, onSetup, onHook, on
       })}>Không khả dụng</button>}
       <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => onConfirm({
         title: `Tạo lại credential cho ${w.name}?`, confirmLabel: 'Tạo credential mới', danger: true,
-        lines: <><p>Credential cũ ngừng hoạt động ngay. Muse sẽ bị từ chối cho tới khi bạn dán credential mới vào connector "QLead Worker" và kiểm tra lại kết nối.</p></>,
+        lines: <><p>Credential cũ ngừng hoạt động ngay. Muse sẽ bị từ chối cho tới khi bạn dán credential mới vào connector của Muse và kiểm tra lại kết nối.</p></>,
         run: async () => onAction({ action: 'rotate' }, `Đã tạo credential mới cho ${w.name}.`),
       })}>Tạo lại credential</button>
     </div>
   </article>;
 }
 
-function SetupGuide({ worker, baseUrl }: { worker: AdminWorker; baseUrl: string | null }) {
+function SetupGuide({ worker, baseUrl, conn }: { worker: AdminWorker; baseUrl: string | null; conn: ConnectorProfile }) {
   const url = baseUrl ?? '<QLEAD_WORKER_PUBLIC_URL>';
   return <ol className="guide-steps">
-    <li><b>Tạo connector trong {worker.name}.</b> Vào Muse → Connectors → tạo Custom Connector tên <code>QLead Worker</code>, Base URL <code>{url}</code>. Không sửa connector "Local Lead Bridge".</li>
+    <li><b>Tạo connector trong {worker.name}.</b> Vào Muse → Connectors → tạo Custom Connector tên <code>{conn.connector}</code>, Base URL <code>{url}</code>. Không sửa connector {conn.otherConnectors.map(n => `"${n}"`).join(", ")}.</li>
     <li><b>Nhập credential an toàn.</b> Dán credential đã nhận lúc tạo tài khoản vào Secure Credentials Store của connector, dùng làm Bearer token. Nếu đã mất credential, bấm "Tạo lại credential".</li>
     <li><b>Kiểm tra kết nối một lần.</b> Dán prompt dưới đây vào {worker.name}. Muse chỉ gửi một request kiểm tra, không nhận việc, không tìm Facebook và không tạo lịch.
-      <CopyBlock text={setupPrompt(worker.name, url)} label="Prompt kiểm tra kết nối"/></li>
+      <CopyBlock text={setupPrompt(worker.name, url, conn)} label="Prompt kiểm tra kết nối"/></li>
     <li><b>Xem kết quả tại đây.</b> Khi Muse gọi thành công, mục "Kết nối" sẽ ghi "Đã xác minh" kèm thời gian. Tài khoản vẫn ở trạng thái tạm dừng, nên khi ở chế độ dự phòng thì không tạo lịch chạy nào trong Muse.</li>
     <li><b>Lưu sẵn prompt làm việc</b> (chưa bật lịch). Dùng khi tài khoản này được chuyển sang hoạt động.
-      <CopyBlock text={runPrompt(worker.name, url, worker.maxJobsPerClaim)} label="Prompt một chu kỳ làm việc"/></li>
+      <CopyBlock text={runPrompt(worker.name, url, worker.maxJobsPerClaim, conn)} label="Prompt một chu kỳ làm việc"/></li>
   </ol>;
 }
 
-function HookGuide({ worker, baseUrl }: { worker: AdminWorker; baseUrl: string | null }) {
+function HookGuide({ worker, baseUrl, conn }: { worker: AdminWorker; baseUrl: string | null; conn: ConnectorProfile }) {
   const url = baseUrl ?? '<QLEAD_WORKER_PUBLIC_URL>';
   return <>
     <p className="info-box"><Icon name="info" size={16}/>QLead không có kết nối để đọc hoặc bật/tắt Muse Hook. Trạng thái dưới đây phải được kiểm tra thủ công trong Muse main account. Chỉ bật khi worker đang ACTIVE trong QLead; Hook standby phải tắt để không polling/tốn quota.</p>
     <h3 className="sub-h">Kích hoạt hoặc bật lại cho {worker.name}</h3>
-    <CopyBlock text={hookActivationPrompt(worker.name, url)} label="Prompt kích hoạt Hook thường trực · Muse main account"/>
+    <CopyBlock text={hookActivationPrompt(worker.name, url, conn)} label="Prompt kích hoạt Hook thường trực · Muse main account"/>
     <h3 className="sub-h">Tắt Hook nhưng giữ connector và trạng thái dedupe</h3>
-    <CopyBlock text={hookDeactivationPrompt(worker.name)} label="Prompt tắt Hook · Muse main account"/>
+    <CopyBlock text={hookDeactivationPrompt(worker.name, conn)} label="Prompt tắt Hook · Muse main account"/>
   </>;
 }
 
@@ -291,8 +322,8 @@ function SummaryView({ summary: s, note }: { summary: any; note?: string }) {
   </div>;
 }
 
-function HandoffPanel({ handoff: h, workers, baseUrl, busy, onAction, onConfirm }: {
-  handoff: AdminHandoff; workers: AdminWorker[]; baseUrl: string | null; busy: boolean;
+function HandoffPanel({ handoff: h, workers, baseUrl, conn, busy, onAction, onConfirm }: {
+  handoff: AdminHandoff; workers: AdminWorker[]; baseUrl: string | null; conn: ConnectorProfile; busy: boolean;
   onAction: (action: string, label: string, extra?: Record<string, unknown>) => Promise<void>; onConfirm: (c: Confirm) => void;
 }) {
   const destination = workers.find(w => w.id === h.destinationId);
@@ -330,7 +361,7 @@ function HandoffPanel({ handoff: h, workers, baseUrl, busy, onAction, onConfirm 
     {(h.status === 'preparing' || h.status === 'draining') && <>
       <h3 className="sub-h">Tắt Hook của worker nguồn trong Muse main account</h3>
       <p className="muted-text small">Tắt polling trước khi drain. Giữ lại Hook và generation state để lần chuyển ngược không phải cấu hình lại; không xoá connector hay credential. Job đã được claim vẫn được phép hoàn tất.</p>
-      <CopyBlock text={hookDeactivationPrompt(h.sourceName)} label={`Prompt tắt Hook · ${h.sourceName}`}/>
+      <CopyBlock text={hookDeactivationPrompt(h.sourceName, conn)} label={`Prompt tắt Hook · ${h.sourceName}`}/>
       <SummaryView summary={summary}/>
       {h.status === 'draining' && <p className="info-box"><Icon name="clock" size={16}/>{h.sourceName} không nhận việc mới từ {at(h.drainStartedAt)}. {inFlight > 0 ? `Còn ${inFlight} job đang xử lý; hãy chờ các job này xong hoặc hết lease. Bấm "Kiểm tra lại" để cập nhật.` : 'Không còn job nào đang xử lý, có thể chuyển ngay.'}</p>}
       <div className="handoff-actions">
@@ -351,10 +382,10 @@ function HandoffPanel({ handoff: h, workers, baseUrl, busy, onAction, onConfirm 
       </div>
       <h3 className="sub-h">Bật Hook cho {h.destinationName} trong Muse main account</h3>
       <p className="muted-text small">Chỉ bật sau khi QLead xác nhận {h.destinationName} là ACTIVE. Giữ nguyên generation state của Hook qua lần chuyển worker.</p>
-      <CopyBlock text={hookActivationPrompt(h.destinationName, url)} label={`Prompt kích hoạt Hook · ${h.destinationName}`}/>
+      <CopyBlock text={hookActivationPrompt(h.destinationName, url, conn)} label={`Prompt kích hoạt Hook · ${h.destinationName}`}/>
       <h3 className="sub-h">Giữ {h.sourceName} ở chế độ dự phòng</h3>
       <p className="muted-text small">Hook nguồn phải tiếp tục tắt. Connector và credential vẫn giữ nguyên để chuyển về sau không cần onboarding lại.</p>
-      {source && <CopyBlock text={hookDeactivationPrompt(h.sourceName)} label={`Prompt xác nhận Hook tắt · ${h.sourceName}`}/>}
+      {source && <CopyBlock text={hookDeactivationPrompt(h.sourceName, conn)} label={`Prompt xác nhận Hook tắt · ${h.sourceName}`}/>}
       <SummaryView summary={summary}/>
       <div className="handoff-actions">
         <button type="button" className="btn btn-primary" disabled={busy} onClick={() => onAction('refresh', 'Đã kiểm tra lại.')}>Kiểm tra lại</button>

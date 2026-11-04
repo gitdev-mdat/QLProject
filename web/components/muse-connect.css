@@ -1,0 +1,63 @@
+/* Kết nối Muse: one status card with one main action. Uses the global design tokens only. */
+.mc-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.mc-head h1 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mc-head p { max-width: 620px; color: var(--muted); margin-top: 6px; }
+.mc-env { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); }
+.mc-env.is-production { background: var(--green-50); color: var(--green-800); border-color: var(--green-100); }
+.mc-env::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; opacity: .8; }
+
+.mc-card { display: grid; gap: 16px; padding: 24px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-sm); min-width: 0; }
+.mc-card.tone-ok { border-color: var(--green-100); box-shadow: inset 4px 0 0 var(--green-600), var(--shadow-sm); }
+.mc-card.tone-warn { box-shadow: inset 4px 0 0 var(--gold-500), var(--shadow-sm); }
+.mc-card.tone-bad { box-shadow: inset 4px 0 0 var(--red-600), var(--shadow-sm); }
+.mc-main { display: flex; gap: 16px; align-items: flex-start; min-width: 0; }
+.mc-mascot { flex: none; display: grid; place-items: center; width: 84px; height: 84px; border-radius: 20px; background: var(--tint); overflow: hidden; }
+.mc-mascot .goat-mascot { width: 74px; }
+.mc-copy { min-width: 0; }
+.mc-copy h2 { font-size: 22px; line-height: 1.3; margin-top: 4px; }
+.mc-text { margin-top: 6px; color: var(--ink-2); font-size: 15px; overflow-wrap: anywhere; }
+
+.mc-badge { display: inline-flex; align-items: center; gap: 8px; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; background: var(--surface-2); color: var(--ink-2); }
+.mc-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.tone-ok .mc-badge { background: var(--green-100); color: var(--green-800); }
+.tone-ok .mc-dot { background: var(--green-600); }
+.tone-wait .mc-badge { background: #E4EEFB; color: #1F4E8C; }
+.tone-wait .mc-dot { background: #2F6FBF; animation: mc-pulse 1.6s ease-in-out infinite; }
+.tone-warn .mc-badge { background: var(--gold-100); color: var(--gold-ink); }
+.tone-warn .mc-dot { background: var(--gold-500); }
+.tone-bad .mc-badge { background: #FBEAE6; color: #7A2617; }
+.tone-bad .mc-dot { background: var(--red-600); }
+@keyframes mc-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .tone-wait .mc-dot { animation: none; } }
+
+.mc-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 14px 16px; border-radius: var(--radius-sm); background: var(--surface-2); }
+.mc-facts dt { color: var(--muted); font-size: 13px; }
+.mc-facts dd { margin: 2px 0 0; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+
+.mc-next { margin: 0; padding: 12px 14px; border-radius: var(--radius-sm); background: var(--tint); color: var(--ink-2); font-size: 15px; }
+.mc-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.mc-note { display: flex; gap: 8px; align-items: flex-start; margin: 0; color: var(--muted); font-size: 14px; }
+.mc-note .icon { margin-top: 2px; flex: none; }
+.mc-note.is-warn { padding: 10px 12px; border-radius: var(--radius-sm); background: var(--gold-100); color: var(--gold-ink); }
+.mc-prompt summary { cursor: pointer; font-weight: 600; color: var(--green-700); font-size: 15px; }
+.mc-prompt[open] summary { margin-bottom: 10px; }
+.mc-prompt textarea { display: block; width: 100%; margin-top: 8px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); font: 13px/1.5 ui-monospace, 'Cascadia Mono', Consolas, monospace; resize: vertical; }
+.mc-foot { display: flex; gap: 6px; align-items: flex-start; margin: 0; color: var(--muted); font-size: 13px; }
+.mc-foot .icon { margin-top: 2px; flex: none; }
+
+.tech-details { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); min-width: 0; }
+.tech-details > summary { cursor: pointer; padding: 16px 20px; font-weight: 600; font-size: 16px; list-style-position: inside; }
+.tech-details > summary small { font-weight: 400; color: var(--muted); margin-left: 6px; }
+.tech-details[open] > summary { border-bottom: 1px solid var(--line); }
+.tech-details-body { display: grid; gap: 16px; padding: 16px; min-width: 0; }
+
+@media (max-width: 900px) { .mc-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) {
+  .mc-card { padding: 18px 16px; }
+  .mc-mascot { width: 60px; height: 60px; border-radius: 16px; }
+  .mc-mascot .goat-mascot { width: 54px; }
+  .mc-copy h2 { font-size: 19px; }
+  .mc-actions .btn { flex: 1 1 100%; justify-content: center; }
+  .tech-details > summary { padding: 14px 16px; }
+  .tech-details-body { padding: 12px; }
+}

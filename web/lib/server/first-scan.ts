@@ -31,7 +31,8 @@ export async function getFirstScanForUser(userId: string, now = Date.now()): Pro
       (SELECT sum(extract(epoch FROM coalesce(finished_at, now()) - claimed_at) * 1000)::bigint FROM search_job_attempts WHERE job_id = followup.id) AS followup_active_ms,
       EXISTS (SELECT 1 FROM search_jobs other_job WHERE other_job.search_profile_id = ac.id
         AND other_job.status IN ('pending', 'claimed', 'blocked', 'needs_reauthorization')
-        AND other_job.kind <> 'followup') AS another_job_open
+        AND other_job.kind <> 'followup') AS another_job_open,
+      EXISTS (SELECT 1 FROM muse_workers w WHERE w.status = 'active' AND w.credential_status = 'active' AND w.connection_verified_at IS NOT NULL) AS search_ready
     FROM agent_connections ac JOIN users u ON u.id = ac.user_id
     JOIN LATERAL (SELECT * FROM scan_configs WHERE agent_connection_id = ac.id ORDER BY version DESC LIMIT 1) sc ON true
     LEFT JOIN LATERAL (SELECT scanned_at, status, total_found, new_posts FROM scan_runs WHERE agent_connection_id = ac.id ORDER BY scanned_at, received_at LIMIT 1) run ON true
@@ -66,6 +67,7 @@ export async function getFirstScanForUser(userId: string, now = Date.now()): Pro
     profile: { id: row.id, name: row.name, description: row.description, keywords: row.keywords, location: row.location, frequencyMinutes: row.frequency_minutes, createdAt: iso(row.profile_created_at)! },
     queuedAt: iso(row.job_created_at), startedAt: iso(row.claimed_at), finishedAt: iso(row.run_at),
     totalFound: row.run_at ? row.total_found : null, newPosts: row.run_at ? row.new_posts : null,
+    searchReady: Boolean(row.search_ready),
     discovery: discoveryContract(row, now),
   };
 }

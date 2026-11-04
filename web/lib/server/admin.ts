@@ -76,7 +76,11 @@ export type AdminOverview = {
   generatedAt: string; workers: AdminWorker[]; openHandoff: AdminHandoff | null; history: AdminHandoff[];
   queue: { pending: number; claimed: number; retry: number; blocked: number; needsReauth: number; failed24h: number; oldestPendingSlot: string | null };
   profiles: { active: number; withGap: number }; publicUrl: string | null;
+  /** Which QLead this page manages, and whether its dispatcher also relays the local wake signal (no URL exposed). */
+  environment: 'local' | 'production'; dispatchRelaysLocal: boolean;
 };
+
+const currentEnvironment = (): 'local' | 'production' => (process.env.QLEAD_ENVIRONMENT?.trim().toLowerCase() === 'production' ? 'production' : 'local');
 
 function toHandoff(row: any): AdminHandoff {
   return {
@@ -127,6 +131,8 @@ export async function getAdminOverview(): Promise<AdminOverview> {
       queue: { pending: queue.pending, claimed: queue.claimed, retry: queue.retry, blocked: queue.blocked, needsReauth: queue.needs_reauth, failed24h: queue.failed_24h, oldestPendingSlot: iso(queue.oldest) },
       profiles: { active: profiles.active, withGap: profiles.with_gap },
       publicUrl: workerPublicUrl(),
+      environment: currentEnvironment(),
+      dispatchRelaysLocal: Boolean(process.env.QLEAD_DISPATCH_SECONDARY_WAKE_URL?.trim()),
     };
   });
 }

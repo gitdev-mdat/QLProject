@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 
 const items = [
   { href: '/admin/users', label: 'Khách hàng' },
-  { href: '/admin/workers', label: 'Tài khoản Muse' },
+  { href: '/admin/workers', label: 'Kết nối Muse' },
   { href: '/admin/group-requests', label: 'Đề xuất nhóm' },
 ];
 

@@ -12,7 +12,7 @@ import { GoatMascot } from './goat-mascot';
 import { Icon } from './visuals';
 
 /** What the first-scan view says while the first search is open, derived from the stored state plus elapsed time. */
-type Phase = 'saved' | 'queued' | 'waiting_worker' | 'running' | 'running_long' | 'delayed' | 'failed' | 'paused';
+type Phase = 'saved' | 'queued' | 'waiting_worker' | 'not_ready' | 'running' | 'running_long' | 'delayed' | 'failed' | 'paused';
 
 /**
  * What the whole view shows. `open`/`failed`/`paused`: the first search itself. `found`: leads exist and can be opened
@@ -29,6 +29,7 @@ const QUEUED_FRESH_MS = 2 * 60_000;
 const COPY: Record<Phase, { eyebrow: string; title: string; text: string }> = {
   saved: { eyebrow: 'Đã lưu nhu cầu tìm kiếm', title: 'Đang chuẩn bị lượt tìm đầu tiên', text: 'Nhu cầu của bạn đã được lưu. QLead sẽ xếp lượt tìm đầu tiên vào hàng chờ ngay.' },
   queued: { eyebrow: 'Đã lưu nhu cầu tìm kiếm', title: 'Đang chờ bắt đầu lượt tìm đầu tiên', text: 'Lượt tìm đầu tiên đã được xếp lên đầu hàng chờ và sẽ bắt đầu ngay khi hệ thống tìm kiếm nhận lượt.' },
+  not_ready: { eyebrow: 'Đã lưu nhu cầu tìm kiếm', title: 'Lượt tìm đầu tiên chưa thể bắt đầu', text: 'Nhu cầu của bạn đã được lưu. Hệ thống tìm kiếm của QLead đang được hoàn tất thiết lập nên lượt tìm chưa bắt đầu. Lượt tìm sẽ chạy khi hệ thống sẵn sàng; bạn không cần làm gì thêm.' },
   waiting_worker: { eyebrow: 'Đã lưu nhu cầu tìm kiếm', title: 'Đang chờ bắt đầu lượt tìm đầu tiên', text: 'Lượt tìm vẫn ở đầu hàng chờ, hệ thống tìm kiếm chưa nhận lượt này. Yêu cầu được giữ nguyên; bạn không cần làm gì thêm.' },
   running: { eyebrow: 'QLead đang tìm những cơ hội đầu tiên cho bạn', title: 'QLead đang tìm bài đăng phù hợp', text: 'Lượt tìm đầu tiên đang chạy với nhu cầu bạn vừa lưu.' },
   running_long: { eyebrow: 'QLead đang tìm những cơ hội đầu tiên cho bạn', title: 'QLead đang tìm bài đăng phù hợp', text: 'Lượt tìm đầu tiên vẫn đang chạy.' },
@@ -40,8 +41,9 @@ const COPY: Record<Phase, { eyebrow: string; title: string; text: string }> = {
 /** Expectation shown next to the progress stages while the first scan is open. */
 const ESTIMATE: Partial<Record<Phase, { lead: string; text: string; tone?: 'slow' }>> = {
   saved: { lead: 'Thường mất khoảng 2–3 phút sau khi bắt đầu', text: 'QLead sẽ tự động cập nhật kết quả ngay khi hoàn tất.' },
-  queued: { lead: 'Thường mất khoảng 2–3 phút sau khi bắt đầu', text: 'Thời gian chờ trong hàng không tính vào ước tính này. QLead sẽ tự động cập nhật kết quả ngay khi hoàn tất.' },
-  waiting_worker: { lead: 'Thường mất khoảng 2–3 phút sau khi bắt đầu', text: 'Thời gian chờ trong hàng không tính vào ước tính này. QLead sẽ tự động cập nhật kết quả ngay khi hoàn tất.' },
+  queued: { lead: 'Thường mất khoảng 2–3 phút sau khi bắt đầu', text: '' },
+  waiting_worker: { lead: 'Thường mất khoảng 2–3 phút sau khi bắt đầu', text: '' },
+  not_ready: { lead: 'Chưa thể ước tính thời gian bắt đầu.', text: 'QLead sẽ tự cập nhật trang này khi lượt tìm bắt đầu.', tone: 'slow' },
   running: { lead: 'Lượt tìm đầu tiên có thể mất khoảng 2–3 phút.', text: 'QLead sẽ tự động cập nhật kết quả ngay khi hoàn tất.' },
   running_long: { lead: 'Lượt tìm đang lâu hơn khoảng 2–3 phút thường lệ.', text: 'Việc này có thể xảy ra khi có nhiều bài cần xem. QLead vẫn đang xử lý và sẽ tự cập nhật khi xong.', tone: 'slow' },
   delayed: { lead: 'Lâu hơn khoảng 2–3 phút thường lệ', text: 'Đây không phải lỗi của bạn. QLead sẽ tự cập nhật kết quả khi lượt tìm hoàn tất.', tone: 'slow' },
@@ -66,6 +68,8 @@ function keepTogether(text: string) {
 function phaseOf(scan: FirstScan, now: number): Phase {
   // `now` is 0 until mounted: render the server's view first, then refine by elapsed time on the client.
   const since = (value: string | null) => (now && value ? now - new Date(value).getTime() : 0);
+  // Without a verified, active search service a queued search cannot start: say so instead of "sắp bắt đầu".
+  if ((scan.state === 'waiting' || scan.state === 'delayed') && scan.searchReady === false) return 'not_ready';
   switch (scan.state) {
     case 'waiting': return !scan.queuedAt ? 'saved' : since(scan.queuedAt) > QUEUED_FRESH_MS ? 'waiting_worker' : 'queued';
     case 'running': return since(scan.startedAt) > EXPECTED_MS ? 'running_long' : 'running';
@@ -367,7 +371,7 @@ export function FirstScanView({ initial, compact = false }: { initial: FirstScan
     sceneState = mode === 'open' ? (scan.state === 'running' ? 'running' : scan.state === 'delayed' ? 'delayed' : 'waiting') : mode;
     eyebrow = copy.eyebrow; title = copy.title; text = copy.text; estimate = ESTIMATE[phase];
   }
-  const searching = mode === 'open' || (mode === 'looking' && view.more === 'running');
+  const searching = (mode === 'open' && phase !== 'not_ready') || (mode === 'looking' && view.more === 'running');
 
   return <section className={`panel first-scan is-${mode === 'open' ? scan.state : mode} ${finished ? 'is-finished' : ''} ${compact ? 'is-compact' : ''}`} aria-labelledby="first-scan-title" aria-live="polite" data-phase={mode === 'open' ? phase : mode} data-discovery={view.stage}>
     {celebrate && <Confetti origin={scene}/>}

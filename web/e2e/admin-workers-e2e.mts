@@ -70,6 +70,8 @@ async function login(label: string, width = 1440, height = 900) {
   await page.waitForURL(`${BASE}/app`);
   return { context, page };
 }
+// The worker cards live under "Chi tiết kỹ thuật" since the Kết nối Muse redesign.
+const openTech = async (p: Page) => { if (await p.locator('.tech-details').getAttribute('open') === null) await p.locator('.tech-details > summary').click(); };
 const noOverflow = (p: Page) => p.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
 const shot = (p: Page, name: string) => p.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true, caret: 'initial' });
 async function confirmModal(p: Page, label: string) { await p.getByRole('dialog').getByRole('button', { name: label, exact: true }).click(); await p.getByRole('dialog').waitFor({ state: 'detached' }); }
@@ -118,7 +120,8 @@ try {
   // ---------- 1/2: overview ----------
   await check('1 Muse 01 active, Muse 02 ready standby', async () => {
     await p.goto(`${BASE}/admin/workers`);
-    await p.getByRole('heading', { name: 'Tài khoản Muse', level: 1 }).waitFor();
+    await p.getByRole('heading', { name: /^Kết nối Muse/, level: 1 }).waitFor();
+    await openTech(p);
     const c1 = p.getByRole('article', { name: 'E2E Muse 01' }); const c2 = p.getByRole('article', { name: 'E2E Muse 02' });
     assert(await c1.getByText('Tài khoản đang hoạt động').isVisible(), 'muse 01 label');
     assert(await c2.getByText('Tài khoản dự phòng · sẵn sàng').isVisible(), 'muse 02 label');
@@ -304,7 +307,8 @@ try {
     await check(`layout ${w}px has no horizontal overflow`, async () => {
       const v = await login('E2E Admin', w, h);
       await v.page.goto(`${BASE}/admin/workers`);
-      await v.page.getByRole('heading', { name: 'Tài khoản Muse', level: 1 }).waitFor();
+      await v.page.getByRole('heading', { name: /^Kết nối Muse/, level: 1 }).waitFor();
+      await openTech(v.page);
       assert(await noOverflow(v.page), 'overflow');
       await shot(v.page, `admin-workers-${w}`);
       await v.page.getByRole('button', { name: 'Xem lại công việc' }).click();
