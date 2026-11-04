@@ -16,22 +16,90 @@ type WakeSnapshot = {
   recurring_fingerprint: string[];
 };
 
+type WakeResult = { wake: false } | { wake: true; generation: string };
+type Log = { error: (obj: unknown, msg: string) => void; warn: (obj: unknown, msg: string) => void };
+
+/**
+ * Process-local rate limit (per serverless instance on Vercel; add a platform firewall rule for a global limit).
+ * Returns false when the caller exceeded the window.
+ */
+function allowRequest(ip: string): boolean {
+  const now = Date.now();
+  const prior = requestsByIp.get(ip);
+  if (!prior || now - prior.startedAt >= WINDOW_MS) requestsByIp.set(ip, { startedAt: now, count: 1 });
+  else if (++prior.count > MAX_REQUESTS_PER_WINDOW) return false;
+  // Bound memory for callers that change source IPs. These endpoints deliberately have no query parameters or secrets.
+  if (requestsByIp.size > 10_000) {
+    for (const [key, value] of requestsByIp) if (now - value.startedAt >= WINDOW_MS) requestsByIp.delete(key);
+  }
+  return true;
+}
+
+const GENERATION = /^[0-9a-f]{64}$/;
+const DISPATCH_TIMEOUT_MS = 3000;
+
+/**
+ * Reads another environment's PUBLIC wake signal (no credentials, no data). Any error, timeout, non-200 or malformed
+ * body means "no work there" — an offline development machine never breaks or delays production beyond the timeout.
+ */
+async function readSecondaryWake(url: string, log: Log): Promise<WakeResult> {
+  try {
+    const response = await fetch(url, {
+      method: 'GET', redirect: 'error', signal: AbortSignal.timeout(DISPATCH_TIMEOUT_MS),
+      headers: { accept: 'application/json', 'ngrok-skip-browser-warning': 'true', 'user-agent': 'qlead-dispatcher' },
+    });
+    if (response.status !== 200) return { wake: false };
+    const body = await response.json() as { wake?: unknown; generation?: unknown };
+    if (body?.wake === true && typeof body.generation === 'string' && GENERATION.test(body.generation)) return { wake: true, generation: body.generation };
+    return { wake: false };
+  } catch (error) {
+    log.warn({ err: { name: (error as any)?.name } }, 'Secondary wake signal unavailable');
+    return { wake: false };
+  }
+}
+
+/** The secondary (development) wake URL, only honoured by production and only over HTTPS. */
+export function secondaryWakeUrl(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const raw = env.QLEAD_DISPATCH_SECONDARY_WAKE_URL?.trim();
+  if (!raw || env.QLEAD_ENVIRONMENT !== 'production') return undefined;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || !url.pathname.endsWith('/api/public/worker-wake')) return undefined;
+    return url.toString();
+  } catch { return undefined; }
+}
+
 /** A public, read-only signal for the one active, credentialed worker. It never inserts or claims jobs. */
 export async function wakeSignalRoutes(app: FastifyInstance): Promise<void> {
+  const noStore = (reply: any) => reply.header('Cache-Control', 'no-store, no-cache, max-age=0, must-revalidate').header('Pragma', 'no-cache');
+
   app.get('/api/public/worker-wake', async (request, reply) => {
-    reply.header('Cache-Control', 'no-store, no-cache, max-age=0, must-revalidate').header('Pragma', 'no-cache');
+    noStore(reply);
+    if (!allowRequest(request.ip)) return reply.code(429).send({ wake: false });
+    return readWakeSignal(request.log);
+  });
 
-    const now = Date.now();
-    const ip = request.ip;
-    const prior = requestsByIp.get(ip);
-    if (!prior || now - prior.startedAt >= WINDOW_MS) requestsByIp.set(ip, { startedAt: now, count: 1 });
-    else if (++prior.count > MAX_REQUESTS_PER_WINDOW) return reply.code(429).send({ wake: false });
+  /**
+   * Environment-aware dispatcher for ONE Muse Hook serving two independent QLead environments. Production work always
+   * wins; only when production has nothing eligible does it relay the development environment's public wake signal.
+   * The response names the environment so the woken agent uses that environment's own connector and credential;
+   * generations are namespaced so the Hook's persisted dedup state can never confuse the two queues.
+   * No credentials, identifiers or data cross environments: the relay reads only a public boolean + opaque marker.
+   */
+  app.get('/api/public/worker-dispatch', async (request, reply) => {
+    noStore(reply);
+    if (!allowRequest(request.ip)) return reply.code(429).send({ wake: false });
+    const environment = process.env.QLEAD_ENVIRONMENT === 'production' ? 'production' : 'local';
+    const own = await readWakeSignal(request.log);
+    if (own.wake) return { wake: true, environment, generation: `${environment}:${own.generation}` };
+    const secondary = secondaryWakeUrl();
+    if (!secondary) return { wake: false };
+    const other = await readSecondaryWake(secondary, request.log);
+    return other.wake ? { wake: true, environment: 'local', generation: `local:${other.generation}` } : { wake: false };
+  });
+}
 
-    // Bound memory for callers that change source IPs. This endpoint deliberately has no query parameters or secrets.
-    if (requestsByIp.size > 10_000) {
-      for (const [key, value] of requestsByIp) if (now - value.startedAt >= WINDOW_MS) requestsByIp.delete(key);
-    }
-
+async function readWakeSignal(log: Log): Promise<WakeResult> {
     try {
       const { rows: [snapshot] } = await pool.query<WakeSnapshot>(`WITH active_workers AS (
           SELECT id, authorized_sources, max_jobs_per_claim FROM muse_workers WHERE status = 'active' AND credential_status = 'active'
@@ -89,8 +157,7 @@ export async function wakeSignalRoutes(app: FastifyInstance): Promise<void> {
       ])).digest('hex');
       return { wake: true, generation };
     } catch (error) {
-      request.log.error({ err: { code: (error as any)?.code, message: (error as any)?.message } }, 'Public worker wake signal query failed');
+      log.error({ err: { code: (error as any)?.code, message: (error as any)?.message } }, 'Public worker wake signal query failed');
       return { wake: false };
     }
-  });
 }
