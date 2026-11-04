@@ -15,4 +15,11 @@ function createPool(): pg.Pool {
   created.on('error', (err) => console.error('Unexpected idle database connection error:', err.message));
   return created;
 }
-export const pool: pg.Pool = shared.qleadPool ??= createPool();
+// Created on first use, not at import: `next build` imports route modules without any runtime environment.
+export const pool: pg.Pool = new Proxy({} as pg.Pool, {
+  get(_target, prop) {
+    const real = shared.qleadPool ??= createPool();
+    const value = Reflect.get(real, prop, real);
+    return typeof value === 'function' ? value.bind(real) : value;
+  },
+});
