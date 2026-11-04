@@ -10,9 +10,7 @@ import { associatePostsWithConfig, preparePosts, upsertPosts, type PreparedPost 
 import { workerRoutes } from './worker-api.js';
 import { wakeSignalRoutes } from './wake-signal.js';
 
-// On Vercel the platform proxy overwrites X-Forwarded-For with the real client address; trust it there only, so the
-// public wake endpoints rate-limit callers instead of the proxy. Local (ngrok) keeps the existing behaviour.
-export const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info', redact: ['req.headers.authorization'] }, bodyLimit: 2 * 1024 * 1024, trustProxy: Boolean(process.env.VERCEL) });
+export const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info', redact: ['req.headers.authorization'] }, bodyLimit: 2 * 1024 * 1024 });
 await app.register(helmet);
 await app.register(workerRoutes);
 await app.register(wakeSignalRoutes);

@@ -5,8 +5,9 @@ import { assertDatabaseEnvironment, connectionOptions, poolMax } from '../../../
 const globalForPool = globalThis as unknown as { qleadPool?: pg.Pool };
 
 /**
- * One pool per server process (survives dev hot reloads). Reads DATABASE_URL from the web app's environment and refuses
- * a database that does not belong to QLEAD_ENVIRONMENT (see src/environment.ts), e.g. a Preview deployment reaching production.
+ * One pool per server process (survives dev hot reloads; shared with the worker routes from ../src). Reads DATABASE_URL
+ * from the web app's environment and refuses a database that does not belong to QLEAD_ENVIRONMENT (src/environment.ts),
+ * e.g. a Preview deployment reaching production.
  */
 export function db(): pg.Pool {
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is not configured for the web app.');
