@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: muse
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the local environment}
+      POSTGRES_DB: muse_bridge
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - muse-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U muse -d muse_bridge"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  muse-postgres-data:

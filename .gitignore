@@ -1,0 +1,45 @@
+# Dependencies, builds and caches
+node_modules/
+dist/
+coverage/
+.next/
+.next-*/
+web/.next/
+web/.next-*/
+*.tsbuildinfo
+.cache/
+.turbo/
+
+# Local environment and credentials; keep only sanitized templates
+.env
+.env.*
+!.env.example
+!**/.env.example
+.dev-runtime/
+.ngrok2/
+.config/ngrok/
+ngrok.yml
+.ngrok.yml
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Runtime output, backups and database exports
+*.log
+*.dump
+*.backup
+*.sqlite
+*.sqlite3
+*.db
+backups/
+exports/
+coverage/
+docs/e2e-screenshots/
+docs/**/screenshots/
+docs/**/*.png
+docs/**/*.jpg
+docs/**/*.jpeg
+docs/**/*.webp
+e2e/screenshots/
+web/e2e/screenshots/

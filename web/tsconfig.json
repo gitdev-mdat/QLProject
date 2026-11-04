@@ -1,0 +1,58 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": [
+        "./*"
+      ],
+      "@/../*": [
+        "../*"
+      ]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    ".next-responsive/types/**/*.ts",
+    ".next-responsive/dev/types/**/*.ts",
+    ".next-firstscan-e2e/types/**/*.ts",
+    ".next-firstscan-e2e/dev/types/**/*.ts",
+    ".next-prod-20261102-ranking/types/**/*.ts",
+    ".next-prod-20261102-ranking/dev/types/**/*.ts",
+    ".next-prod-20261102-ranking-final/types/**/*.ts",
+    ".next-prod-20261102-ranking-final/dev/types/**/*.ts",
+    ".next-prod-20261102-ranking-final2/types/**/*.ts",
+    ".next-prod-20261102-ranking-final2/dev/types/**/*.ts",
+    ".next-prod-20261102-glace/types/**/*.ts",
+    ".next-prod-20261102-glace/dev/types/**/*.ts",
+    ".next-qlead-prod-20261103-fresh/types/**/*.ts",
+    ".next-qlead-prod-20261103-fresh/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

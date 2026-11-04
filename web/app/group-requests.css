@@ -1,0 +1,46 @@
+/* Facebook group suggestions (customer page and Admin review). Uses tokens from globals.css. */
+.group-request-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 20px; align-items: start; }
+.group-request-form { padding: 20px; }
+.group-request-form h2 { font-size: 18px; margin-bottom: 14px; }
+.group-request-form form { display: grid; gap: 14px; }
+.group-request-form .field span b { color: var(--red-600); }
+.group-request-form .field span em { color: var(--muted); font-style: normal; font-weight: 400; }
+.group-request-form .btn { justify-self: start; }
+.small-note { margin-top: 14px; font-size: 14px; }
+.form-message { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: var(--radius-sm); font-size: 14px; }
+.form-message .icon { margin-top: 3px; }
+.form-message.is-ok { background: var(--green-50); color: var(--green-800); }
+.form-message.is-error { background: #FBEAE6; color: #7A2617; }
+.request-items { display: grid; }
+.request-items li { display: grid; gap: 6px; padding: 14px 20px; border-top: 1px solid var(--line); }
+.request-top, .gr-admin-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.request-url { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--green-700); font-weight: 600; overflow-wrap: anywhere; word-break: break-word; }
+.request-url:hover { text-decoration: underline; text-underline-offset: 3px; }
+.request-url .icon { flex: none; }
+.request-status { padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; white-space: nowrap; background: var(--surface-2); color: var(--ink-2); }
+.request-status.is-reviewing, .request-status.is-approved, .pill-gr-reviewing, .pill-gr-approved { background: var(--gold-100); color: var(--gold-ink); }
+.request-status.is-added, .pill-gr-added { background: var(--green-100); color: var(--green-800); }
+.request-status.is-rejected, .pill-gr-rejected { background: #FBEAE6; color: #7A2617; }
+.request-note { color: var(--ink-2); font-size: 15px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.request-hint { color: var(--muted); font-size: 14px; }
+.request-reply { padding: 8px 12px; border-radius: var(--radius-sm); background: var(--surface-2); font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.request-time { color: var(--muted); font-size: 13px; }
+.break-all { word-break: break-all; }
+
+.gr-admin-list { display: grid; gap: 12px; }
+.gr-admin-item { display: grid; gap: 10px; }
+.gr-admin-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 16px; }
+.gr-admin-facts dt { color: var(--muted); font-size: 13px; }
+.gr-admin-facts dd { font-size: 15px; font-weight: 500; overflow-wrap: anywhere; }
+.gr-admin-edit { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr) auto; gap: 12px; align-items: end; }
+.gr-admin-edit .field { margin: 0; }
+
+@media (max-width: 1080px) {
+  .group-request-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .gr-admin-facts { grid-template-columns: 1fr 1fr; }
+  .gr-admin-edit { grid-template-columns: 1fr; }
+  .gr-admin-edit .btn, .group-request-form .btn { width: 100%; justify-self: stretch; }
+  .request-items li { padding: 14px 16px; }
+}

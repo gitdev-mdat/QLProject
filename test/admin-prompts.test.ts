@@ -1,0 +1,70 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { hookActivationPrompt, hookDeactivationPrompt, runPrompt } from '../web/lib/admin-prompts.js';
+
+test('worker instructions use the current natural-language intent as the source of truth', () => {
+  const prompt = runPrompt('Muse Worker 01', 'https://qlead.example', 1);
+  assert.match(prompt, /search\.intent\.description as the customer's current, authoritative request/);
+  assert.match(prompt, /search\.keywords are seed phrases .*not an allowlist/);
+  assert.match(prompt, /if it is empty, do not add a geographic restriction/);
+  assert.match(prompt, /Search recent posts first/);
+  assert.match(prompt, /Use only recency or sort controls that the connected social\.search tool actually supports/);
+  assert.match(prompt, /never replace an unknown publication time with the search time/);
+  assert.match(prompt, /not an allowlist/);
+  assert.match(prompt, /sweet-soup\/dessert/);
+  assert.match(prompt, /no more than six distinct search phrase strategies/);
+  assert.match(prompt, /For an initial job, explore each of its supplied strategies/);
+  assert.match(prompt, /For a followup job, treat its supplied phrases as complementary directions/);
+  assert.match(prompt, /do not stop after one lead/);
+  assert.match(prompt, /A recruiting post alone is not enough/);
+  assert.match(prompt, /For each candidate inspected/);
+  assert.match(prompt, /state whether social\.search actually returned it/);
+  assert.doesNotMatch(prompt, /using ONLY this job's search\.keywords/);
+  assert.match(prompt, /configuration_version/);
+  assert.match(prompt, /"attempt_no":<job\.attempt_no>/);
+  assert.match(prompt, /complete, exact job_id string from this job object in the claim response/);
+  assert.match(prompt, /Never truncate it, reconstruct it from another identifier, or substitute scan_id for job_id/);
+  assert.match(prompt, /If the ID is missing or malformed, stop and report the claim response/);
+  assert.match(prompt, /Always include the exact attempt_no returned for this job by the claim response/);
+  assert.match(prompt, /never guess or change job_id, scan_id, attempt_no, or configuration_version/);
+  assert.match(prompt, /failure with \{"scan_id":"<job\.scan_id>","attempt_no":<job\.attempt_no>/);
+  assert.match(prompt, /exactly the distinct search phrase strings actually executed through social\.search/);
+  assert.match(prompt, /Never include planned but unexecuted phrases or invent phrases/);
+  assert.match(prompt, /If no search was executed, send an empty array/);
+  assert.match(prompt, /empty "posts" array is valid/);
+});
+
+test('activation prompt describes persistent generation dedupe and leaves Hook control in Muse MAIN', () => {
+  const prompt = hookActivationPrompt('Muse Worker 01', 'https://qlead.example/');
+  assert.match(prompt, /Muse MAIN account/);
+  assert.match(prompt, /Personal Agent Hook hiện có "qlead-worker-wake"/);
+  assert.match(prompt, /không tạo Hook trùng/);
+  assert.match(prompt, /Personal Agent Hook/);
+  assert.match(prompt, /không phải Muse Code lifecycle hook/);
+  assert.match(prompt, /hook_state_get/);
+  assert.match(prompt, /hook_state_set/);
+  assert.match(prompt, /qlead_worker_wake_v1/);
+  assert.match(prompt, /hooks\.logs/);
+  assert.match(prompt, /wake=false/);
+  assert.match(prompt, /không chạy lại marker đó/);
+  assert.match(prompt, /tiếp tục nhận những generation mới/);
+  assert.match(prompt, /5 và 15 phút/);
+  assert.match(prompt, /worker ACTIVE duy nhất còn capacity/);
+  assert.match(prompt, /một lease hợp lệ không chặn wake nếu vẫn còn capacity/);
+  assert.doesNotMatch(prompt, /Backend im lặng khi worker đang giữ lease hợp lệ/);
+  assert.match(prompt, /không gửi Authorization/i);
+  assert.match(prompt, /https:\/\/qlead\.example\/api\/public\/worker-wake/);
+  assert.match(prompt, /POST \/api\/worker\/jobs\/claim with body \{"max_jobs": 1\}/);
+  assert.doesNotMatch(prompt, /QLEAD_WORKER_TOKEN|Bearer [A-Za-z0-9_-]{20,}/);
+});
+
+test('deactivation preserves Hook state and keeps connector credentials', () => {
+  const prompt = hookDeactivationPrompt('Muse Worker 01');
+  assert.match(prompt, /Muse MAIN account/);
+  assert.match(prompt, /Hook "qlead-worker-wake"/);
+  assert.match(prompt, /hook_state_get\/hook_state_set/);
+  assert.match(prompt, /Không xóa connector/);
+  assert.match(prompt, /hooks\.remove/);
+  assert.match(prompt, /hooks\.disable/);
+  assert.match(prompt, /không hủy agent đang giữ lease/i);
+});

@@ -1,0 +1,8 @@
+.next/
+node_modules/
+out/
+*.tsbuildinfo
+.hero-qa-profile/
+.next-verify/
+.env*.local
+../docs/e2e-screenshots/

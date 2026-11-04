@@ -1,0 +1,165 @@
+/* Nhu cầu theo dõi (/app/bo-loc): search-profile cards. Uses the tokens from globals.css. */
+.pf-page-head h1 { letter-spacing: -.01em; }
+
+.pf-card { display: grid; gap: 14px; padding: 22px 24px 16px; transition: box-shadow .2s var(--ease); }
+.pf-card:hover { box-shadow: var(--shadow-sm); }
+.pf-card.is-off { background: linear-gradient(var(--surface), var(--surface)) padding-box; }
+.pf-card.is-off .pf-head h2, .pf-card.is-off .pf-desc { color: var(--ink-2); }
+
+.pf-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.pf-head-main { display: grid; gap: 6px; min-width: 0; }
+.pf-head h2 { font-size: 19px; line-height: 1.35; overflow-wrap: anywhere; }
+.pf-edit { flex: none; }
+
+.pf-monitor { display: inline-flex; align-items: center; gap: 6px; width: fit-content; font-size: 12.5px; font-weight: 700; letter-spacing: .01em; color: var(--green-700); }
+.pf-monitor::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--green-600); box-shadow: 0 0 0 3px var(--green-100); }
+.pf-monitor.is-off { color: var(--muted); }
+.pf-monitor.is-off::before { background: var(--line-strong); box-shadow: 0 0 0 3px var(--surface-2); }
+
+.pf-desc-wrap { display: grid; justify-items: start; gap: 2px; }
+.pf-desc { color: var(--ink); font-size: 16px; line-height: 1.6; overflow-wrap: anywhere; max-width: 72ch; }
+.pf-desc.is-clamped { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.pf-desc.is-missing { color: var(--muted); font-size: 15px; }
+.pf-desc .text-link, .pf-status .text-link, .pf-stage .text-link { display: inline; padding: 0; border: 0; background: none; font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.pf-more { padding: 0; border: 0; background: none; color: var(--green-700); font-size: 14px; font-weight: 600; cursor: pointer; }
+
+.pf-meta { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font-size: 14px; }
+.pf-meta span { display: inline-flex; align-items: center; gap: 6px; }
+.pf-meta .icon { color: var(--green-600); }
+
+.pf-status { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 12px; background: var(--surface-2); animation: saved-in .32s var(--ease) both; }
+.pf-status-icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--surface); color: var(--muted); }
+.pf-status-body { display: grid; gap: 2px; min-width: 0; }
+.pf-status-title { color: var(--ink); font-size: 15.5px; font-weight: 700; line-height: 1.4; }
+.pf-status-detail { color: var(--ink-2); font-size: 14px; line-height: 1.5; }
+.pf-status-fresh { margin-top: 4px; color: var(--gold-ink); font-size: 13.5px; line-height: 1.5; }
+.pf-status-action { flex: none; }
+.pf-status.is-waiting .pf-status-icon { color: var(--green-700); }
+.pf-status.is-running { background: var(--green-50); }
+.pf-status.is-running .pf-status-icon { background: var(--green-100); }
+.pf-status.is-success { background: var(--green-50); box-shadow: inset 0 0 0 1px var(--green-100); }
+.pf-status.is-success .pf-status-icon { background: var(--gold-100); color: var(--gold-ink); }
+.pf-status.is-success .pf-status-title { color: var(--green-800); }
+.pf-status.is-warn { background: var(--gold-100); }
+.pf-status.is-warn .pf-status-icon { color: var(--gold-ink); }
+.pf-status.is-quiet .pf-status-icon { color: var(--green-700); }
+.pf-status.is-idle .pf-status-icon { color: var(--green-700); }
+
+/* Live only while a search is actually running: a calm pulse, not a fake progress bar. */
+.pf-pulse { position: relative; width: 10px; height: 10px; border-radius: 50%; background: var(--green-600); }
+.pf-pulse::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid var(--green-600); opacity: 0; animation: pf-pulse 1.6s ease-out infinite; }
+@keyframes pf-pulse { 0% { transform: scale(.4); opacity: .7; } 100% { transform: scale(1.3); opacity: 0; } }
+
+.pf-saved { padding: 8px 12px; }
+.pf-note { display: flex; gap: 6px; color: var(--ink-2); font-size: 13.5px; line-height: 1.5; }
+.pf-note .icon { flex: none; margin-top: 3px; color: var(--green-700); }
+.pf-note.is-warn { color: var(--gold-ink); }
+.pf-note.is-warn .icon { color: var(--gold-ink); }
+
+.pf-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid var(--line); }
+.pf-leads.is-empty { color: var(--muted); font-size: 14px; }
+.pf-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.pf-actions .btn:disabled { opacity: 1; background: var(--surface-2); border-color: var(--line); color: var(--muted); cursor: default; }
+
+.pf-phrases { color: var(--muted); font-size: 13.5px; }
+.pf-phrases summary { width: fit-content; cursor: pointer; list-style: none; font-weight: 500; }
+.pf-phrases summary::-webkit-details-marker { display: none; }
+.pf-phrases summary::after { content: " ▾"; font-size: 11px; }
+.pf-phrases[open] summary::after { content: " ▴"; }
+.pf-phrases summary:hover { color: var(--ink-2); }
+.pf-phrases .keyword-chips { margin-top: 10px; }
+.pf-phrases .keyword-chips li { font-size: 13px; color: var(--ink-2); }
+.pf-phrases .search-preview-note { margin-top: 6px; }
+.profile-form .pf-phrases { padding: 10px 14px; border-radius: 10px; background: var(--green-50); }
+.pf-form-note { color: var(--muted); font-size: 14px; }
+
+@media (max-width: 640px) {
+  .pf-card { padding: 16px 16px 12px; gap: 12px; }
+  .pf-head h2 { font-size: 17px; }
+  .pf-desc { font-size: 15px; }
+  .pf-status { grid-template-columns: auto minmax(0, 1fr); gap: 12px; padding: 12px; }
+  .pf-status-icon { width: 32px; height: 32px; }
+  .pf-status-action { grid-column: 1 / -1; }
+  .pf-status-action .btn { width: 100%; justify-content: center; }
+  .pf-foot { align-items: stretch; }
+  .pf-actions { width: 100%; margin-left: 0; }
+  .pf-actions .btn-primary { flex: 1; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) { .pf-status { animation: none; } .pf-pulse::after { animation: none; opacity: .4; transform: scale(1); } }
+
+/* Wide screens: two cards per row so a customer sees more needs at once. Cards stack their status by their own width. */
+.pf-card { container-type: inline-size; align-content: start; }
+@media (min-width: 1200px) { .profile-list:has(.pf-card) { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } .profile-list > .profile-form { grid-column: 1 / -1; } }
+@container (max-width: 560px) {
+  .pf-status { grid-template-columns: auto minmax(0, 1fr); }
+  .pf-status-action { grid-column: 2 / -1; }
+}
+
+/* Search stage: the same goat language as the first search on Hôm nay, sized for a card. */
+.pf-stage { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 18px; align-items: center; padding: 18px 20px; border-radius: 16px; background: linear-gradient(135deg, var(--green-50), var(--surface) 75%); border: 1px solid var(--green-100); animation: saved-in .32s var(--ease) both; }
+.pf-stage.is-results { background: linear-gradient(135deg, var(--gold-100), var(--green-50) 70%); border-color: #F0D79F; }
+.pf-stage.is-no_results { background: linear-gradient(135deg, var(--surface-2), var(--surface) 75%); border-color: var(--line); }
+.pf-stage.is-delayed, .pf-stage.is-failed { background: linear-gradient(135deg, var(--gold-100), var(--surface) 75%); border-color: #F0D79F; }
+.pf-scene.discovery-scene { width: 112px; height: 112px; }
+.pf-scene .goat-mascot { width: 84px; }
+.pf-scene .discovery-ring { inset: 6px; }
+.pf-scene .discovery-card { width: 34px; gap: 3px; padding: 5px; border-radius: 6px; }
+.pf-scene .discovery-card i { height: 3px; }
+.pf-scene .discovery-card.c1 { top: 4px; left: -8px; }
+.pf-scene .discovery-card.c2 { top: 30px; right: -10px; }
+.pf-scene .discovery-spark { top: 4px; right: 8px; font-size: 18px; }
+.pf-stage-body { display: grid; gap: 6px; min-width: 0; }
+.pf-stage-eyebrow { color: var(--green-700); font-size: 12.5px; font-weight: 700; letter-spacing: .02em; }
+.pf-stage.is-delayed .pf-stage-eyebrow, .pf-stage.is-failed .pf-stage-eyebrow { color: var(--gold-ink); }
+.pf-stage-title { display: flex; align-items: center; gap: 10px; color: var(--ink); font-size: 18px; font-weight: 700; line-height: 1.35; }
+.pf-stage.is-results .pf-stage-title { color: var(--green-800); }
+.pf-stage-title .pf-pulse { flex: none; }
+.pf-stage-detail { color: var(--ink-2); font-size: 14px; line-height: 1.5; }
+.pf-stage .pf-status-action { margin-top: 4px; }
+
+.pf-stats { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.pf-stats li { display: inline-flex; align-items: baseline; gap: 6px; padding: 7px 12px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); color: var(--muted); font-size: 13.5px; }
+.pf-stats li .icon { align-self: center; color: var(--green-600); }
+.pf-stats li b { color: var(--ink); font-size: 17px; font-variant-numeric: tabular-nums; }
+.pf-stats li.is-highlight { border-color: #F0D79F; background: #FFFBF0; }
+.pf-stats li.is-highlight .icon { color: var(--gold-500); }
+.pf-stats li.is-highlight b { color: var(--green-800); }
+.pf-stats li.is-empty .icon { color: var(--muted); }
+
+.pf-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 8px; max-width: 460px; }
+.pf-steps li { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 0 2px; color: var(--muted); font-size: 12.5px; line-height: 1.3; text-align: center; }
+/* Connector into each step, owned by that step: upcoming = muted, active = travelling pulse, complete = solid. */
+.pf-step-seg { position: absolute; top: 5px; right: 50%; left: -50%; height: 2px; margin: 0 9px; border-radius: 2px; background: var(--line-strong); overflow: hidden; }
+.pf-step-seg.is-complete { background: var(--green-600); }
+.pf-step-seg.is-active { background: var(--green-100); }
+.pf-step-seg.is-active::after { content: ""; position: absolute; inset: 0; width: 45%; border-radius: inherit; background: linear-gradient(90deg, rgba(19, 160, 111, 0), var(--green-600) 70%, rgba(19, 160, 111, 0)); transform: translateX(-100%); animation: pf-seg-travel 2.4s cubic-bezier(.45, 0, .35, 1) infinite; }
+@keyframes pf-seg-travel { 0% { transform: translateX(-100%); } 70%, 100% { transform: translateX(230%); } }
+@media (prefers-reduced-motion: reduce) {
+  /* Still reads as "in progress", never as solid: a static dashed line instead of the moving pulse. */
+  .pf-step-seg.is-active { background: repeating-linear-gradient(90deg, var(--green-600) 0 5px, var(--green-100) 5px 9px); }
+  .pf-step-seg.is-active::after { content: none; animation: none; }
+}
+.pf-step-dot { position: relative; z-index: 1; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line-strong); background: var(--surface); }
+.pf-step-label { margin-top: 2px; }
+.pf-step-at { color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; font-weight: 400; }
+.pf-steps li.is-done { color: var(--green-800); font-weight: 600; }
+.pf-steps li.is-done .pf-step-dot { background: var(--green-600); border-color: var(--green-600); }
+.pf-steps li.is-current { color: var(--ink); font-weight: 700; }
+.pf-steps li.is-current .pf-step-dot { border-color: var(--gold-500); background: #FFF6E0; box-shadow: 0 0 0 4px rgba(233, 169, 58, .22); }
+
+@container (max-width: 520px) {
+  /* Narrow: goat beside the title, everything else full width so the steps keep their room. */
+  .pf-stage { grid-template-columns: 64px minmax(0, 1fr); column-gap: 12px; row-gap: 6px; padding: 14px; align-items: center; }
+  .pf-stage-body { display: contents; }
+  .pf-stage > .pf-scene { grid-row: 1 / span 2; }
+  .pf-stage-eyebrow { align-self: end; }
+  .pf-stage-title { align-self: start; }
+  .pf-stage-body > :not(.pf-stage-eyebrow):not(.pf-stage-title) { grid-column: 1 / -1; }
+  .pf-scene.discovery-scene { width: 64px; height: 64px; }
+  .pf-scene .goat-mascot { width: 50px; }
+  .pf-scene .discovery-spark { top: 0; right: 0; font-size: 14px; }
+  .pf-scene .discovery-card { display: none; }
+  .pf-stage-title { font-size: 16px; }
+  .pf-stage .pf-status-action { grid-column: auto; }
+}
+@media (prefers-reduced-motion: reduce) { .pf-stage { animation: none; } }
