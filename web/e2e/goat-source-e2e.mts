@@ -50,7 +50,7 @@ async function newUser(tag: string): Promise<User> {
   await tx(client => enqueueInitialJob(client, profile));
   return { userId, token, profile, name };
 }
-type Post = { slug: string; author?: string | null; content?: string | null; published?: boolean };
+type Post = { slug: string; author?: string | null; content?: string | null; summary_vi?: string | null; published?: boolean };
 const url = (slug: string) => `https://www.facebook.com/groups/e2e-goat/posts/${RUN}${slug.replace(/\W/g, '')}`;
 const worker = {
   claim: async (profile: string) => {
@@ -64,7 +64,7 @@ const worker = {
       event: 'facebook_scan_completed', source: 'muse', configuration_version: job.configuration_version, scan_id: job.scan_id, scanned_at: new Date().toISOString(),
       keywords_used: job.search.keywords, sources_used: job.search.sources,
       posts: posts.map(p => ({ url: url(p.slug), author: p.author === undefined ? `Quán ${p.slug}` : p.author,
-        content: p.content === undefined ? `Quán ${p.slug} sắp khai trương, đang tìm máy pha cà phê.` : p.content,
+        content: p.content === undefined ? `Quán ${p.slug} sắp khai trương, đang tìm máy pha cà phê.` : p.content, summary_vi: p.summary_vi ?? null,
         published_at: p.published === false ? null : new Date(Date.now() - 3600_000).toISOString(), collected_via: 'controlled_fixture' })),
       stats: { total_found: posts.length + 4 }, errors: [] } });
     if (r.statusCode !== 200) throw new Error(`submit ${r.statusCode} ${r.body}`);
@@ -244,7 +244,13 @@ try {
       const scan = await api(vs.page);
       assert(t === 'QLead đã tìm thấy cơ hội cho bạn!', `title "${t}" · discovery ${JSON.stringify(scan.discovery?.status)} initialUsable=${scan.discovery?.initialUsablePosts} ack=${JSON.stringify(ack).slice(0, 160)}`);
       assert(!(await text(vs.page)).includes('chưa thấy bài đăng phù hợp'), 'false-zero copy');
+      await vs.page.locator('.first-scan-confetti').waitFor({ state: 'attached', timeout: 3000 });
+      const count = await text(vs.page, '.found-count');
+      assert(count.startsWith('10 cơ hội mới') && count.includes('Các bài này chưa có đủ thông tin trích xuất'), count);
       await goat(vs.page);
+      await vs.page.locator('.first-scan-confetti').waitFor({ state: 'detached', timeout: 5000 });
+      await vs.page.reload(); await vs.page.waitForLoadState('networkidle'); await pause(800);
+      assert(await vs.page.locator('.first-scan-confetti').count() === 0, 'celebration replayed after refresh');
       for (const w of [390, 768, 1440]) { await vs.page.setViewportSize({ width: w, height: w < 768 ? 844 : 1000 }); await noOverflow(vs.page); await shot(vs.page, `s1-found-incomplete-${w}`); }
       return `count ${(await text(vs.page, '.found-count'))}`;
     });
@@ -265,7 +271,10 @@ try {
       await goto(vs.page, '/app');
       const unseen = Number(await vs.page.locator('.summary-row dd').first().innerText());
       const scan = await api(vs.page);
-      assert(unseen === 10 && scan.discovery.totalUsablePosts === 10, `today ${unseen}, first scan ${scan.discovery.totalUsablePosts}`);
+      await goto(vs.page, '/app/bai-viet');
+      const listed = await vs.page.locator('.lead-table tbody tr').count();
+      assert(unseen === 10 && listed === 10 && scan.discovery.totalSourceLinkedPosts === 10, `today ${unseen}, list ${listed}, first scan ${scan.discovery.totalSourceLinkedPosts}`);
+      await goto(vs.page, '/app');
       await shot(vs.page, 's3-today-1440');
     });
     await check('S4 lead detail without text: honest note, primary "Xem bài Facebook", no publication time invented', async () => {
@@ -277,7 +286,144 @@ try {
       assert(href?.startsWith('https://www.facebook.com/groups/e2e-goat/'), `${href}`);
       for (const w of [390, 768, 1440]) { await vs.page.setViewportSize({ width: w, height: w < 768 ? 844 : 1000 }); await noOverflow(vs.page); await shot(vs.page, `s4-detail-incomplete-${w}`); }
     });
+    await check('S5 the same URL found by a second search: still 10 leads, shown once with both searches', async () => {
+      const [{ id: second }] = await q("INSERT INTO agent_connections(user_id, name, kind) VALUES ($1, 'Nhà hàng mới mở', 'search_profile') RETURNING id", [s.userId]);
+      await q(`INSERT INTO scan_configs(agent_connection_id, version, enabled, keywords, keywords_source, location, sources, frequency_minutes, description)
+        VALUES ($1, 1, true, '["nhà hàng mới mở"]', 'description', '', '["social.search"]', 30, 'Nhà hàng mới mở')`, [second]);
+      await tx(client => enqueueInitialJob(client, second));
+      const j = await worker.claim(second);
+      await worker.submit(j, [{ slug: 's-0', content: null, author: 'Trang 0' }]);
+      await vs.page.setViewportSize({ width: 1440, height: 1000 });
+      await goto(vs.page, '/app/bai-viet');
+      const rows = await vs.page.locator('.lead-table tbody tr').count();
+      const both = await vs.page.locator('.lead-table .lead-source', { hasText: '+1 nhu cầu' }).count();
+      assert(rows === 10 && both === 1, `rows ${rows}, shared ${both}`);
+      await goto(vs.page, '/app');
+      const unseen = Number(await vs.page.locator('.summary-row dd').first().innerText());
+      // S4 opened one lead, so Today's "Chưa xem" is 9; the list still has all 10 (and its header says so).
+      assert(unseen === 9, `Today unseen ${unseen}`);
+      await goto(vs.page, '/app/bai-viet');
+      assert((await text(vs.page, '.page-head')).includes('10 lead · 9 chưa xem'), await text(vs.page, '.page-head'));
+      return `${rows} leads`;
+    });
     await vs.context.close();
+
+    // ── F: early follow-up adds one more; a URL it finds again is not counted twice ──
+    const f = await newUser('f');
+    const vf = await open(browser, f);
+    await check('F1 initial finds 1 → follow-up planned; follow-up re-finds it + 1 new → "2 cơ hội mới", split 1 + 1', async () => {
+      const j = await worker.claim(f.profile);
+      const ack = await worker.submit(j, [{ slug: 'f-a' }]);
+      assert(ack.early_followup_queued === true, `followup ${JSON.stringify(ack).slice(0, 200)}`);
+      await goto(vf.page, '/app/lan-tim-dau');
+      assert(await title(vf.page) === 'QLead đã tìm thấy cơ hội cho bạn!', await title(vf.page));
+      assert((await text(vf.page, '.discovery-line')).includes('QLead sẽ tiếp tục tìm thêm'), 'planned line');
+      await goat(vf.page);
+      await shot(vf.page, 'f1-found-followup-planned-1440');
+      await q("UPDATE search_jobs SET scheduled_for = now(), available_at = now() WHERE search_profile_id = $1 AND kind = 'followup' AND status = 'pending'", [f.profile]);
+      const fj = await worker.claim(f.profile);
+      await vf.page.reload(); await vf.page.waitForLoadState('networkidle');
+      assert((await text(vf.page, '.discovery-line')).includes('QLead đang tìm thêm'), 'running line');
+      await worker.submit(fj, [{ slug: 'f-a' }, { slug: 'f-b' }]);
+      await vf.page.locator('.found-count-main', { hasText: '2' }).waitFor({ timeout: 20000 });
+      const count = await text(vf.page, '.found-count');
+      assert(count.startsWith('2 cơ hội mới') && count.includes('1 từ lượt đầu · 1 tìm thêm'), count);
+      assert((await text(vf.page, '.discovery-line')).includes('QLead sẽ tiếp tục theo dõi'), 'monitoring line');
+      await goat(vf.page);
+      for (const w of [390, 768, 1440]) { await vf.page.setViewportSize({ width: w, height: w < 768 ? 844 : 1000 }); await noOverflow(vf.page); await shot(vf.page, `f1-found-after-followup-${w}`); }
+      await vf.page.setViewportSize({ width: 1440, height: 1000 });
+      await goto(vf.page, '/app/bai-viet');
+      const rows = await vf.page.locator('.lead-table tbody tr').count();
+      const scan = await api(vf.page);
+      assert(rows === 2 && scan.discovery.totalSourceLinkedPosts === 2, `list ${rows}, api ${scan.discovery.totalSourceLinkedPosts}`);
+      return count;
+    });
+    await vf.context.close();
+
+    // ── V: Vietnamese-first lead text ──
+    const v = await newUser('v');
+    const vv = await open(browser, v);
+    const EN = "Advertisement for Hontil Homestay announcing its grand opening ('Khai truong') on November 2, 2026, with a 15% discount for early guests.";
+    const VI = 'Quán cà phê Mộc sắp khai trương ở Thủ Đức, đang cần tìm máy pha cà phê và phần mềm bán hàng.';
+    await check('V1 list previews are Vietnamese: original Vietnamese quoted, English description replaced by a Vietnamese line', async () => {
+      const j = await worker.claim(v.profile);
+      await worker.submit(j, [
+        { slug: 'v-vi', author: 'Quán cà phê Mộc', content: VI },
+        { slug: 'v-en', author: 'Hontil Homestay', content: EN },
+        { slug: 'v-none', author: null, content: null },
+        { slug: 'v-sum', author: 'Nhà hàng Sen', content: 'Photo of a restaurant banner announcing the opening of a second branch in District 7 next week.', summary_vi: 'Nhà hàng Sen thông báo sắp mở chi nhánh thứ hai ở Quận 7 vào tuần tới.' },
+        { slug: 'v-notime', author: 'Bếp Nhà Mây', content: 'Bếp Nhà Mây mới mở chi nhánh 2, tuyển nhân viên phục vụ.', published: false },
+      ]);
+      for (const w of [1440, 768, 390]) {
+        await vv.page.setViewportSize({ width: w, height: w < 768 ? 844 : 1000 });
+        await goto(vv.page, '/app/bai-viet');
+        const list = await text(vv.page);
+        assert(!/Advertisement|announcing|Photo of/i.test(list), `${w}: English description shown by default`);
+        assert(list.includes('máy pha cà phê') && list.includes('QLead đã ghi nhận bài đăng này. Mở Facebook để xem nội dung gốc.'), `${w}: previews ${list.slice(0, 300)}`);
+        assert(list.includes('Chưa có tóm tắt tiếng Việt') && list.includes('Chưa trích xuất nội dung'), `${w}: status chips`);
+        assert(list.includes('QLead tóm tắt') && list.includes('sắp mở chi nhánh thứ hai'), `${w}: summary preview`);
+        assert(list.includes('Tìm thấy'), `${w}: discovery time label for the post without a time`);
+        await honest(vv.page);
+        await shot(vv.page, `v1-list-vietnamese-${w}`);
+      }
+    });
+    await check('V2 search finds Vietnamese text and the stored English text; filters still work', async () => {
+      await vv.page.setViewportSize({ width: 1440, height: 1000 });
+      await goto(vv.page, '/app/bai-viet');
+      const search = vv.page.getByRole('searchbox', { name: 'Tìm lead' });
+      await search.fill('máy pha');
+      assert(await vv.page.locator('.lead-table tbody tr').count() === 1, 'Vietnamese search');
+      await search.fill('Hontil');
+      assert(await vv.page.locator('.lead-table tbody tr').count() === 1, 'search over stored original text');
+      await search.fill('chi nhánh thứ hai');
+      assert(await vv.page.locator('.lead-table tbody tr').count() === 1, 'search over the Vietnamese summary');
+      await search.fill('không có gì khớp');
+      assert(await vv.page.locator('.lead-table tbody tr').count() === 0 && (await text(vv.page)).includes('Không có lead khớp bộ lọc'), 'empty filter state');
+      await search.fill('');
+      return `${await vv.page.locator('.lead-table tbody tr').count()} rows after clearing`;
+    });
+    await check('V3 detail of the English description: Vietnamese line first, English only under "Xem nội dung gốc" (closed), labelled', async () => {
+      const [{ id }] = await q("SELECT id FROM facebook_posts WHERE agent_connection_id = $1 AND content LIKE 'Advertisement%'", [v.profile]);
+      await goto(vv.page, `/app/bai-viet/${id}`);
+      const details = vv.page.locator('details.lead-stored');
+      assert(await details.count() === 1 && !(await details.evaluate(el => (el as HTMLDetailsElement).open)), 'stored text not collapsed');
+      assert(!(await vv.page.locator('blockquote', { hasText: 'Advertisement' }).isVisible()), 'English visible before opening');
+      await details.locator('summary').click();
+      assert(await vv.page.locator('blockquote[lang="en"]', { hasText: 'Hontil' }).isVisible(), 'English after opening');
+      assert((await text(vv.page, 'details.lead-stored')).includes('chưa dịch'), 'label');
+      for (const w of [390, 768, 1440]) { await vv.page.setViewportSize({ width: w, height: w < 768 ? 844 : 1000 }); await noOverflow(vv.page); await shot(vv.page, `v3-detail-english-${w}`); }
+    });
+    await check('V4 detail of a Vietnamese post: quoted as "Nội dung trên Facebook", missing time stays unknown', async () => {
+      const [{ id }] = await q("SELECT id FROM facebook_posts WHERE agent_connection_id = $1 AND published_at IS NULL", [v.profile]);
+      await vv.page.setViewportSize({ width: 1440, height: 1000 });
+      await goto(vv.page, `/app/bai-viet/${id}`);
+      const body = await text(vv.page);
+      assert(body.includes('Nội dung trên Facebook') && body.includes('Chưa rõ giờ đăng') && body.includes('QLead tìm thấy lúc'), body.slice(0, 300));
+      assert(await vv.page.locator('details.lead-stored').count() === 0, 'nothing extra for Vietnamese text');
+      await shot(vv.page, 'v4-detail-vietnamese-1440');
+    });
+    await check('V4b detail with a Vietnamese summary: labelled "QLead tóm tắt" (not a quote), English original collapsed', async () => {
+      const [{ id }] = await q("SELECT id FROM facebook_posts WHERE agent_connection_id = $1 AND summary_vi IS NOT NULL", [v.profile]);
+      await goto(vv.page, `/app/bai-viet/${id}`);
+      const summary = await text(vv.page, '.lead-summary');
+      assert(summary.startsWith('QLead tóm tắt') && summary.includes('Quận 7') && summary.includes('không phải lời của người đăng'), summary);
+      assert(await vv.page.locator('blockquote', { hasText: 'Quận 7' }).count() === 0, 'summary shown as a quote');
+      assert(!(await vv.page.locator('details.lead-stored').evaluate(el => (el as HTMLDetailsElement).open)), 'original open by default');
+      for (const w of [390, 768, 1440]) { await vv.page.setViewportSize({ width: w, height: w < 768 ? 844 : 1000 }); await noOverflow(vv.page); await shot(vv.page, `v4b-detail-summary-${w}`); }
+      await vv.page.setViewportSize({ width: 1440, height: 1000 });
+    });
+    await check('V5 another customer cannot open these leads', async () => {
+      const other = await newUser('o');
+      const vo = await open(browser, other);
+      const [{ id }] = await q('SELECT id FROM facebook_posts WHERE agent_connection_id = $1 LIMIT 1', [v.profile]);
+      await goto(vo.page, `/app/bai-viet/${id}`);
+      const body = await text(vo.page);
+      await goto(vo.page, '/app/bai-viet');
+      const list = await text(vo.page);
+      await vo.context.close();
+      assert(body.includes('Không tìm thấy lead') && !list.includes('Hontil') && !list.includes('Mộc'), 'cross-tenant leak');
+    });
+    await vv.context.close();
   }
 } finally {
   await browser.close();

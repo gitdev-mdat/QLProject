@@ -858,8 +858,20 @@ html.reveal-ready .compare-col.is-qlead.is-visible li { opacity: 1; transform: n
 .lead-item.is-no-text .fb-link, .lead-table tr.is-no-text .fb-link { background: var(--green-700); border-color: var(--green-700); color: #fff; }
 .lead-item.is-no-text .fb-link:hover, .lead-table tr.is-no-text .fb-link:hover { background: var(--green-800); border-color: var(--green-800); }
 .content-status { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: 12px; font-weight: 500; white-space: nowrap; }
-.lead-item-missing { color: var(--muted); font-size: 15px; line-height: 1.45; }
-.lead-item.is-unseen .lead-item-missing { color: var(--ink-2); }
+/* Which text a lead shows, and what it is: QLead's Vietnamese summary, the post's own words, or a short fallback. */
+.lead-preview-fallback { color: var(--muted) !important; font-weight: 400 !important; font-size: 15px; }
+.text-kind { display: inline-block; margin-right: 6px; padding: 0 7px; border-radius: 6px; background: var(--green-100); color: var(--green-800); font-size: 12px; font-weight: 600; line-height: 20px; vertical-align: 1px; white-space: nowrap; }
+.lead-text { margin: 0; display: grid; gap: 6px; }
+.lead-text figcaption, .lead-stored-label { color: var(--muted); font-size: 13px; font-weight: 600; }
+.lead-summary { display: grid; gap: 8px; justify-items: start; padding: 16px 18px; border-radius: 12px; background: var(--green-50); border: 1px solid var(--green-100); }
+.lead-summary p { color: var(--ink); font-size: 16px; line-height: 1.6; }
+.lead-summary small { color: var(--muted); font-size: 13px; }
+.lead-stored { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.lead-stored summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; padding: 0 16px; color: var(--ink-2); font-size: 14px; font-weight: 600; }
+.lead-stored summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 12px; }
+.lead-stored[open] summary { border-bottom: 1px solid var(--line); }
+.lead-stored-label { padding: 12px 16px 0; }
+.lead-stored blockquote { margin: 6px 16px 16px; color: var(--ink-2); font-size: 15px; line-height: 1.6; white-space: pre-line; overflow-wrap: anywhere; }
 .lead-item-author.is-fallback, .lead-cell b.is-fallback, .lead-detail-author.is-fallback { color: var(--ink-2); font-weight: 500; }
 .lead-item-top time.is-found, .time-cell time.is-found { color: var(--muted); font-style: normal; }
 .lead-cell p.lead-cell-missing { margin: 4px 0 6px; }

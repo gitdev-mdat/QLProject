@@ -132,6 +132,7 @@ function useCelebration(scan: FirstScan, view: DiscoveryView, mode: Mode): boole
   let key: string | null = null;
   if (mode === 'found' && view.initialLeads) key = scan.finishedAt ? `qlead:first-scan-celebrated:${scan.profile.id}:${scan.finishedAt}` : null;
   else if (mode === 'found' && view.moreFinishedAt) key = `qlead:first-scan-celebrated:${scan.profile.id}:more:${view.moreFinishedAt}`;
+  const finishedAt = mode === 'found' && view.initialLeads ? scan.finishedAt : view.moreFinishedAt;
   const handled = useRef<string | null>(null);
   const [play, setPlay] = useState(false);
   // Before paint, so the count can start its reveal without first flashing the final number.
@@ -140,12 +141,18 @@ function useCelebration(scan: FirstScan, view: DiscoveryView, mode: Mode): boole
     handled.current = key;
     let seen = false;
     try { seen = window.localStorage.getItem(key) === '1'; window.localStorage.setItem(key, '1'); } catch { /* storage unavailable: play once for this view */ }
-    if (!seen && !reducedMotion()) setPlay(true);
-  }, [key]);
+    // Only a search that really just finished is celebrated. Results of an older search that only became visible
+    // later (for example after the lead rules changed) are shown calmly with their real finish time.
+    const fresh = finishedAt ? Date.now() - new Date(finishedAt).getTime() < CELEBRATE_WITHIN_MS : false;
+    if (!seen && fresh && !reducedMotion()) setPlay(true);
+  }, [key, finishedAt]);
   return play;
 }
 
-const CONFETTI_COLORS = ['#13A06F', '#E9A93A', '#0E7A57', '#F3C969', '#7FD1AE', '#E8795A'];
+/** A discovery is celebrated only if it finished this recently (a live arrival, not an old result shown again). */
+const CELEBRATE_WITHIN_MS = 30 * 60_000;
+
+const CONFETTI_COLORS =['#13A06F', '#E9A93A', '#0E7A57', '#F3C969', '#7FD1AE', '#E8795A'];
 
 /** A short burst of DOM confetti from the goat, clipped to the hero so it can never widen the page. */
 function Confetti({ origin }: { origin: RefObject<HTMLDivElement | null> }) {
@@ -269,6 +276,8 @@ function FoundCount({ view, reveal }: { view: DiscoveryView; reveal: boolean }) 
     </p>
     {/* Where they came from, only when both searches contributed; nothing is counted twice. */}
     {split && <p className="found-count-split">{view.initialLeads} từ lượt đầu · {view.moreLeads} tìm thêm</p>}
+    {/* Data completeness in plain words: a post without extracted text is still a real, openable opportunity. */}
+    {Boolean(view.incompleteLeads) && <p className="found-count-split">{view.incompleteLeads === total ? 'Các bài này' : `${view.incompleteLeads} bài`} chưa có đủ thông tin trích xuất, bạn vẫn mở được bài Facebook gốc.</p>}
   </div>;
 }
 
