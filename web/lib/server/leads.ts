@@ -2,13 +2,14 @@ import 'server-only';
 import { toLeadRecord, type StoredFacebookPost } from '../../../src/lead-data';
 import type { Lead, LeadSource } from '../lead-source';
 import { compareLeadByPostedAt } from '../lead-order';
+import { completeLeadMetadataSql, sourceLinkedPostSql } from '../../../src/lead-eligibility';
 import { db } from './db';
 
 /**
  * Tenant scoping: every query joins agent_connections and filters on its user_id, so a user only ever reads
  * posts collected by their own agents. Same columns as the agent API's GET /api/agent/posts.
  */
-const POST_SELECT = `SELECT fp.id, fp.author, fp.title, fp.content, fp.published_at, fp.original_url, fp.normalized_url,
+const POST_SELECT = `SELECT fp.id, fp.author, fp.title, fp.content, fp.summary_vi, fp.published_at, fp.original_url, fp.normalized_url,
     fp.first_seen_at AS discovered_at, fp.source_type, fp.collected_via, fp.platform, ac.name AS agent_name,
     ac.id AS connection_id, ac.kind AS connection_kind,
     COALESCE(jsonb_agg(jsonb_build_object('version',sc.version,'enabled',sc.enabled,'keywords',sc.keywords,
@@ -18,12 +19,6 @@ const POST_SELECT = `SELECT fp.id, fp.author, fp.title, fp.content, fp.published
   JOIN agent_connections ac ON ac.id = fp.agent_connection_id
   LEFT JOIN facebook_post_search_configs psc ON psc.agent_connection_id = fp.agent_connection_id AND psc.normalized_url = fp.normalized_url
   LEFT JOIN scan_configs sc ON sc.agent_connection_id = psc.agent_connection_id AND sc.version = psc.configuration_version`;
-
-/**
- * A usable Facebook lead has a poster and text. Missing publication time is retained and explicitly ranked as unknown,
- * rather than dropped or treated as recent. Test-only fixtures remain hidden.
- */
-const COMPLETE = "fp.author IS NOT NULL AND btrim(fp.author) <> '' AND btrim(coalesce(fp.content, fp.title, '')) <> '' AND coalesce(fp.collected_via, '') <> 'integration_test'";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -57,7 +52,9 @@ function groupByPost(rows: Row[]): Lead[] {
   for (const row of rows) groups.set(row.normalized_url, [...(groups.get(row.normalized_url) ?? []), row]);
   return [...groups.values()].map(group => {
     const sorted = [...group].sort((x, y) => time(x) - time(y) || x.id.localeCompare(y.id));
-    return { ...toLeadRecord(sorted[0]), published_at: originalPostTime(group), agent_name: null, sources: sorted.map(sourceOf) };
+    const firstValue = (field: 'author' | 'title' | 'content' | 'summary_vi') => sorted.find(row => row[field]?.trim())?.[field] ?? null;
+    const record = toLeadRecord({ ...sorted[0], author: firstValue('author'), title: firstValue('title'), content: firstValue('content'), summary_vi: firstValue('summary_vi'), published_at: originalPostTime(group) });
+    return { ...record, agent_name: null, sources: sorted.map(sourceOf), eligibility: { basis: 'source_linked_search' as const, relevance: 'selected_by_search' as const, independentlyVerified: false as const } };
   });
 }
 
@@ -66,14 +63,14 @@ export async function listLeadsForUser(userId: string, limit = 200, _rankingNow 
       SELECT chosen.normalized_url, chosen.id, chosen.published_at FROM (
         SELECT DISTINCT ON (fp.normalized_url) fp.normalized_url, fp.id, fp.published_at
         FROM facebook_posts fp JOIN agent_connections ac ON ac.id = fp.agent_connection_id
-        WHERE ac.user_id = $1 AND ${COMPLETE}
+        WHERE ac.user_id = $1 AND ${sourceLinkedPostSql('fp')}
         ORDER BY fp.normalized_url, (fp.published_at IS NULL), fp.id
       ) chosen
       ORDER BY chosen.published_at DESC NULLS LAST, chosen.id LIMIT $2
     )
     ${POST_SELECT}
     JOIN lead_page page ON page.normalized_url = fp.normalized_url
-    WHERE ac.user_id = $1 AND ${COMPLETE} GROUP BY fp.id, ac.id, page.published_at, page.id
+    WHERE ac.user_id = $1 AND ${sourceLinkedPostSql('fp')} GROUP BY fp.id, ac.id, page.published_at, page.id
     ORDER BY page.published_at DESC NULLS LAST, page.id, fp.first_seen_at ASC NULLS LAST, fp.id`, [userId, limit]);
   return groupByPost(rows)
     .sort((a, b) => compareLeadByPostedAt(a, b))
@@ -84,13 +81,16 @@ export async function listLeadsForUser(userId: string, limit = 200, _rankingNow 
 export async function getLeadForUser(userId: string, postId: string): Promise<Lead | null> {
   if (!UUID.test(postId)) return null;
   const { rows } = await db().query<Row>(`${POST_SELECT}
-    WHERE ac.user_id = $1 AND ${COMPLETE}
+    WHERE ac.user_id = $1 AND ${sourceLinkedPostSql('fp')}
       AND fp.normalized_url = (SELECT p.normalized_url FROM facebook_posts p JOIN agent_connections c ON c.id = p.agent_connection_id WHERE p.id = $2 AND c.user_id = $1)
     ${GROUP_BY}`, [userId, postId]);
   const self = rows.find(row => row.id === postId);
   if (!self) return null;
   const others = rows.filter(row => row.id !== postId).sort((x, y) => time(x) - time(y));
-  return { ...toLeadRecord(self), published_at: originalPostTime(rows), agent_name: null, sources: [self, ...others].sort((x, y) => time(x) - time(y)).map(sourceOf) };
+  const ordered = [self, ...others].sort((x, y) => time(x) - time(y));
+  const firstValue = (field: 'author' | 'title' | 'content' | 'summary_vi') => ordered.find(row => row[field]?.trim())?.[field] ?? null;
+  const record = toLeadRecord({ ...self, author: firstValue('author'), title: firstValue('title'), content: firstValue('content'), summary_vi: firstValue('summary_vi'), published_at: originalPostTime(rows) });
+  return { ...record, agent_name: null, sources: ordered.map(sourceOf), eligibility: { basis: 'source_linked_search', relevance: 'selected_by_search', independentlyVerified: false } };
 }
 
 /**
@@ -102,31 +102,47 @@ export type ScanRun = {
   /** Which saved search ran this scan; null for older integrations that recorded no search profile. */
   profile: { id: string; name: string; version: number } | null;
   newLeads: number;
+  sourceLinkedPosts: number;
+  metadataCompletePosts: number;
+  metadataIncompletePosts: number;
 };
-
-const COMPLETE_EARLIER = COMPLETE.replaceAll('fp.', 'p2.');
 
 /**
  * New leads of a scan, counted the way the lead list shows them. scan_runs.new_posts counts rows inserted for that
  * search, which also includes rows the list hides (incomplete or test posts) and URLs this customer already has
  * from another search (shown as one lead). There is no post → scan link, but a scan's posts are inserted in the
  * same transaction as its scan_runs row, so both carry the same now(): posts first seen at the scan's received_at
- * are that scan's new rows. Of those, a lead is new when it is complete and no earlier complete row of this
- * customer has the same URL.
+ * are that scan's new rows. Of those, a lead is new when it is source-linked and no earlier source-linked row of
+ * this customer has the same URL.
  */
 const SCAN_FROM = `FROM scan_runs sr JOIN agent_connections ac ON ac.id = sr.agent_connection_id
-    CROSS JOIN LATERAL (SELECT count(*)::int AS new_leads FROM facebook_posts fp
-      WHERE fp.agent_connection_id = sr.agent_connection_id AND fp.first_seen_at = sr.received_at AND ${COMPLETE}
+    CROSS JOIN LATERAL (SELECT
+      count(DISTINCT fp.normalized_url) FILTER (WHERE ${sourceLinkedPostSql('fp')}
+        AND EXISTS (SELECT 1 FROM facebook_post_search_configs psc WHERE psc.agent_connection_id = fp.agent_connection_id
+          AND psc.normalized_url = fp.normalized_url AND psc.configuration_version = sr.configuration_version)
         AND NOT EXISTS (SELECT 1 FROM facebook_posts p2 JOIN agent_connections a2 ON a2.id = p2.agent_connection_id
-          WHERE a2.user_id = ac.user_id AND p2.normalized_url = fp.normalized_url AND p2.first_seen_at < fp.first_seen_at AND ${COMPLETE_EARLIER})) nl`;
+          WHERE a2.user_id = ac.user_id AND p2.normalized_url = fp.normalized_url
+            AND (p2.first_seen_at < fp.first_seen_at OR (p2.first_seen_at = fp.first_seen_at AND p2.id < fp.id))
+            AND ${sourceLinkedPostSql('p2')}))::int AS new_leads,
+      count(DISTINCT fp.normalized_url) FILTER (WHERE ${sourceLinkedPostSql('fp')}
+        AND EXISTS (SELECT 1 FROM facebook_post_search_configs psc WHERE psc.agent_connection_id = fp.agent_connection_id
+          AND psc.normalized_url = fp.normalized_url AND psc.configuration_version = sr.configuration_version))::int AS source_linked_posts,
+      count(DISTINCT fp.normalized_url) FILTER (WHERE ${sourceLinkedPostSql('fp')} AND ${completeLeadMetadataSql('fp')}
+        AND EXISTS (SELECT 1 FROM facebook_post_search_configs psc WHERE psc.agent_connection_id = fp.agent_connection_id
+          AND psc.normalized_url = fp.normalized_url AND psc.configuration_version = sr.configuration_version))::int AS metadata_complete_posts
+      FROM facebook_posts fp WHERE fp.agent_connection_id = sr.agent_connection_id AND fp.first_seen_at >= sr.received_at
+        AND fp.first_seen_at < sr.received_at + interval '1 millisecond') nl`;
 
-const SCAN_SELECT = `SELECT sr.id, ac.id AS connection_id, ac.kind, ac.name, sr.configuration_version, sr.scanned_at, sr.status, nl.new_leads ${SCAN_FROM}`;
+const SCAN_SELECT = `SELECT sr.id, ac.id AS connection_id, ac.kind, ac.name, sr.configuration_version, sr.scanned_at, sr.status,
+    nl.new_leads, nl.source_linked_posts, nl.metadata_complete_posts,
+    (nl.source_linked_posts - nl.metadata_complete_posts)::int AS metadata_incomplete_posts ${SCAN_FROM}`;
 
 function toScanRun(row: Record<string, any>): ScanRun {
   return {
     id: row.id, scannedAt: new Date(row.scanned_at).toISOString(), status: row.status,
     profile: row.kind === 'search_profile' ? { id: row.connection_id, name: row.name, version: row.configuration_version } : null,
-    newLeads: row.new_leads,
+    newLeads: Number(row.new_leads), sourceLinkedPosts: Number(row.source_linked_posts),
+    metadataCompletePosts: Number(row.metadata_complete_posts), metadataIncompletePosts: Number(row.metadata_incomplete_posts),
   };
 }
 
@@ -151,7 +167,7 @@ export async function getScanTotalsForUser(userId: string): Promise<ScanTotals> 
 /** Vietnam calendar day of a scan, used to group the full history. */
 const SCAN_DAY = `to_char(sr.scanned_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD')`;
 
-export type ScanDay = { day: string; scans: number; newLeads: number; failed: number };
+export type ScanDay = { day: string; scans: number; newLeads: number; sourceLinkedPosts: number; metadataCompletePosts: number; metadataIncompletePosts: number; failed: number };
 export type ScanHistoryPage = { runs: ScanRun[]; total: number; page: number; pageCount: number; days: ScanDay[] };
 
 /**
@@ -177,9 +193,14 @@ export async function listScanHistoryPage(userId: string, options: { profileId?:
   const runs = rows.map(toScanRun);
   if (!runs.length) return { runs, total, page, pageCount, days: [] };
   const { rows: dayRows } = await db().query(`SELECT ${SCAN_DAY} AS day, count(*)::int AS scans, coalesce(sum(nl.new_leads), 0)::int AS new_leads,
+      coalesce(sum(nl.source_linked_posts), 0)::int AS source_linked_posts,
+      coalesce(sum(nl.metadata_complete_posts), 0)::int AS metadata_complete_posts,
+      coalesce(sum(nl.source_linked_posts - nl.metadata_complete_posts), 0)::int AS metadata_incomplete_posts,
       count(*) FILTER (WHERE sr.status = 'failed')::int AS failed
     ${SCAN_FROM}
     WHERE ${filter} AND sr.scanned_at >= $${params.length + 1}::timestamptz - interval '1 day' AND sr.scanned_at <= $${params.length + 2}::timestamptz + interval '1 day'
     GROUP BY 1`, [...params, runs.at(-1)!.scannedAt, runs[0].scannedAt]);
-  return { runs, total, page, pageCount, days: dayRows.map(row => ({ day: row.day, scans: row.scans, newLeads: row.new_leads, failed: row.failed })) };
+  return { runs, total, page, pageCount, days: dayRows.map(row => ({ day: row.day, scans: row.scans, newLeads: row.new_leads,
+    sourceLinkedPosts: row.source_linked_posts, metadataCompletePosts: row.metadata_complete_posts,
+    metadataIncompletePosts: row.metadata_incomplete_posts, failed: row.failed })) };
 }

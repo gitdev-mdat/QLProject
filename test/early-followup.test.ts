@@ -101,6 +101,21 @@ test('bounded initial-discovery follow-up lifecycle (isolated PostgreSQL)', asyn
       assert.equal((await pool.query("SELECT count(*)::int AS count FROM search_jobs WHERE search_profile_id=$1 AND kind='followup'", [manyProfile])).rows[0].count, 0);
     });
 
+    await t.test('ten source-linked opportunities stop Early Follow-up even when source metadata is missing', async () => {
+      const profileId = await makeProfile('Quán cà phê sắp khai trương');
+      const job = await claim(profileId);
+      const posts = Array.from({ length: 10 }, (_, index) => ({
+        url: `https://www.facebook.com/synthetic/posts/url-only-${index + 1}`,
+        collected_via: 'controlled_fixture',
+      }));
+      const response = await submit(job, posts);
+      assert.equal(response.statusCode, 200, response.body);
+      assert.equal(response.json().source_linked_new_posts, 10);
+      assert.equal(response.json().usable_new_posts, 0, 'legacy metadata count remains available for audit');
+      assert.equal(response.json().early_followup_queued, false);
+      assert.equal((await pool.query("SELECT count(*)::int AS count FROM search_jobs WHERE search_profile_id=$1 AND kind='followup'", [profileId])).rows[0].count, 0);
+    });
+
     await t.test('a successful follow-up adds a lead and ends the discovery episode', async () => {
       const profileId = await makeProfile('Quán cà phê sắp khai trương');
       const initial = await claim(profileId);

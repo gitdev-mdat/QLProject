@@ -26,6 +26,17 @@ export type FirstScan = {
     initialUsablePosts: number | null;
     followupUsablePosts: number | null;
     totalUsablePosts: number | null;
+    /** Current product-facing counts derived from source-linked, search-attributed posts. */
+    initialSourceLinkedPosts: number | null;
+    followupSourceLinkedPosts: number | null;
+    totalSourceLinkedPosts: number | null;
+    initialMetadataCompletePosts: number | null;
+    initialMetadataIncompletePosts: number | null;
+    followupMetadataCompletePosts: number | null;
+    followupMetadataIncompletePosts: number | null;
+    /** Original scan_runs.usable_new_posts values retained for audit; never recalculated or overwritten. */
+    initialIngestionUsablePosts: number | null;
+    followupIngestionUsablePosts: number | null;
     initialDuplicatePosts: number | null;
     followupDuplicatePosts: number | null;
     followupSkipReason: 'threshold_met' | 'no_complementary_strategies' | 'configuration_changed' | 'historical_metric_unavailable' | 'another_job_queued' | null;

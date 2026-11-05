@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { pool } from './db.js';
 import { resultSchema } from './validation.js';
 import { preparePosts, upsertPosts, type PreparedPost } from './ingest.js';
+import { countSourceLinkedPostsForRun } from './lead-eligibility.js';
 import { claimJobs, enqueueInitialFollowup, lockJob, markCompleted, markFailed, type Worker } from './jobs.js';
 
 /**
@@ -51,10 +52,12 @@ function jobIdFrom(req: FastifyRequest, reply: FastifyReply): string | undefined
   reply.code(400).send(err('invalid_job_id', 'Use the job_id returned by /api/worker/jobs/claim in the URL; send scan_id in the request body.'));
 }
 
-function ackFrom(jobId: string, run: { external_scan_id: string; received_posts: number; new_posts: number; updated_posts: number; duplicates_skipped: number; received_at: Date; status: string; usable_new_posts?: number | null }, followupQueued = false) {
+function ackFrom(jobId: string, run: { external_scan_id: string; received_posts: number; new_posts: number; updated_posts: number; duplicates_skipped: number; received_at: Date; status: string; usable_new_posts?: number | null }, followupQueued = false, sourceCounts = { sourceLinkedPosts: 0, metadataCompletePosts: 0, metadataIncompletePosts: 0 }) {
   return { accepted: true, job_id: jobId, scan_id: run.external_scan_id, scan_status: run.status, received_posts: run.received_posts, inserted_posts: run.new_posts,
     updated_posts: run.updated_posts, duplicates: run.received_posts - run.new_posts, unchanged_posts: run.duplicates_skipped,
-    usable_new_posts: run.usable_new_posts ?? null, early_followup_queued: followupQueued, server_received_at: run.received_at };
+    usable_new_posts: run.usable_new_posts ?? null, source_linked_new_posts: sourceCounts.sourceLinkedPosts,
+    metadata_complete_new_posts: sourceCounts.metadataCompletePosts, metadata_incomplete_new_posts: sourceCounts.metadataIncompletePosts,
+    early_followup_queued: followupQueued, server_received_at: run.received_at };
 }
 
 export async function workerRoutes(app: FastifyInstance): Promise<void> {
@@ -116,11 +119,12 @@ export async function workerRoutes(app: FastifyInstance): Promise<void> {
       if (job.status === 'completed') {
         const { rows: [run] } = await client.query('SELECT external_scan_id, received_posts, new_posts, updated_posts, duplicates_skipped, usable_new_posts, received_at, status, executed_by_worker_id FROM scan_runs WHERE search_job_id = $1', [job.id]);
         const { rows: [followup] } = await client.query("SELECT status FROM search_jobs WHERE search_profile_id = $1 AND configuration_version = $2 AND kind = 'followup'", [job.search_profile_id, job.configuration_version]);
+        const sourceCounts = run ? await countSourceLinkedPostsForRun(client, job.search_profile_id, job.configuration_version, run.received_at) : undefined;
         await client.query('COMMIT');
         // Lost-acknowledgement retry: the same worker gets the original acknowledgement and nothing is written again.
         if (run && run.executed_by_worker_id === worker.id && payload.scan_id === job.scan_id) {
           req.log.info({ worker_id: worker.id, job_id: job.id, scan_id: payload.scan_id, attempt_id: job.current_attempt_id, attempt_no: job.attempt_no, configuration_version: job.configuration_version, result_status: 'duplicate_ack', received_posts: run.received_posts }, 'Worker result retry acknowledged idempotently');
-          return ackFrom(job.id, run, Boolean(followup));
+          return ackFrom(job.id, run, Boolean(followup), sourceCounts);
         }
         return reply.code(409).send(err('job_already_completed', 'This job was completed by another assignment. Discard these results.'));
       }
@@ -158,11 +162,12 @@ export async function workerRoutes(app: FastifyInstance): Promise<void> {
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING external_scan_id, received_posts, new_posts, updated_posts, usable_new_posts, duplicates_skipped, received_at, status`,
       [job.search_profile_id, job.scan_id, job.configuration_version, payload.scanned_at, payload.stats.total_found, payload.posts.length, inserted.size, updated.size, usableNewPosts, JSON.stringify(payload.keywords_used), unchangedCount, status, JSON.stringify(payload.errors), job.id, worker.id]);
       await markCompleted(client, job, worker.id);
-      const followupQueued = job.kind === 'initial' && status !== 'failed' && usableNewPosts <= 1
+      const sourceCounts = await countSourceLinkedPostsForRun(client, job.search_profile_id, job.configuration_version, run.received_at);
+      const followupQueued = job.kind === 'initial' && status !== 'failed' && sourceCounts.sourceLinkedPosts <= 1
         ? await enqueueInitialFollowup(client, job.search_profile_id, job.configuration_version, payload.keywords_used) : false;
       await client.query('COMMIT');
-      req.log.info({ worker_id: worker.id, job_id: job.id, scan_id: payload.scan_id, attempt_id: job.current_attempt_id, attempt_no: job.attempt_no, configuration_version: job.configuration_version, result_status: status, received_posts: payload.posts.length, inserted_posts: inserted.size, updated_posts: updated.size, usable_new_posts: usableNewPosts, early_followup_queued: followupQueued, http_status: 200 }, 'Worker results accepted');
-      return ackFrom(job.id, run, followupQueued);
+      req.log.info({ worker_id: worker.id, job_id: job.id, scan_id: payload.scan_id, attempt_id: job.current_attempt_id, attempt_no: job.attempt_no, configuration_version: job.configuration_version, result_status: status, received_posts: payload.posts.length, inserted_posts: inserted.size, updated_posts: updated.size, usable_new_posts: usableNewPosts, source_linked_new_posts: sourceCounts.sourceLinkedPosts, metadata_complete_new_posts: sourceCounts.metadataCompletePosts, early_followup_queued: followupQueued, http_status: 200 }, 'Worker results accepted');
+      return ackFrom(job.id, run, followupQueued, sourceCounts);
     } catch (error: any) {
       await client.query('ROLLBACK').catch(() => undefined);
       if (error?.code === '23505') return reply.code(409).send(err('conflict', 'The scan could not be recorded; retry with the same scan_id.'));

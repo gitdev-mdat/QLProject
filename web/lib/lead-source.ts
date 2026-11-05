@@ -10,7 +10,10 @@ export type LeadSource =
   | { kind: 'legacy'; discoveredAt: string | null };
 
 /** A lead plus every search that found the same Facebook post; the earliest discovery is the lead itself. */
-export type Lead = LeadRecord & { sources: LeadSource[] };
+export type Lead = LeadRecord & {
+  sources: LeadSource[];
+  eligibility: { basis: 'source_linked_search'; relevance: 'selected_by_search'; independentlyVerified: false };
+};
 
 export const LEGACY_SOURCE_LABEL = 'Dữ liệu từ lượt quét trước';
 export const LEGACY_FILTER = 'legacy';
