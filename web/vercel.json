@@ -2,6 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "regions": ["hnd1"],
+  "crons": [{ "path": "/api/cron/push-drain", "schedule": "* * * * *" }],
   "installCommand": "npm ci && npm ci --prefix ..",
   "buildCommand": "npm run build"
 }

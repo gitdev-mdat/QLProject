@@ -6,6 +6,7 @@ import { resultSchema } from './validation.js';
 import { preparePosts, upsertPosts, type PreparedPost } from './ingest.js';
 import { countSourceLinkedPostsForRun } from './lead-eligibility.js';
 import { claimJobs, enqueueInitialFollowup, lockJob, markCompleted, markFailed, type Worker } from './jobs.js';
+import { enqueueNewLeadNotification } from './push-notifications.js';
 
 /**
  * Shared Muse worker API. A worker authenticates with its own credential (muse_workers), which never grants access to
@@ -60,7 +61,7 @@ function ackFrom(jobId: string, run: { external_scan_id: string; received_posts:
     early_followup_queued: followupQueued, server_received_at: run.received_at };
 }
 
-export async function workerRoutes(app: FastifyInstance): Promise<void> {
+export async function workerRoutes(app: FastifyInstance, options: { onPushNotificationQueued?: (eventId: string) => void } = {}): Promise<void> {
   // Connection check and operational context for this worker only. It never claims work, so a one-time setup check
   // costs a single request. It is recorded as the latest verified connection.
   app.get('/api/worker/status', async (req, reply) => {
@@ -159,13 +160,19 @@ export async function workerRoutes(app: FastifyInstance): Promise<void> {
       const unchangedCount = Math.max(0, duplicateCount - updated.size);
       const status = payload.errors.length ? (payload.posts.length ? 'partial' : 'failed') : 'success';
       const { rows: [run] } = await client.query(`INSERT INTO scan_runs (agent_connection_id, external_scan_id, configuration_version, scanned_at, total_found, received_posts, new_posts, updated_posts, usable_new_posts, keywords_used, duplicates_skipped, status, errors, search_job_id, executed_by_worker_id)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING external_scan_id, received_posts, new_posts, updated_posts, usable_new_posts, duplicates_skipped, received_at, status`,
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id, external_scan_id, received_posts, new_posts, updated_posts, usable_new_posts, duplicates_skipped, received_at, status`,
       [job.search_profile_id, job.scan_id, job.configuration_version, payload.scanned_at, payload.stats.total_found, payload.posts.length, inserted.size, updated.size, usableNewPosts, JSON.stringify(payload.keywords_used), unchangedCount, status, JSON.stringify(payload.errors), job.id, worker.id]);
       await markCompleted(client, job, worker.id);
       const sourceCounts = await countSourceLinkedPostsForRun(client, job.search_profile_id, job.configuration_version, run.received_at);
       const followupQueued = job.kind === 'initial' && status !== 'failed' && sourceCounts.sourceLinkedPosts <= 1
         ? await enqueueInitialFollowup(client, job.search_profile_id, job.configuration_version, payload.keywords_used) : false;
+      const pushOutboxId = status !== 'failed' && sourceCounts.sourceLinkedPosts > 0
+        ? await enqueueNewLeadNotification(client, { scanRunId: run.id, profileId: job.search_profile_id, leadCount: sourceCounts.sourceLinkedPosts, leadId: sourceCounts.singlePostId }) : null;
       await client.query('COMMIT');
+      if (pushOutboxId && options.onPushNotificationQueued) {
+        try { options.onPushNotificationQueued(pushOutboxId); }
+        catch { req.log.warn({ outbox_id: pushOutboxId }, 'Push drain scheduling failed; the durable outbox will be retried by cron'); }
+      }
       req.log.info({ worker_id: worker.id, job_id: job.id, scan_id: payload.scan_id, attempt_id: job.current_attempt_id, attempt_no: job.attempt_no, configuration_version: job.configuration_version, result_status: status, received_posts: payload.posts.length, inserted_posts: inserted.size, updated_posts: updated.size, usable_new_posts: usableNewPosts, source_linked_new_posts: sourceCounts.sourceLinkedPosts, metadata_complete_new_posts: sourceCounts.metadataCompletePosts, early_followup_queued: followupQueued, http_status: 200 }, 'Worker results accepted');
       return ackFrom(job.id, run, followupQueued, sourceCounts);
     } catch (error: any) {

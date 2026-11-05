@@ -43,6 +43,7 @@ test('POC #6 metadata retention integration checks (requires the existing local 
   await pool.query(await readFile(new URL('../migrations/002_post_metadata_enrichment.sql', import.meta.url), 'utf8'));
   await pool.query(await readFile(new URL('../migrations/003_post_search_config_associations.sql', import.meta.url), 'utf8'));
   await pool.query(await readFile(new URL('../migrations/016_add_summary_vi_to_facebook_posts.sql', import.meta.url), 'utf8'));
+  await pool.query(await readFile(new URL('../migrations/20261105121616_push_notifications.sql', import.meta.url), 'utf8'));
 
   const uA = await pool.query("INSERT INTO users(display_name) VALUES ('Synthetic Metadata Test A') RETURNING id"); userA = uA.rows[0].id;
   const uB = await pool.query("INSERT INTO users(display_name) VALUES ('Synthetic Metadata Test B') RETURNING id"); userB = uB.rows[0].id;
