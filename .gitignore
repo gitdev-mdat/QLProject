@@ -9,6 +9,7 @@ web/.next-*/
 *.tsbuildinfo
 .cache/
 .turbo/
+supabase/.temp/
 
 # Local environment and credentials; keep only sanitized templates
 .env

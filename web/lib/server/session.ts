@@ -18,7 +18,9 @@ const hash = (token: string) => createHash('sha256').update(token).digest('hex')
  */
 export async function createSession(userId: string, createdVia: 'dev_quick_login' | 'password'): Promise<void> {
   const previous = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (previous) await db().query('UPDATE web_sessions SET revoked_at = now() WHERE token_hash = $1 AND revoked_at IS NULL', [hash(previous)]);
+  if (previous) await db().query(`WITH revoked AS (
+      UPDATE web_sessions SET revoked_at = now() WHERE token_hash = $1 AND revoked_at IS NULL RETURNING id
+    ) DELETE FROM push_subscriptions WHERE session_id IN (SELECT id FROM revoked)`, [hash(previous)]);
   const token = randomBytes(32).toString('base64url');
   const expires = new Date(Date.now() + SESSION_DAYS * 24 * 3600_000);
   await db().query('INSERT INTO web_sessions(user_id, token_hash, created_via, expires_at) VALUES ($1, $2, $3, $4)', [userId, hash(token), createdVia, expires]);
@@ -49,6 +51,8 @@ export async function requireSession(): Promise<SessionUser> {
 export async function destroySession(): Promise<void> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
-  if (token) await db().query('UPDATE web_sessions SET revoked_at = now() WHERE token_hash = $1 AND revoked_at IS NULL', [hash(token)]);
+  if (token) await db().query(`WITH revoked AS (
+      UPDATE web_sessions SET revoked_at = now() WHERE token_hash = $1 AND revoked_at IS NULL RETURNING id
+    ) DELETE FROM push_subscriptions WHERE session_id IN (SELECT id FROM revoked)`, [hash(token)]);
   store.delete(SESSION_COOKIE);
 }

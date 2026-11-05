@@ -1,7 +1,9 @@
 import 'server-only';
 import type { NextRequest } from 'next/server';
+import { after } from 'next/server';
 import { workerRoutes } from '../../../src/worker-api';
 import { wakeSignalRoutes } from '../../../src/wake-signal';
+import { drainPushNotifications } from '../../../src/push-notifications';
 
 /**
  * Runs the EXISTING Fastify route handlers for the Muse worker API and the public wake/dispatch signals inside Next.js
@@ -26,7 +28,23 @@ const router = {
   get: (path: string, handler: Handler) => { routes.push({ method: 'GET', ...compile(path), handler }); },
   post: (path: string, handler: Handler) => { routes.push({ method: 'POST', ...compile(path), handler }); },
 };
-const registered = Promise.all([workerRoutes(router as any), wakeSignalRoutes(router as any)]);
+/**
+ * Retry pass for the push outbox. The Vercel Hobby plan only allows a daily Cron, so due retries are also drained
+ * after Muse's own frequent requests (dispatch/wake polls, claims, results): at most once a minute per instance, after
+ * the response is sent, and never affecting the worker reply. The daily Cron stays as a backstop.
+ */
+let lastOpportunisticDrain = 0;
+function scheduleOpportunisticDrain() {
+  const now = Date.now();
+  if (now - lastOpportunisticDrain < 60_000) return;
+  lastOpportunisticDrain = now;
+  try { after(() => drainPushNotifications({ limit: 5 }).catch(() => undefined)); } catch { /* outside a request scope */ }
+}
+
+const registered = Promise.all([
+  workerRoutes(router as any, { onPushNotificationQueued: (outboxId) => { after(() => drainPushNotifications({ outboxId, limit: 25 })); } }),
+  wakeSignalRoutes(router as any),
+]);
 
 function logger(path: string) {
   const write = (level: 'info' | 'warn' | 'error') => (obj: unknown, msg?: string) => {
@@ -47,6 +65,7 @@ function clientIp(request: NextRequest): string {
 
 export async function handleWorkerRoute(request: NextRequest): Promise<Response> {
   await registered;
+  scheduleOpportunisticDrain();
   const path = new URL(request.url).pathname.replace(/\/+$/, '');
   const method = request.method === 'HEAD' ? 'GET' : request.method;
   const candidates = routes.filter(r => r.pattern.test(path));

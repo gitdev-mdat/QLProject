@@ -41,7 +41,7 @@ async function migrate() {
   await pool.query(`CREATE TABLE IF NOT EXISTS schema_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`);
   const client = await pool.connect();
   try {
-    for (const name of ['001_initial.sql', '002_post_metadata_enrichment.sql', '003_post_search_config_associations.sql', '004_web_sessions.sql', '005_lead_workflow.sql', '006_shared_workers.sql', '007_worker_handoffs.sql', '008_group_requests.sql', '009_search_profile_details.sql', '010_user_accounts.sql', '011_initial_search_jobs.sql', '012_natural_language_search.sql', '013_account_lead_monitoring.sql', '014_admin_user_deletion_audit.sql', '015_initial_discovery_followup.sql', '016_add_summary_vi_to_facebook_posts.sql']) {
+    for (const name of ['001_initial.sql', '002_post_metadata_enrichment.sql', '003_post_search_config_associations.sql', '004_web_sessions.sql', '005_lead_workflow.sql', '006_shared_workers.sql', '007_worker_handoffs.sql', '008_group_requests.sql', '009_search_profile_details.sql', '010_user_accounts.sql', '011_initial_search_jobs.sql', '012_natural_language_search.sql', '013_account_lead_monitoring.sql', '014_admin_user_deletion_audit.sql', '015_initial_discovery_followup.sql', '016_add_summary_vi_to_facebook_posts.sql', '017_push_notifications.sql']) {
       const applied = await client.query('SELECT 1 FROM schema_migrations WHERE name=$1', [name]);
       if (applied.rowCount) continue;
       const sql = await readFile(resolve('migrations', name), 'utf8');

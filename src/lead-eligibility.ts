@@ -64,7 +64,7 @@ export function completeLeadMetadataSql(alias = 'fp'): string {
     AND ${a}.published_at IS NOT NULL)`;
 }
 
-export type SourceLinkedRunCounts = { sourceLinkedPosts: number; metadataCompletePosts: number; metadataIncompletePosts: number };
+export type SourceLinkedRunCounts = { sourceLinkedPosts: number; metadataCompletePosts: number; metadataIncompletePosts: number; singlePostId: string | null };
 
 /** Derives per-run counts from the verified insert/receipt timestamp correlation; does not rewrite historical scan metrics. */
 export async function countSourceLinkedPostsForRun(client: PoolClient, profileId: string, version: number, receivedAt: Date | string): Promise<SourceLinkedRunCounts> {
@@ -72,6 +72,9 @@ export async function countSourceLinkedPostsForRun(client: PoolClient, profileId
       count(DISTINCT fp.normalized_url) FILTER (WHERE ${sourceLinkedPostSql('fp')}
         AND EXISTS (SELECT 1 FROM facebook_post_search_configs psc WHERE psc.agent_connection_id = fp.agent_connection_id
           AND psc.normalized_url = fp.normalized_url AND psc.configuration_version = $2))::int AS source_linked,
+      min(fp.id::text) FILTER (WHERE ${sourceLinkedPostSql('fp')}
+        AND EXISTS (SELECT 1 FROM facebook_post_search_configs psc WHERE psc.agent_connection_id = fp.agent_connection_id
+          AND psc.normalized_url = fp.normalized_url AND psc.configuration_version = $2)) AS single_post_id,
       count(DISTINCT fp.normalized_url) FILTER (WHERE ${sourceLinkedPostSql('fp')} AND ${completeLeadMetadataSql('fp')}
         AND EXISTS (SELECT 1 FROM facebook_post_search_configs psc WHERE psc.agent_connection_id = fp.agent_connection_id
           AND psc.normalized_url = fp.normalized_url AND psc.configuration_version = $2))::int AS metadata_complete
@@ -80,5 +83,6 @@ export async function countSourceLinkedPostsForRun(client: PoolClient, profileId
       AND fp.first_seen_at < $3::timestamptz + interval '1 millisecond'`, [profileId, version, receivedAt]);
   const sourceLinkedPosts = Number(row.source_linked ?? 0);
   const metadataCompletePosts = Number(row.metadata_complete ?? 0);
-  return { sourceLinkedPosts, metadataCompletePosts, metadataIncompletePosts: sourceLinkedPosts - metadataCompletePosts };
+  return { sourceLinkedPosts, metadataCompletePosts, metadataIncompletePosts: sourceLinkedPosts - metadataCompletePosts,
+    singlePostId: sourceLinkedPosts === 1 ? row.single_post_id : null };
 }
