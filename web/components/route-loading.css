@@ -1,0 +1,23 @@
+/* Route loading outline (components/route-loading.tsx). Hidden for the first 150 ms so fast pages never flash it. */
+.route-loading { opacity: 0; animation: route-loading-in 160ms ease-out 150ms forwards; }
+@keyframes route-loading-in { to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .route-loading { animation-duration: 1ms; } }
+
+.route-loading .rl-head > div { display: flex; flex-direction: column; gap: 10px; }
+.route-loading .rl-title { margin: 0; font-size: 28px; font-weight: 700; line-height: 1.25; letter-spacing: -.015em; color: var(--ink); }
+.route-loading .rl-bar { display: block; max-width: 100%; border-radius: 6px; background: var(--line); }
+.route-loading .rl-panel { display: flex; flex-direction: column; gap: 12px; padding: 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.route-loading .rl-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; }
+.route-loading .rl-tall { min-height: 220px; }
+.route-loading .rl-rows { gap: 0; padding: 4px 20px; }
+.route-loading .rl-row { display: flex; align-items: center; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.route-loading .rl-row:last-child { border-bottom: 0; }
+.route-loading .rl-row .rl-bar:nth-child(2) { flex: 1 1 auto; }
+.route-loading .rl-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; }
+.route-loading .rl-detail { display: flex; flex-direction: column; gap: 16px; }
+
+@media (max-width: 960px) { .route-loading .rl-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) {
+  .route-loading .rl-title { font-size: 24px; }
+  .route-loading .rl-row .rl-bar:last-child { display: none; }
+}

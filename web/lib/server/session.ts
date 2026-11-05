@@ -1,5 +1,6 @@
 import 'server-only';
 import { createHash, randomBytes } from 'node:crypto';
+import { cache } from 'react';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { db } from './db';
@@ -24,7 +25,11 @@ export async function createSession(userId: string, createdVia: 'dev_quick_login
   (await cookies()).set(SESSION_COOKIE, token, { httpOnly: true, secure: true, sameSite: 'lax', path: '/', expires });
 }
 
-export async function getSession(): Promise<SessionUser | null> {
+/**
+ * The signed-in user for this request. Memoised per server request with React cache(), so the /app layout and the
+ * page it wraps share one lookup instead of querying web_sessions twice; nothing is shared between requests or users.
+ */
+export const getSession = cache(async function getSession(): Promise<SessionUser | null> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token || !/^[A-Za-z0-9_-]{30,100}$/.test(token)) return null;
   const { rows } = await db().query<{ id: string; user_id: string; display_name: string; created_via: string; lead_monitoring_status: 'active' | 'suspended' }>(
@@ -32,7 +37,7 @@ export async function getSession(): Promise<SessionUser | null> {
      WHERE ws.token_hash = $1 AND ws.revoked_at IS NULL AND ws.expires_at > now()`, [hash(token)]);
   const row = rows[0];
   return row ? { sessionId: row.id, userId: row.user_id, displayName: row.display_name, createdVia: row.created_via, leadMonitoringStatus: row.lead_monitoring_status } : null;
-}
+});
 
 export async function requireSession(): Promise<SessionUser> {
   const session = await getSession();
