@@ -66,7 +66,15 @@ const FrameContext = createContext(false);
 export function AppFrame({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const [pending, setPending] = useState<string | null>(null);
+  // The optimistic item only bridges the click and the URL change (the loading boundary commits the new URL within a
+  // frame or two). It is dropped as soon as the URL changes, and on back/forward, which can cancel a navigation before
+  // it commits; a navigation that fails falls back to a full page load, which resets it as well.
   useEffect(() => { setPending(null); }, [path]);
+  useEffect(() => {
+    const clear = () => setPending(null);
+    window.addEventListener('popstate', clear);
+    return () => window.removeEventListener('popstate', clear);
+  }, []);
   const active = navLabelFor(pending ?? path);
   const onNav = (href: string) => (event: React.MouseEvent<HTMLAnchorElement>) => {
     // Modified clicks open a new tab or window; this tab does not navigate.

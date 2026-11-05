@@ -83,6 +83,55 @@ await check('Rapid repeated navigation ends on the last click with matching cont
   await context.close();
 });
 
+// After a failed or cancelled transition the highlighted item must match the URL actually shown, never a stale click.
+const ITEM_FOR = (path: string) => ['/app/bai-viet', '/app/bo-loc', '/app/de-xuat-nhom'].find(h => path === h || path.startsWith(`${h}/`)) ?? '/app';
+async function activeMatchesUrl(page: Page) {
+  await page.waitForTimeout(2500);
+  const state = await page.evaluate(() => ({ path: location.pathname, active: [...document.querySelectorAll('.side-nav a[aria-current="page"]')].map(a => a.getAttribute('href')) }));
+  if (!state.path.startsWith('/app')) return `left the app: ${state.path}`;
+  assert(state.active.length === 1 && state.active[0] === ITEM_FOR(state.path), `active ${state.active.join(',')} but URL ${state.path}`);
+  return `URL ${state.path}, active ${state.active[0]}`;
+}
+for (const [name, setup] of [
+  ['aborted RSC request', async (page: Page) => { await page.route(u => u.pathname === '/app/bo-loc', r => r.request().headers()['rsc'] ? r.abort() : r.continue()); }],
+  ['server error 500', async (page: Page) => { await page.route(u => u.pathname === '/app/bo-loc', r => r.request().headers()['rsc'] ? r.fulfill({ status: 500, body: 'boom' }) : r.continue()); }],
+  ['request that never answers', async (page: Page) => { await page.route(u => u.pathname === '/app/bo-loc', r => r.request().headers()['rsc'] ? undefined : r.continue()); }],
+] as const) {
+  await check(`Failed transition (${name}): active item follows the URL, not the stale click`, async () => {
+    const { context, page } = await ctx(seed.large.token, 1440);
+    await page.goto('/app', { waitUntil: 'networkidle' });
+    await setup(page);
+    await nav(page, '/app/bo-loc').click();
+    const out = await activeMatchesUrl(page);
+    await context.close();
+    return out;
+  });
+}
+await check('Cancelled transition (Back right after the click): active item follows the URL', async () => {
+  const { context, page } = await ctx(seed.large.token, 1440, 900, 600);
+  await page.goto('/app', { waitUntil: 'networkidle', timeout: 60000 });
+  await page.evaluate(() => (window as any).next.router.push('/app/de-xuat-nhom'));
+  await page.waitForFunction(() => document.querySelector('#app-content h1')?.textContent?.startsWith('Đề xuất nhóm'), null, { timeout: 30000 });
+  await nav(page, '/app/bai-viet').click();
+  await page.waitForTimeout(30);
+  await page.goBack();
+  const out = await activeMatchesUrl(page);
+  await context.close();
+  return out;
+});
+await check('Cancelled transition (second click before the first finishes): last click wins', async () => {
+  const { context, page } = await ctx(seed.large.token, 1440, 900, 600);
+  await page.goto('/app', { waitUntil: 'networkidle', timeout: 60000 });
+  await nav(page, '/app/bai-viet').click();
+  await page.waitForTimeout(50);
+  await nav(page, '/app').click();
+  await page.waitForTimeout(3000);
+  const out = await activeMatchesUrl(page);
+  assert(await page.evaluate(() => location.pathname) === '/app', 'did not end on /app');
+  await context.close();
+  return out;
+});
+
 await check('Lead list → detail → back keeps the list (status filter, count) and back/forward work', async () => {
   const { context, page } = await ctx(seed.large.token, 390, 844);
   await page.goto('/app/bai-viet', { waitUntil: 'networkidle' });
