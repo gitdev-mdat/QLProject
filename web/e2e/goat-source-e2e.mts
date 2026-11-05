@@ -246,7 +246,7 @@ try {
       assert(!(await text(vs.page)).includes('chưa thấy bài đăng phù hợp'), 'false-zero copy');
       await vs.page.locator('.first-scan-confetti').waitFor({ state: 'attached', timeout: 3000 });
       const count = await text(vs.page, '.found-count');
-      assert(count.startsWith('10 cơ hội mới') && count.includes('Các bài này chưa có đủ thông tin trích xuất'), count);
+      assert(count.startsWith('10 cơ hội mới') && !count.includes('chưa có đủ thông tin'), count);
       await goat(vs.page);
       await vs.page.locator('.first-scan-confetti').waitFor({ state: 'detached', timeout: 5000 });
       await vs.page.reload(); await vs.page.waitForLoadState('networkidle'); await pause(800);

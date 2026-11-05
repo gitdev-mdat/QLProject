@@ -275,10 +275,7 @@ function FoundCount({ view, reveal }: { view: DiscoveryView; reveal: boolean }) 
       {added > 0 && <em className="found-count-added" key={`+${total}`} aria-hidden="true">+{added}</em>}
     </p>
     {/* Where they came from, only when both searches contributed; nothing is counted twice. */}
-    {split && <p className="found-count-split">{view.initialLeads} từ lượt đầu · {view.moreLeads} tìm thêm</p>}
-    {/* Data completeness in plain words: a post without extracted text is still a real, openable opportunity. */}
-    {Boolean(view.incompleteLeads) && <p className="found-count-split">{view.incompleteLeads === total ? 'Các bài này' : `${view.incompleteLeads} bài`} chưa có đủ thông tin trích xuất, bạn vẫn mở được bài Facebook gốc.</p>}
-  </div>;
+    {split && <p className="found-count-split">{view.initialLeads} từ lượt đầu · {view.moreLeads} tìm thêm</p>}  </div>;
 }
 
 /**
