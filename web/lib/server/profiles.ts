@@ -5,6 +5,7 @@ import { deriveProfileState, PROFILE_FREQUENCIES, type LegacySummary, type Searc
 import { deriveProfileScan, type ProfileScan, type ScanRequestOutcome, type ScanRow } from '../profile-scan';
 import { enqueueInitialJob, requestManualJob, supersedeQueuedJobs } from '../../../src/jobs';
 import { planFromDescription } from '../../../src/search-plan';
+import { sourceLinkedPostSql } from '../../../src/lead-eligibility';
 import { db } from './db';
 
 /**
@@ -16,17 +17,22 @@ import { db } from './db';
  * regenerates the search phrases from the description on every save, so the two can never drift apart.
  */
 
-const COMPLETE = "fp.author IS NOT NULL AND btrim(fp.author) <> '' AND btrim(coalesce(fp.content, fp.title, '')) <> '' AND coalesce(fp.collected_via, '') <> 'integration_test'";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_PROFILES = 10;
 /** A finished customer-requested scan keeps its outcome on the card this long. */
 const SHOW_FINISHED_REQUEST_HOURS = 6;
 const iso = (value: Date | string | null) => (value ? new Date(value).toISOString() : null);
+const runLeadCount = (profile: string, received: string, version: string, alias = 'fp') => `(SELECT count(DISTINCT ${alias}.normalized_url)::int
+  FROM facebook_posts ${alias} WHERE ${alias}.agent_connection_id = ${profile} AND ${alias}.first_seen_at = ${received}
+    AND ${sourceLinkedPostSql(alias)} AND EXISTS (SELECT 1 FROM facebook_post_search_configs psc
+      WHERE psc.agent_connection_id = ${alias}.agent_connection_id AND psc.normalized_url = ${alias}.normalized_url
+        AND psc.configuration_version = ${version}))`;
 
 /** Latest non-cancelled job of the profile with its recorded run, for the progress panel. */
 const LATEST_JOB = `LEFT JOIN LATERAL (SELECT j.kind, j.configuration_version, j.status, j.attempts, j.created_at, j.lease_expires_at,
       (SELECT claimed_at FROM search_job_attempts WHERE id = j.current_attempt_id) AS claimed_at,
-      r.status AS run_status, r.scanned_at AS run_at, r.new_posts, r.total_found
+      r.status AS run_status, r.scanned_at AS run_at, r.new_posts, r.total_found,
+      ${runLeadCount('r.agent_connection_id', 'r.received_at', 'r.configuration_version')} AS source_linked_new_posts
     FROM search_jobs j LEFT JOIN scan_runs r ON r.search_job_id = j.id
     WHERE j.search_profile_id = ac.id AND j.status <> 'cancelled' ORDER BY j.created_at DESC LIMIT 1) job ON true`;
 
@@ -53,15 +59,17 @@ export async function listProfilesForUser(userId: string, now = Date.now()): Pro
             AND j.status IN ('pending', 'claimed', 'blocked', 'needs_reauthorization'))
         THEN to_timestamp(floor(extract(epoch FROM now()) / (sc.frequency_minutes * 60)) * sc.frequency_minutes * 60)
         ELSE NULL END AS recurring_due_at,
-      last_run.scanned_at AS last_scan_at, last_run.status AS last_scan_status, last_run.new_posts AS last_new_posts, last_run.total_found AS last_total_found,
+      last_run.scanned_at AS last_scan_at, last_run.status AS last_scan_status, last_run.source_linked_new_posts AS last_new_posts, last_run.total_found AS last_total_found,
       (SELECT max(scanned_at) FROM scan_runs WHERE agent_connection_id = ac.id AND status <> 'failed') AS last_success_at,
       EXISTS (SELECT 1 FROM search_jobs WHERE search_profile_id = ac.id AND status IN ('blocked', 'needs_reauthorization')) AS blocked,
-      (SELECT count(*)::int FROM facebook_posts fp WHERE fp.agent_connection_id = ac.id AND ${COMPLETE}) AS lead_count,
+      (SELECT count(DISTINCT fp.normalized_url)::int FROM facebook_posts fp WHERE fp.agent_connection_id = ac.id AND ${sourceLinkedPostSql('fp')}) AS lead_count,
       job.kind, job.configuration_version, job.status, job.attempts, job.created_at AS job_created_at, job.lease_expires_at, job.claimed_at,
-      job.run_status, job.run_at, job.new_posts, job.total_found
+      job.run_status, job.run_at, job.source_linked_new_posts AS new_posts, job.total_found
     FROM agent_connections ac JOIN users u ON u.id = ac.user_id
     JOIN LATERAL (SELECT * FROM scan_configs WHERE agent_connection_id = ac.id ORDER BY version DESC LIMIT 1) sc ON true
-    LEFT JOIN LATERAL (SELECT scanned_at, status, new_posts, total_found FROM scan_runs WHERE agent_connection_id = ac.id ORDER BY scanned_at DESC LIMIT 1) last_run ON true
+    LEFT JOIN LATERAL (SELECT sr.scanned_at, sr.status, sr.total_found,
+        ${runLeadCount('sr.agent_connection_id', 'sr.received_at', 'sr.configuration_version')} AS source_linked_new_posts
+      FROM scan_runs sr WHERE sr.agent_connection_id = ac.id ORDER BY sr.scanned_at DESC LIMIT 1) last_run ON true
     ${LATEST_JOB}
     WHERE ac.user_id = $1 AND ac.kind = 'search_profile' AND ac.status = 'active'
     ORDER BY ac.created_at`, [userId]);
@@ -82,9 +90,9 @@ export async function listProfilesForUser(userId: string, now = Date.now()): Pro
 export async function getProfileScan(userId: string, profileId: string, now = Date.now()): Promise<{ scan: ProfileScan | null; version: number; leadCount: number } | null> {
   if (!UUID.test(profileId)) return null;
   const { rows: [row] } = await db().query(`SELECT sc.version AS current_version, u.lead_monitoring_status,
-      (SELECT count(*)::int FROM facebook_posts fp WHERE fp.agent_connection_id = ac.id AND ${COMPLETE}) AS lead_count,
+      (SELECT count(DISTINCT fp.normalized_url)::int FROM facebook_posts fp WHERE fp.agent_connection_id = ac.id AND ${sourceLinkedPostSql('fp')}) AS lead_count,
       job.kind, job.configuration_version, job.status, job.attempts, job.created_at, job.lease_expires_at, job.claimed_at,
-      job.run_status, job.run_at, job.new_posts, job.total_found
+      job.run_status, job.run_at, job.source_linked_new_posts AS new_posts, job.total_found
     FROM agent_connections ac JOIN users u ON u.id = ac.user_id
     JOIN LATERAL (SELECT version FROM scan_configs WHERE agent_connection_id = ac.id ORDER BY version DESC LIMIT 1) sc ON true
     ${LATEST_JOB}
@@ -96,7 +104,7 @@ export async function getProfileScan(userId: string, profileId: string, now = Da
 /** Older integrations: leads and scans that exist without any search profile. Null when there are none. */
 export async function getLegacySummaryForUser(userId: string): Promise<LegacySummary | null> {
   const { rows: [row] } = await db().query(`SELECT
-      (SELECT count(*)::int FROM facebook_posts fp JOIN agent_connections ac ON ac.id = fp.agent_connection_id WHERE ac.user_id = $1 AND ac.kind = 'legacy_agent' AND ${COMPLETE}) AS lead_count,
+      (SELECT count(DISTINCT fp.normalized_url)::int FROM facebook_posts fp JOIN agent_connections ac ON ac.id = fp.agent_connection_id WHERE ac.user_id = $1 AND ac.kind = 'legacy_agent' AND ${sourceLinkedPostSql('fp')}) AS lead_count,
       (SELECT max(sr.scanned_at) FROM scan_runs sr JOIN agent_connections ac ON ac.id = sr.agent_connection_id WHERE ac.user_id = $1 AND ac.kind = 'legacy_agent') AS last_scan_at`, [userId]);
   if (!row.lead_count && !row.last_scan_at) return null;
   return { leadCount: row.lead_count, lastScanAt: iso(row.last_scan_at) };

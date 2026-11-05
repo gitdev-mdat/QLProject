@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { copyText, displayArea, exactTime, isRecent, readLead, relativeTime, sourceLabel, type LeadReading } from '@/lib/lead-format';
+import { copyText, displayArea, exactTime, isRecent, leadName, readLead, relativeTime, sourceLabel, type LeadReading } from '@/lib/lead-format';
+import { leadSearchText, leadText, looksEnglish } from '@/lib/lead-text';
 import { LEAD_STATUSES, statusLabel, type LeadStatus, type WorkflowMap } from '@/lib/lead-workflow';
 import { useLeadWorkflow, useNow, type LeadWorkflowApi } from '@/lib/lead-state';
 import { LEGACY_FILTER, LEGACY_SOURCE_LABEL, matchesSourceFilter, sourceName, type Lead } from '@/lib/lead-source';
@@ -49,26 +50,70 @@ export function StatusPill({ status }: { status: LeadStatus }) {
   return <span className={`status-pill is-${status}`}>{statusLabel[status]}</span>;
 }
 
-/** Compact lead row used on the Today page and on mobile. Links to the detail page. */
+/**
+ * The original Facebook post, exactly as stored by the backend (never built or guessed). It is the main way to judge
+ * an opportunity, so it sits on every card; opening it does not open the lead or change its status.
+ */
+export function FacebookLink({ lead, compact = false, className = '' }: { lead: Lead; compact?: boolean; className?: string }) {
+  if (!lead.original_url) return compact ? null : <span className="no-link-note"><Icon name="info" size={16}/>Chưa có liên kết bài Facebook</span>;
+  return <a className={`fb-link ${compact ? 'is-compact' : ''} ${className}`} href={lead.original_url} target="_blank" rel="noopener noreferrer"
+    onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()} aria-label={`Xem bài Facebook của ${leadName(lead)} (mở tab mới)`}>
+    Xem bài Facebook<Icon name="external" size={compact ? 14 : 16}/>
+  </a>;
+}
+
+/** Plain-language data status, only when something is actually missing. */
+export function ContentStatus({ lead }: { lead: Lead }) {
+  const { status, text } = leadText(lead);
+  if (!status) return null;
+  return <span className="content-status" title={text}><Icon name="info" size={13}/>{status}</span>;
+}
+
+/**
+ * The one line a list shows for a lead: the backend's Vietnamese summary (labelled, never quoted), the post's own
+ * Vietnamese text, or a short Vietnamese fallback. English or collector-written text is never the default preview.
+ */
+function LeadPreviewLine({ lead, className }: { lead: Lead; className: string }) {
+  const shown = leadText(lead);
+  if (shown.kind === 'fallback') return <p className={`${className} lead-preview-fallback`}>{shown.listText}</p>;
+  const line = shown.kind === 'original' ? readLead(shown.text, lead.need).evidence : shown.text;
+  return <p className={`${className} is-${shown.kind}`}>{shown.kind === 'summary' && <span className="text-kind">QLead tóm tắt</span>}{line}</p>;
+}
+
+/**
+ * When the post was published, or, if Facebook did not give a time, when QLead found it, labelled as such: the
+ * discovery time is never presented as the publication time.
+ */
+function PostedOrFound({ lead, now }: { lead: Lead; now: number }) {
+  if (lead.published_at) return <time dateTime={lead.published_at} title={`Đăng lúc ${exactTime(lead.published_at)}`}>{relativeTime(lead.published_at, now)}</time>;
+  if (lead.discovered_at) return <time className="is-found" dateTime={lead.discovered_at} title={`Chưa rõ giờ đăng · QLead tìm thấy lúc ${exactTime(lead.discovered_at)}`}>Tìm thấy {relativeTime(lead.discovered_at, now).toLocaleLowerCase('vi')}</time>;
+  return <span className="muted-text">Chưa rõ giờ đăng</span>;
+}
+
+/** Compact lead row used on the Today page and on mobile. The card opens the lead; the Facebook link opens the post. */
 export function LeadListItem({ lead, now, workflow }: { lead: Lead; now: number; workflow: LeadWorkflowApi }) {
   const state = workflow.get(lead.id);
   const area = displayArea(lead);
-  const reading = readLead(lead.content, lead.need);
-  return <li className={`lead-item ${state.status === 'new' ? 'is-unseen' : ''}`}>
-    <Link href={leadHref(lead.id)}>
+  const text = leadText(lead).kind !== 'fallback';
+  return <li className={`lead-item ${state.status === 'new' ? 'is-unseen' : ''} ${text ? '' : 'is-no-text'}`}>
+    <Link className="lead-item-main" href={leadHref(lead.id)}>
       <div className="lead-item-top">
         <StatusPill status={state.status}/>
-        <span className="lead-item-author">{lead.author ?? 'Chưa rõ người đăng'}</span>
-        {lead.published_at ? <time dateTime={lead.published_at} title={`Đăng lúc ${exactTime(lead.published_at)}`}>{relativeTime(lead.published_at, now)}</time> : <span className="muted-text">Chưa rõ giờ đăng</span>}
+        <span className={`lead-item-author ${lead.author ? '' : 'is-fallback'}`}>{leadName(lead)}</span>
+        <PostedOrFound lead={lead} now={now}/>
       </div>
-      <p className="lead-item-need">{reading.evidence}</p>
+      <LeadPreviewLine lead={lead} className="lead-item-need"/>
       <div className="lead-item-meta">
-        <span className={area ? '' : 'muted-text'}><Icon name="pin" size={15}/>{area ?? 'Chưa rõ khu vực'}</span>
+        {(text || area) && <span className={area ? '' : 'muted-text'}><Icon name="pin" size={15}/>{area ?? 'Chưa rõ khu vực'}</span>}
         {lead.contact && <span className="has-contact"><Icon name="phone" size={15}/>{lead.contact.number}</span>}
+        <ContentStatus lead={lead}/>
         {state.notes.length > 0 && <span className="note-count"><Icon name="list" size={14}/>{state.notes.length} ghi chú</span>}
       </div>
-      <SourceLine lead={lead}/>
     </Link>
+    <div className="lead-item-foot">
+      <SourceLine lead={lead}/>
+      <FacebookLink lead={lead} compact/>
+    </div>
   </li>;
 }
 
@@ -111,24 +156,44 @@ export function LeadDetail({ lead, now, workflow, headingLevel = 2 }: { lead: Le
   const area = displayArea(lead);
   const source = sourceLabel(lead);
   const Heading = headingLevel === 1 ? 'h1' : 'h2';
-  const reading = readLead(lead.content, lead.need);
+  const shown = leadText(lead);
+  const reading = readLead(shown.kind === 'original' ? shown.text : '', shown.kind === 'original' ? lead.need : null);
+  // Only the post's own words let QLead say "the post has no number / names no area"; a summary or a fallback cannot.
+  const text = shown.kind === 'original';
+  // Without the post's text QLead cannot know what the post says about contacts or area: point to the post instead.
+  const inPost = <span className="muted-text">Xem trong bài gốc</span>;
 
   // Two columns: the post on the left, what the salesperson did with it on the right.
-  return <article className="lead-detail" aria-label={`Lead của ${lead.author ?? 'người đăng chưa rõ'}`}>
+  return <article className={`lead-detail ${text ? '' : 'is-no-text'}`} aria-label={`Lead: ${leadName(lead)}`}>
     <div className="lead-detail-main">
       <header className="lead-detail-head">
-        <Heading className="lead-detail-author">{lead.author}</Heading>
-        <p className="lead-detail-sub">{source && <>{source} · </>}{lead.published_at && <time dateTime={lead.published_at} title={exactTime(lead.published_at)}>Đăng {relativeTime(lead.published_at, now)}</time>}</p>
+        <Heading className={`lead-detail-author ${lead.author ? '' : 'is-fallback'}`}>{leadName(lead)}</Heading>
+        <p className="lead-detail-sub">{['Facebook', source].filter(Boolean).join(' · ')}{lead.published_at && <> · <time dateTime={lead.published_at} title={exactTime(lead.published_at)}>Đăng {relativeTime(lead.published_at, now)}</time></>}</p>
         <ReadingTags reading={reading} limit={4}/>
       </header>
 
-      <blockquote className="lead-post-body">{lead.content}</blockquote>
+      {shown.kind === 'original' && <figure className="lead-text"><figcaption>Nội dung trên Facebook</figcaption><blockquote className="lead-post-body" lang="vi">{shown.text}</blockquote></figure>}
+      {shown.kind === 'summary' && <section className="lead-summary" aria-label="QLead tóm tắt">
+        <span className="text-kind">QLead tóm tắt</span>
+        <p>{shown.text}</p>
+        <small>Tóm tắt tự động từ bài đăng, không phải lời của người đăng. Hãy mở bài gốc để kiểm tra.</small>
+      </section>}
+      {shown.kind === 'fallback' && <div className="lead-post-missing">
+        <span className="lead-post-missing-icon" aria-hidden="true"><Icon name="info" size={18}/></span>
+        <div><b>{shown.status}</b><p>{shown.text}</p></div>
+        {lead.original_url && <FacebookLink lead={lead} className="btn btn-primary"/>}
+      </div>}
+      {shown.stored && <details className="lead-stored">
+        <summary>Xem nội dung gốc</summary>
+        <p className="lead-stored-label">{shown.stored.label}</p>
+        <blockquote lang={looksEnglish(shown.stored.text) ? 'en' : 'vi'}>{shown.stored.text}</blockquote>
+      </details>}
 
       <dl className="lead-facts">
-        <div><dt><Icon name="phone" size={16}/>Số liên hệ</dt><dd>{lead.contact ? <span className="contact-line"><a href={`tel:${lead.contact.normalized}`}>{lead.contact.number}</a><button type="button" className="icon-btn" onClick={() => copy(lead.contact!.number, 'số liên hệ')} aria-label="Sao chép số liên hệ"><Icon name="copy" size={16}/></button></span> : <span className="muted-text">Bài không ghi số</span>}</dd></div>
-        <div><dt><Icon name="pin" size={16}/>Khu vực</dt><dd>{area ?? <span className="muted-text">Bài không nêu</span>}</dd></div>
-        <div><dt><Icon name="clock" size={16}/>Đăng lúc</dt><dd>{lead.published_at ? exactTime(lead.published_at) : 'Chưa rõ giờ đăng'}</dd></div>
-        <div><dt><Icon name="radar" size={16}/>Được phát hiện</dt><dd>{lead.discovered_at ? exactTime(lead.discovered_at) : '—'}</dd></div>
+        <div><dt><Icon name="phone" size={16}/>Số liên hệ</dt><dd>{lead.contact ? <span className="contact-line"><a href={`tel:${lead.contact.normalized}`}>{lead.contact.number}</a><button type="button" className="icon-btn" onClick={() => copy(lead.contact!.number, 'số liên hệ')} aria-label="Sao chép số liên hệ"><Icon name="copy" size={16}/></button></span> : text ? <span className="muted-text">Bài không ghi số</span> : inPost}</dd></div>
+        <div><dt><Icon name="pin" size={16}/>Khu vực</dt><dd>{area ?? (text ? <span className="muted-text">Bài không nêu</span> : inPost)}</dd></div>
+        <div><dt><Icon name="clock" size={16}/>Đăng lúc</dt><dd>{lead.published_at ? exactTime(lead.published_at) : <span className="muted-text">Chưa rõ giờ đăng</span>}</dd></div>
+        <div><dt><Icon name="radar" size={16}/>QLead tìm thấy lúc</dt><dd>{lead.discovered_at ? exactTime(lead.discovered_at) : '—'}</dd></div>
       </dl>
 
       <section className="lead-provenance" aria-labelledby={`provenance-${lead.id}`}>
@@ -142,9 +207,8 @@ export function LeadDetail({ lead, now, workflow, headingLevel = 2 }: { lead: Le
       </section>
 
       <div className="lead-actions">
-        {lead.original_url
-          ? <a className="btn btn-primary" href={lead.original_url} target="_blank" rel="noopener noreferrer">Mở bài Facebook <Icon name="external" size={16}/></a>
-          : <span className="no-link-note"><Icon name="info" size={16}/>Chưa có liên kết bài Facebook</span>}
+        {/* The primary action, unless the missing-content box above already carries it. */}
+        {(shown.kind !== 'fallback' || !lead.original_url) && <FacebookLink lead={lead} className="btn btn-primary"/>}
         {lead.original_url && <button type="button" className="btn btn-outline" onClick={() => copy(lead.original_url!, 'liên kết bài viết')}><Icon name="copy" size={16}/>Sao chép liên kết</button>}
       </div>
       {status && <p className="toast" role="status">{status}</p>}
@@ -187,7 +251,7 @@ export function LeadResultsPage({ records, workflow: initialWorkflow, profiles, 
     const windowMs = range === '24h' ? 24 * 3600_000 : range === '7d' ? 7 * 24 * 3600_000 : 0;
     return records.filter(lead => {
       const state = workflow.get(lead.id);
-      const text = `${lead.author ?? ''} ${lead.content} ${displayArea(lead) ?? ''} ${lead.contact?.number ?? ''} ${state.notes.map(note => note.body).join(' ')}`.toLocaleLowerCase('vi');
+      const text = `${lead.author ?? ''} ${leadSearchText(lead)} ${displayArea(lead) ?? ''} ${lead.contact?.number ?? ''} ${state.notes.map(note => note.body).join(' ')}`.toLocaleLowerCase('vi');
       return (!needle || text.includes(needle))
         && (!windowMs || isRecent(lead.published_at, now, windowMs))
         && (statusFilter === 'all' || state.status === statusFilter)
@@ -245,19 +309,22 @@ export function LeadResultsPage({ records, workflow: initialWorkflow, profiles, 
       : <>
         <div className="lead-table-wrap panel">
           <table className="lead-table">
-            <thead><tr><th>Trạng thái</th><th>Lead</th><th>Khu vực</th><th>Số liên hệ</th><th>Đăng lúc</th><th>Ghi chú</th></tr></thead>
+            <thead><tr><th>Trạng thái</th><th>Lead</th><th>Khu vực</th><th>Số liên hệ</th><th>Thời gian</th><th>Ghi chú</th><th><span className="sr-only">Bài Facebook gốc</span></th></tr></thead>
             <tbody>{visible.map(lead => {
               const state = workflow.get(lead.id);
-              const reading = readLead(lead.content, lead.need);
+              const shown = leadText(lead);
+              const reading = readLead(shown.kind === 'original' ? shown.text : '', shown.kind === 'original' ? lead.need : null);
               const area = displayArea(lead);
-              return <tr key={lead.id} data-id={lead.id} className={`${state.status === 'new' ? 'is-new' : ''} ${openId === lead.id ? 'is-open' : ''}`} tabIndex={0} aria-label={`Mở lead của ${lead.author ?? 'người đăng chưa rõ'}`}
+              const text = shown.kind !== 'fallback';
+              return <tr key={lead.id} data-id={lead.id} className={`${state.status === 'new' ? 'is-new' : ''} ${openId === lead.id ? 'is-open' : ''} ${text ? '' : 'is-no-text'}`} tabIndex={0} aria-label={`Mở lead: ${leadName(lead)}`}
                 onClick={() => openLead(lead.id)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openLead(lead.id); } }}>
                 <td><StatusPill status={state.status}/></td>
-                <td className="lead-cell"><b>{lead.author ?? 'Chưa rõ người đăng'}</b><p>{reading.evidence}</p><ReadingTags reading={reading} limit={2}/><SourceLine lead={lead}/></td>
+                <td className="lead-cell"><b className={lead.author ? '' : 'is-fallback'}>{leadName(lead)}</b><LeadPreviewLine lead={lead} className="lead-cell-text"/>{text ? <ReadingTags reading={reading} limit={2}/> : <p className="lead-cell-missing"><ContentStatus lead={lead}/></p>}<SourceLine lead={lead}/></td>
                 <td className={area ? '' : 'muted-text'}>{area ?? '—'}</td>
                 <td>{lead.contact ? <span className="has-contact">{lead.contact.number}</span> : <span className="muted-text">—</span>}</td>
-                <td>{lead.published_at ? <time dateTime={lead.published_at} title={exactTime(lead.published_at)}>{relativeTime(lead.published_at, now)}</time> : <span className="muted-text">Chưa rõ giờ đăng</span>}</td>
+                <td className="time-cell"><PostedOrFound lead={lead} now={now}/></td>
                 <td className="note-cell">{state.notes[0] ? <><span className="note-count">{state.notes.length}</span><span className="note-preview">{state.notes[0].body}</span></> : <span className="muted-text">—</span>}</td>
+                <td className="fb-cell"><FacebookLink lead={lead} compact/></td>
               </tr>;
             })}</tbody>
           </table>

@@ -10,6 +10,13 @@ test('worker instructions use the current natural-language intent as the source 
   assert.match(prompt, /Search recent posts first/);
   assert.match(prompt, /Use only recency or sort controls that the connected social\.search tool actually supports/);
   assert.match(prompt, /never replace an unknown publication time with the search time/);
+  assert.match(prompt, /content is the original Facebook text only, in its source language/);
+  assert.match(prompt, /short factual Vietnamese description supported by visible evidence in summary_vi/);
+  assert.match(prompt, /Missing summary_vi is valid/);
+  assert.match(prompt, /Search using any supported language/);
+  assert.match(prompt, /phone\/address\/owner enrichment/);
+  assert.match(prompt, /"summary_vi"/);
+  assert.match(prompt, /Do not use the deprecated "summary" field/);
   assert.match(prompt, /not an allowlist/);
   assert.match(prompt, /sweet-soup\/dessert/);
   assert.match(prompt, /no more than six distinct search phrase strategies/);

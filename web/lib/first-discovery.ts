@@ -36,6 +36,11 @@ export type DiscoveryView = {
   hold: 'paused' | 'suspended' | null;
   /** The first search did not complete (it is retried by the schedule). */
   initialFailed: boolean;
+  /**
+   * Of `totalLeads`, how many the backend reports with incomplete metadata (no extracted text, poster or post time).
+   * Null when the backend does not report it. Shown as plain language, never as a separate result.
+   */
+  incompleteLeads: number | null;
 };
 
 /** An extra search waiting this long without starting is described as slower than usual (never as an error). */
@@ -53,7 +58,7 @@ export function discoveryView(scan: FirstScan): DiscoveryView {
     stage: 'initial', initialLeads, moreLeads: null, totalLeads: null, more: null, moreOutcome: null,
     initialFinishedAt: !initialFinished ? null : measured ? d!.initialCompletedAt ?? scan.finishedAt : scan.finishedAt,
     moreStartedAt: d?.followupClaimedAt ?? null, moreFinishedAt: d?.followupCompletedAt ?? null, moreQueuedAt: d?.followupQueuedAt ?? null,
-    hold, initialFailed: scan.state === 'failed' || d?.initialStatus === 'failed',
+    hold, initialFailed: scan.state === 'failed' || d?.initialStatus === 'failed', incompleteLeads: null,
   };
   if (!initialFinished) return base;
 
@@ -68,12 +73,18 @@ export function discoveryView(scan: FirstScan): DiscoveryView {
   const moreRan = Boolean(d?.followupCompletedAt) && d?.followupUsablePosts !== null && d?.followupUsablePosts !== undefined;
   const moreLeads = moreRan ? d!.followupUsablePosts : null;
   const totalLeads = (initialLeads ?? 0) + (moreLeads ?? 0);
-  if (more) return { ...base, stage: 'more', more, totalLeads };
+  // Counts come straight from the backend; the browser only adds the two searches it already reports separately.
+  // Additive fields of the source-linked contract; older API versions do not send them (then nothing is shown).
+  const completeness = (d ?? {}) as { initialMetadataIncompletePosts?: number | null; followupMetadataIncompletePosts?: number | null };
+  const initialIncomplete = completeness.initialMetadataIncompletePosts ?? null;
+  const moreIncomplete = moreRan ? completeness.followupMetadataIncompletePosts ?? null : 0;
+  const incompleteLeads = initialIncomplete === null || initialIncomplete === undefined || moreIncomplete === null ? null : initialIncomplete + moreIncomplete;
+  if (more) return { ...base, stage: 'more', more, totalLeads, incompleteLeads };
 
   let moreOutcome: MoreOutcome = 'not_run';
   if (moreRan) moreOutcome = moreLeads! > 0 ? 'found' : 'none';
   else if (d?.status === 'failed') moreOutcome = 'failed';
-  return { ...base, stage: 'done', moreLeads, totalLeads, moreOutcome };
+  return { ...base, stage: 'done', moreLeads, totalLeads, moreOutcome, incompleteLeads };
 }
 
 /** Whether something in this episode is still open, so views keep following the stored state. */

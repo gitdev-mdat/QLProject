@@ -46,7 +46,7 @@ app.get('/api/agent/posts', async (req, reply) => {
     return reply.code(400).send(errorResponse('invalid_request', 'Use limit from 1 to 200 and a non-negative offset.'));
   }
   const [records, count] = await Promise.all([
-    pool.query(`SELECT fp.id, fp.author, fp.title, fp.content, fp.published_at, fp.original_url, fp.normalized_url,
+    pool.query(`SELECT fp.id, fp.author, fp.title, fp.content, fp.summary_vi, fp.published_at, fp.original_url, fp.normalized_url,
         fp.first_seen_at AS discovered_at, fp.source_type, fp.collected_via, fp.platform, ac.name AS agent_name,
         COALESCE(jsonb_agg(jsonb_build_object('version',sc.version,'enabled',sc.enabled,'keywords',sc.keywords,
           'location',sc.location,'sources',sc.sources,'frequency_minutes',sc.frequency_minutes)

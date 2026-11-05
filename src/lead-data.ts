@@ -1,3 +1,5 @@
+import { isSupportedFacebookPostUrl } from './lead-eligibility.js';
+
 export interface SearchConfigSummary {
   version: number;
   enabled: boolean;
@@ -12,6 +14,7 @@ export interface StoredFacebookPost {
   author?: string | null;
   title?: string | null;
   content?: string | null;
+  summary_vi?: string | null;
   published_at?: string | Date | null;
   original_url?: string | null;
   normalized_url?: string | null;
@@ -40,6 +43,7 @@ export interface LeadRecord {
   id: string;
   author: string | null;
   title: string | null;
+  summary_vi: string | null;
   content: string;
   need: string | null;
   contact: ExtractedContact | null;
@@ -52,6 +56,15 @@ export interface LeadRecord {
   platform: string | null;
   agent_name: string | null;
   search_configurations: SearchConfigSummary[];
+  /** Raw source metadata, with missing extraction represented as null for the API/UI handoff. */
+  sourceMetadata: {
+    status: 'complete' | 'incomplete';
+    author: string | null;
+    title: string | null;
+    content: string | null;
+    publishedAt: string | null;
+    missingFields: Array<'author' | 'title' | 'content' | 'publishedAt'>;
+  };
 }
 
 const phonePattern = /(?:số\s*điện\s*thoại|điện\s*thoại|sđt|sdt|liên\s*hệ|liên\s*lạc|hotline|zalo|gọi|call|phone)\s*(?:là|:|：|-)?\s*((?:\+?84|0)?(?:[\s().-]*\d){8,11})/iu;
@@ -125,18 +138,6 @@ export function extractNeedFromPost(content: string | null | undefined): string 
   return sentence.length > 220 ? `${sentence.slice(0, 217).trimEnd()}…` : sentence;
 }
 
-function validFacebookUrl(value: string | null | undefined): string | null {
-  if (!value) return null;
-  try {
-    const url = new URL(value);
-    const host = url.hostname.toLowerCase().replace(/^(www|m|web)\./, '');
-    if (!['facebook.com', 'fb.watch'].includes(host) || url.protocol !== 'https:') return null;
-    return value;
-  } catch {
-    return null;
-  }
-}
-
 function validTimestamp(value: string | Date | null | undefined): string | null {
   if (value == null) return null;
   const date = value instanceof Date ? value : new Date(value);
@@ -144,22 +145,37 @@ function validTimestamp(value: string | Date | null | undefined): string | null 
 }
 
 export function toLeadRecord(post: StoredFacebookPost): LeadRecord {
-  const content = post.content ?? post.title ?? '';
+  const content = post.content ?? '';
+  const author = post.author?.trim() || null;
+  const title = post.title?.trim() || null;
+  const sourceContent = post.content?.trim() || null;
+  const publishedAt = validTimestamp(post.published_at);
+  const missingFields: LeadRecord['sourceMetadata']['missingFields'] = [];
+  if (!author) missingFields.push('author');
+  if (!title) missingFields.push('title');
+  if (!sourceContent) missingFields.push('content');
+  if (!publishedAt) missingFields.push('publishedAt');
+  const originalUrl = isSupportedFacebookPostUrl(post.original_url) ? post.original_url! : null;
   return {
     id: post.id,
-    author: post.author?.trim() || null,
-    title: post.title?.trim() || null,
+    author,
+    title,
+    summary_vi: post.summary_vi?.trim() || null,
     content,
     need: extractNeedFromPost(content),
     contact: extractContactFromPost(content),
     area: extractLocationFromPost(content),
-    published_at: validTimestamp(post.published_at),
+    published_at: publishedAt,
     discovered_at: validTimestamp(post.discovered_at ?? post.first_seen_at),
-    original_url: validFacebookUrl(post.original_url ?? post.normalized_url),
+    original_url: originalUrl,
     source_type: post.source_type ?? null,
     collected_via: post.collected_via ?? null,
     platform: post.platform ?? null,
     agent_name: post.agent_name ?? null,
     search_configurations: post.search_configurations ?? [],
+    sourceMetadata: {
+      status: missingFields.length ? 'incomplete' : 'complete',
+      author, title, content: sourceContent, publishedAt, missingFields,
+    },
   };
 }

@@ -5,6 +5,9 @@ const postSchema = z.object({
   url: z.string().url().max(4096),
   title: optionalText(1000),
   content: optionalText(100_000),
+  summary_vi: optionalText(10_000),
+  // Deprecated compatibility input. It is accepted so old clients do not fail validation,
+  // but is not relabeled as source content; new generated descriptions must use summary_vi.
   summary: optionalText(100_000),
   published_at: z.string().datetime({ offset: true }).optional().nullable(),
   posted_at: z.string().datetime({ offset: true }).optional().nullable(),
@@ -13,10 +16,10 @@ const postSchema = z.object({
   collected_via: optionalText(200),
   platform: optionalText(100)
 }).strict().transform(post => {
-  const { summary, posted_at, ...canonical } = post;
+  const { summary: _legacySummary, posted_at, ...canonical } = post;
   return {
     ...canonical,
-    content: Object.hasOwn(post, 'content') ? post.content : summary,
+    content: post.content ?? null,
     published_at: posted_at ?? post.published_at
   };
 });

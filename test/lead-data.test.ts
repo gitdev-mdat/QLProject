@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { extractContactFromPost, extractLocationFromPost, extractNeedFromPost, toLeadRecord } from '../src/lead-data.js';
+import { resultSchema } from '../src/validation.js';
 
 test('extracts only a phone number explicitly introduced as contact information', () => {
   const contact = extractContactFromPost('Mình cần tìm thợ sửa máy lạnh. Liên hệ: 0901 234 567 để trao đổi nhé.');
@@ -42,5 +43,35 @@ test('keeps URL-only legacy rows and never substitutes discovery time for post t
   assert.equal(lead.area.location, null);
   assert.equal(lead.published_at, null);
   assert.equal(lead.discovered_at, '2026-10-30T10:00:00.000Z');
+  assert.equal(lead.summary_vi, null);
+  assert.equal(lead.sourceMetadata.status, 'incomplete');
+  assert.deepEqual(lead.sourceMetadata.missingFields, ['author', 'title', 'content', 'publishedAt']);
   assert.equal(toLeadRecord({ id: 'bad-url', original_url: 'https://example.com/not-a-post' }).original_url, null);
+  assert.equal(toLeadRecord({ id: 'normalized-only', normalized_url: 'https://facebook.com/groups/123/posts/456' }).original_url, null);
+});
+
+test('keeps original source text unchanged and returns an optional Vietnamese summary separately', () => {
+  const source = 'Photo of a shop exterior during setup...';
+  const summary = 'Mặt tiền cửa hàng đang trong quá trình hoàn thiện.';
+  const lead = toLeadRecord({ id: 'separated-content', original_url: 'https://www.facebook.com/demo/posts/501', content: source, summary_vi: summary });
+  assert.equal(lead.content, source);
+  assert.equal(lead.sourceMetadata.content, source);
+  assert.equal(lead.summary_vi, summary);
+  assert.equal(lead.sourceMetadata.status, 'incomplete');
+
+  const payload = resultSchema.parse({
+    event: 'facebook_scan_completed', source: 'muse', configuration_version: 1, scan_id: 'summary-contract',
+    scanned_at: '2026-11-05T10:00:00+07:00', posts: [{ url: 'https://facebook.com/demo/posts/501', content: source, summary_vi: summary }],
+    stats: { total_found: 1 }, errors: [],
+  });
+  assert.equal(payload.posts[0]?.content, source);
+  assert.equal(payload.posts[0]?.summary_vi, summary);
+
+  const legacySummary = resultSchema.parse({
+    event: 'facebook_scan_completed', source: 'muse', configuration_version: 1, scan_id: 'ambiguous-summary',
+    scanned_at: '2026-11-05T10:00:00+07:00', posts: [{ url: 'https://facebook.com/demo/posts/502', summary: source }],
+    stats: { total_found: 1 }, errors: [],
+  });
+  assert.equal(legacySummary.posts[0]?.content, null, 'untyped legacy summary is not mislabeled as original source text');
+  assert.equal(legacySummary.posts[0]?.summary_vi, undefined);
 });

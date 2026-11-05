@@ -1,6 +1,7 @@
 import 'server-only';
 import type { FirstScan, FirstScanState } from '../first-scan';
 import { planEarlyFollowup } from '../../../src/search-plan';
+import { completeLeadMetadataSql, sourceLinkedPostSql } from '../../../src/lead-eligibility';
 import { db } from './db';
 
 const iso = (value: Date | string | null) => (value ? new Date(value).toISOString() : null);
@@ -17,14 +18,20 @@ export async function getFirstScanForUser(userId: string, now = Date.now()): Pro
       (SELECT claimed_at FROM search_job_attempts WHERE id = job.current_attempt_id) AS claimed_at,
       initial_job.configuration_version AS initial_configuration_version, initial_job.status AS initial_status, initial_job.attempts AS initial_attempts, initial_job.created_at AS initial_created_at,
       initial_job.completed_at AS initial_completed_at, initial_job.last_error AS initial_error,
-      initial_run.status AS initial_run_status, initial_run.usable_new_posts AS initial_usable,
+      initial_run.status AS initial_run_status, initial_run.usable_new_posts AS initial_recorded_usable,
+      CASE WHEN initial_run.id IS NULL THEN NULL ELSE initial_stats.source_linked_posts END AS initial_source_linked,
+      CASE WHEN initial_run.id IS NULL THEN NULL ELSE initial_stats.metadata_complete_posts END AS initial_metadata_complete,
+      CASE WHEN initial_run.id IS NULL THEN NULL ELSE (initial_stats.source_linked_posts - initial_stats.metadata_complete_posts)::int END AS initial_metadata_incomplete,
       (initial_run.received_posts - initial_run.new_posts) AS initial_duplicates, initial_run.keywords_used AS initial_keywords,
       initial_run.received_at AS initial_received_at,
       (SELECT min(claimed_at) FROM search_job_attempts WHERE job_id = initial_job.id) AS initial_claimed_at,
       (SELECT sum(extract(epoch FROM coalesce(finished_at, now()) - claimed_at) * 1000)::bigint FROM search_job_attempts WHERE job_id = initial_job.id) AS initial_active_ms,
       followup.status AS followup_status, followup.attempts AS followup_attempts, followup.created_at AS followup_created_at,
       followup.available_at AS followup_available_at, followup.completed_at AS followup_completed_at, followup.last_error AS followup_error,
-      followup_run.usable_new_posts AS followup_usable,
+      followup_run.usable_new_posts AS followup_recorded_usable,
+      CASE WHEN followup_run.id IS NULL THEN NULL ELSE followup_stats.source_linked_posts END AS followup_source_linked,
+      CASE WHEN followup_run.id IS NULL THEN NULL ELSE followup_stats.metadata_complete_posts END AS followup_metadata_complete,
+      CASE WHEN followup_run.id IS NULL THEN NULL ELSE (followup_stats.source_linked_posts - followup_stats.metadata_complete_posts)::int END AS followup_metadata_incomplete,
       (followup_run.received_posts - followup_run.new_posts) AS followup_duplicates, followup_run.keywords_used AS followup_keywords,
       followup_run.received_at AS followup_received_at,
       (SELECT min(claimed_at) FROM search_job_attempts WHERE job_id = followup.id) AS followup_claimed_at,
@@ -35,13 +42,38 @@ export async function getFirstScanForUser(userId: string, now = Date.now()): Pro
       EXISTS (SELECT 1 FROM muse_workers w WHERE w.status = 'active' AND w.credential_status = 'active' AND w.connection_verified_at IS NOT NULL) AS search_ready
     FROM agent_connections ac JOIN users u ON u.id = ac.user_id
     JOIN LATERAL (SELECT * FROM scan_configs WHERE agent_connection_id = ac.id ORDER BY version DESC LIMIT 1) sc ON true
-    LEFT JOIN LATERAL (SELECT scanned_at, status, total_found, new_posts FROM scan_runs WHERE agent_connection_id = ac.id ORDER BY scanned_at, received_at LIMIT 1) run ON true
+    LEFT JOIN LATERAL (SELECT sr.scanned_at, sr.status, sr.total_found,
+        (SELECT count(DISTINCT fp.normalized_url)::int FROM facebook_posts fp
+          WHERE fp.agent_connection_id = sr.agent_connection_id AND fp.first_seen_at >= sr.received_at
+            AND fp.first_seen_at < sr.received_at + interval '1 millisecond'
+            AND ${sourceLinkedPostSql('fp')} AND EXISTS (SELECT 1 FROM facebook_post_search_configs psc
+              WHERE psc.agent_connection_id = fp.agent_connection_id AND psc.normalized_url = fp.normalized_url
+                AND psc.configuration_version = sr.configuration_version)) AS new_posts
+      FROM scan_runs sr WHERE sr.agent_connection_id = ac.id ORDER BY sr.scanned_at, sr.received_at LIMIT 1) run ON true
     LEFT JOIN LATERAL (SELECT * FROM search_jobs WHERE search_profile_id = ac.id AND status <> 'cancelled' ORDER BY (kind = 'initial') DESC, created_at LIMIT 1) job ON true
     LEFT JOIN LATERAL (SELECT * FROM search_jobs WHERE search_profile_id = ac.id AND kind = 'initial' ORDER BY created_at DESC LIMIT 1) initial_job ON true
     LEFT JOIN scan_runs initial_run ON initial_run.search_job_id = initial_job.id
+    LEFT JOIN LATERAL (SELECT
+        count(DISTINCT fp.normalized_url) FILTER (WHERE ${sourceLinkedPostSql('fp')}
+          AND EXISTS (SELECT 1 FROM facebook_post_search_configs psc WHERE psc.agent_connection_id = fp.agent_connection_id
+            AND psc.normalized_url = fp.normalized_url AND psc.configuration_version = initial_run.configuration_version))::int AS source_linked_posts,
+        count(DISTINCT fp.normalized_url) FILTER (WHERE ${sourceLinkedPostSql('fp')} AND ${completeLeadMetadataSql('fp')}
+          AND EXISTS (SELECT 1 FROM facebook_post_search_configs psc WHERE psc.agent_connection_id = fp.agent_connection_id
+            AND psc.normalized_url = fp.normalized_url AND psc.configuration_version = initial_run.configuration_version))::int AS metadata_complete_posts
+      FROM facebook_posts fp WHERE fp.agent_connection_id = initial_run.agent_connection_id AND fp.first_seen_at >= initial_run.received_at
+        AND fp.first_seen_at < initial_run.received_at + interval '1 millisecond') initial_stats ON true
     LEFT JOIN LATERAL (SELECT * FROM search_jobs WHERE search_profile_id = ac.id AND kind = 'followup'
       AND configuration_version = initial_job.configuration_version ORDER BY created_at DESC LIMIT 1) followup ON true
     LEFT JOIN scan_runs followup_run ON followup_run.search_job_id = followup.id
+    LEFT JOIN LATERAL (SELECT
+        count(DISTINCT fp.normalized_url) FILTER (WHERE ${sourceLinkedPostSql('fp')}
+          AND EXISTS (SELECT 1 FROM facebook_post_search_configs psc WHERE psc.agent_connection_id = fp.agent_connection_id
+            AND psc.normalized_url = fp.normalized_url AND psc.configuration_version = followup_run.configuration_version))::int AS source_linked_posts,
+        count(DISTINCT fp.normalized_url) FILTER (WHERE ${sourceLinkedPostSql('fp')} AND ${completeLeadMetadataSql('fp')}
+          AND EXISTS (SELECT 1 FROM facebook_post_search_configs psc WHERE psc.agent_connection_id = fp.agent_connection_id
+            AND psc.normalized_url = fp.normalized_url AND psc.configuration_version = followup_run.configuration_version))::int AS metadata_complete_posts
+      FROM facebook_posts fp WHERE fp.agent_connection_id = followup_run.agent_connection_id AND fp.first_seen_at >= followup_run.received_at
+        AND fp.first_seen_at < followup_run.received_at + interval '1 millisecond') followup_stats ON true
     WHERE ac.user_id = $1 AND ac.kind = 'search_profile' AND ac.status = 'active'
     ORDER BY ac.created_at LIMIT 1`, [userId]);
   if (!row) return null;
@@ -73,8 +105,14 @@ export async function getFirstScanForUser(userId: string, now = Date.now()): Pro
 }
 
 function discoveryContract(row: any, now: number): FirstScan['discovery'] {
-  const initialUsable = row.initial_usable === null || row.initial_usable === undefined ? null : Number(row.initial_usable);
-  const followupUsable = row.followup_usable === null || row.followup_usable === undefined ? null : Number(row.followup_usable);
+  const initialUsable = row.initial_source_linked === null || row.initial_source_linked === undefined ? null : Number(row.initial_source_linked);
+  const followupUsable = row.followup_source_linked === null || row.followup_source_linked === undefined ? null : Number(row.followup_source_linked);
+  const initialIngestionUsable = row.initial_recorded_usable === null || row.initial_recorded_usable === undefined ? null : Number(row.initial_recorded_usable);
+  const followupIngestionUsable = row.followup_recorded_usable === null || row.followup_recorded_usable === undefined ? null : Number(row.followup_recorded_usable);
+  const initialMetadataComplete = row.initial_metadata_complete === null || row.initial_metadata_complete === undefined ? null : Number(row.initial_metadata_complete);
+  const initialMetadataIncomplete = row.initial_metadata_incomplete === null || row.initial_metadata_incomplete === undefined ? null : Number(row.initial_metadata_incomplete);
+  const followupMetadataComplete = row.followup_metadata_complete === null || row.followup_metadata_complete === undefined ? null : Number(row.followup_metadata_complete);
+  const followupMetadataIncomplete = row.followup_metadata_incomplete === null || row.followup_metadata_incomplete === undefined ? null : Number(row.followup_metadata_incomplete);
   const followupStatus = row.followup_status as string | null;
   let status: FirstScan['discovery']['status'];
   let initialStatus: FirstScan['discovery']['initialStatus'];
@@ -102,7 +140,7 @@ function discoveryContract(row: any, now: number): FirstScan['discovery'] {
     else if (row.current_configuration_version !== row.initial_configuration_version) followupSkipReason = 'configuration_changed';
     else if (row.another_job_open) followupSkipReason = 'another_job_queued';
     else if (!row.description || !planEarlyFollowup(row.description, row.keywords ?? []).length) followupSkipReason = 'no_complementary_strategies';
-    else if (row.initial_usable === null) followupSkipReason = 'historical_metric_unavailable';
+    else if (row.initial_source_linked === null) followupSkipReason = 'historical_metric_unavailable';
   }
   if (row.lead_monitoring_status === 'suspended') initialStatus = 'suspended';
   else if (!row.enabled) initialStatus = 'paused';
@@ -127,6 +165,15 @@ function discoveryContract(row: any, now: number): FirstScan['discovery'] {
     initialUsablePosts: initialUsable,
     followupUsablePosts: followupUsable,
     totalUsablePosts: totalUsable,
+    initialSourceLinkedPosts: initialUsable,
+    followupSourceLinkedPosts: followupUsable,
+    totalSourceLinkedPosts: totalUsable,
+    initialMetadataCompletePosts: initialMetadataComplete,
+    initialMetadataIncompletePosts: initialMetadataIncomplete,
+    followupMetadataCompletePosts: followupMetadataComplete,
+    followupMetadataIncompletePosts: followupMetadataIncomplete,
+    initialIngestionUsablePosts: initialIngestionUsable,
+    followupIngestionUsablePosts: followupIngestionUsable,
     initialDuplicatePosts: row.initial_duplicates === null ? null : Number(row.initial_duplicates),
     followupDuplicatePosts: row.followup_duplicates === null ? null : Number(row.followup_duplicates),
     followupSkipReason,
