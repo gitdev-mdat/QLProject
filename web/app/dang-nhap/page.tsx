@@ -3,10 +3,13 @@ import { AuthScreen } from '@/components/auth-screen';
 import { evaluateDevLogin, headersToRecord } from '@/lib/dev-login-gate';
 import { devQuickLoginUsers } from '@/lib/server/dev-users';
 import { getSession } from '@/lib/server/session';
+import { safeAppPath } from '@/lib/safe-return';
 
 export const dynamic = 'force-dynamic';
 
-export default async function Login() {
+/** `?tiep=/app/…` (from a notification tap while signed out) is where a successful sign-in continues. */
+export default async function Login({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const returnTo = safeAppPath((await searchParams).tiep);
   const session = await getSession().catch(() => null);
   const requestHeaders = await headers();
   const gate = evaluateDevLogin({
@@ -14,5 +17,5 @@ export default async function Login() {
     host: requestHeaders.get('host'), headers: headersToRecord(requestHeaders),
   });
   const devUsers = gate.allowed ? devQuickLoginUsers().map(({ key, label }) => ({ key, label })) : [];
-  return <AuthScreen mode="login" devUsers={devUsers} signedInAs={session?.displayName ?? null}/>;
+  return <AuthScreen mode="login" devUsers={devUsers} signedInAs={session?.displayName ?? null} returnTo={returnTo}/>;
 }

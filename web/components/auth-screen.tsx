@@ -13,7 +13,7 @@ const AUTH_ERRORS: Record<string, string> = {
 };
 
 /** Real email + password form: the server creates the account or verifies it, then sets the session cookie. */
-function AuthForm({ mode }: { mode: 'login' | 'register' }) {
+function AuthForm({ mode, returnTo = null }: { mode: 'login' | 'register'; returnTo?: string | null }) {
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -28,7 +28,8 @@ function AuthForm({ mode }: { mode: 'login' | 'register' }) {
       const response = await fetch(`/api/auth/${mode}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       const data = await response.json().catch(() => ({})) as { redirect?: string; error?: string };
       if (!response.ok || !data.redirect) throw new Error(AUTH_ERRORS[data.error ?? ''] ?? 'Không thực hiện được. Thử lại sau ít phút.');
-      window.location.assign(data.redirect);
+      // A notification tap that needed a sign-in continues to its lead page; onboarding and Admin keep their own landing.
+      window.location.assign(returnTo && data.redirect === '/app' ? returnTo : data.redirect);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Không thực hiện được.');
       setBusy(false);
@@ -70,7 +71,7 @@ function DevQuickLogin({ users }: { users: DevLoginOption[] }) {
   </section>;
 }
 
-export function AuthScreen({ mode, devUsers = [], signedInAs = null }: { mode: 'login' | 'register'; devUsers?: DevLoginOption[]; signedInAs?: string | null }) {
+export function AuthScreen({ mode, devUsers = [], signedInAs = null, returnTo = null }: { mode: 'login' | 'register'; devUsers?: DevLoginOption[]; signedInAs?: string | null; returnTo?: string | null }) {
   const isLogin = mode === 'login';
   return <div className="auth-layout">
     <section className="auth-aside">
@@ -93,8 +94,8 @@ export function AuthScreen({ mode, devUsers = [], signedInAs = null }: { mode: '
           <h1>{isLogin ? 'Chào mừng trở lại' : 'Tạo tài khoản QLead'}</h1>
           <p>{isLogin ? 'Đăng nhập để tiếp tục xem lead mới của bạn.' : 'Thiết lập nhu cầu theo dõi đầu tiên trong vài phút.'}</p>
         </div>
-        {signedInAs && <p className="auth-signed-in" role="status"><Icon name="info" size={16}/><span>Trình duyệt đang đăng nhập với tên <b>{signedInAs}</b>. {isLogin ? 'Đăng nhập' : 'Tạo tài khoản'} sẽ thay phiên này. <Link href="/app">Tiếp tục với {signedInAs}</Link></span></p>}
-        <AuthForm mode={mode}/>
+        {signedInAs && <p className="auth-signed-in" role="status"><Icon name="info" size={16}/><span>Trình duyệt đang đăng nhập với tên <b>{signedInAs}</b>. {isLogin ? 'Đăng nhập' : 'Tạo tài khoản'} sẽ thay phiên này. <Link href={returnTo ?? '/app'}>Tiếp tục với {signedInAs}</Link></span></p>}
+        <AuthForm mode={mode} returnTo={returnTo}/>
         {isLogin && devUsers.length > 0 && <DevQuickLogin users={devUsers}/>}
         <p className="auth-switch">{isLogin ? <>Chưa có tài khoản? <Link href="/dang-ky">Tạo tài khoản</Link></> : <>Đã có tài khoản? <Link href="/dang-nhap">Đăng nhập</Link></>}</p>
       </div>
