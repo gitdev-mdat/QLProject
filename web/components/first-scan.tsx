@@ -261,10 +261,10 @@ function FoundCount({ view, reveal }: { view: DiscoveryView; reveal: boolean }) 
     seen.current = total;
   }, [total]);
   const split = Boolean(view.initialLeads && view.moreLeads);
-  return <div className="found-count" role="group" aria-label={`${total} lead mới`}>
+  return <div className="found-count" role="group" aria-label={`${total} cơ hội mới`}>
     <p className="found-count-main">
       <b key={total} className={reveal || added ? 'is-reveal' : undefined}>{total}</b>
-      <span>lead mới</span>
+      <span>cơ hội mới</span>
       {added > 0 && <em className="found-count-added" key={`+${total}`} aria-hidden="true">+{added}</em>}
     </p>
     {/* Where they came from, only when both searches contributed; nothing is counted twice. */}
@@ -299,6 +299,15 @@ function FinishedStamp({ view }: { view: DiscoveryView }) {
   const at = extraFinished ? view.moreFinishedAt : view.initialFinishedAt;
   if (!at) return null;
   return <p className="first-scan-finished-at"><Icon name="check" size={14}/><span>Hoàn tất lúc <time dateTime={at}>{exactTime(at)}</time></span></p>;
+}
+
+/**
+ * The success sentence. It says what QLead actually has: Facebook posts related to the customer's need, with the
+ * original post to open. It never claims the poster asked for the customer's product or that anyone reviewed them.
+ */
+function foundText(view: DiscoveryView): string {
+  const total = view.totalLeads ?? 0;
+  return `Đã phát hiện ${total} bài đăng có liên quan đến nhu cầu của bạn. Mở bài Facebook gốc để xem thông tin chi tiết và đánh giá cơ hội.`;
 }
 
 function emptyText(view: DiscoveryView): string {
@@ -354,7 +363,7 @@ export function FirstScanView({ initial, compact = false }: { initial: FirstScan
   let title: string;
   let text: string;
   let estimate: { lead: string; text: string; tone?: 'slow' } | undefined;
-  if (mode === 'found') { sceneState = 'results'; title = 'QLead đã thấy khách hàng'; text = 'QLead đã hoàn thành lượt tìm đầu tiên và tìm thấy những cơ hội phù hợp với nhu cầu của bạn.'; }
+  if (mode === 'found') { sceneState = 'results'; title = 'QLead đã tìm thấy cơ hội cho bạn!'; text = foundText(view); }
   else if (mode === 'empty') { sceneState = 'no_results'; title = 'Đã hoàn tất lượt tìm đầu tiên'; text = emptyText(view); }
   else if (mode === 'looking') {
     const more = view.more!;
@@ -399,7 +408,7 @@ export function FirstScanView({ initial, compact = false }: { initial: FirstScan
     {mode === 'empty' && <dl className="first-scan-facts"><div><dt><Icon name="target" size={16}/>Nhu cầu</dt><dd>{scan.profile.name}</dd></div></dl>}
 
     <div className={`first-scan-actions ${finished ? 'is-finished' : ''}`}>
-      {mode === 'found' && <Link className="btn btn-primary btn-lg" href={`/app/bai-viet?nhu-cau=${scan.profile.id}`}>Xem danh sách lead <Icon name="arrow" size={18}/></Link>}
+      {mode === 'found' && <Link className="btn btn-primary btn-lg" href={`/app/bai-viet?nhu-cau=${scan.profile.id}`}>Xem cơ hội ngay <Icon name="arrow" size={18}/></Link>}
       {mode === 'empty' && <><Link className="btn btn-primary btn-lg" href="/app/bo-loc">Chỉnh nhu cầu</Link><Link className="btn btn-outline btn-lg" href="/app">Về trang Hôm nay</Link></>}
       {mode === 'paused' && <Link className="btn btn-primary" href="/app/bo-loc">Bật lại theo dõi</Link>}
       {(mode === 'open' || mode === 'looking' || mode === 'failed') && <>{!compact && <Link className="btn btn-outline" href="/app">Vào trang Hôm nay</Link>}<Link className="btn btn-ghost" href="/app/bo-loc">Chỉnh nhu cầu</Link></>}

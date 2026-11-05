@@ -83,6 +83,23 @@ export function readLead(content: string, need: string | null): LeadReading {
 }
 
 
+/**
+ * A source-linked opportunity is a real Facebook post even when QLead could not extract its text or poster. These
+ * helpers describe that honestly instead of hiding the lead or inventing details.
+ */
+export const CONTENT_MISSING_LABEL = 'Chưa trích xuất nội dung';
+export const CONTENT_MISSING_NOTE = 'Nội dung bài đăng chưa được trích xuất. Bạn có thể xem trực tiếp bài Facebook gốc.';
+export const AUTHOR_FALLBACK = 'Bài đăng Facebook';
+
+export function hasExtractedText(lead: Pick<LeadRecord, 'content' | 'title'>): boolean {
+  return Boolean(lead.content?.trim() || lead.title?.trim());
+}
+
+/** The poster or page name as stored, else a neutral label (never a guessed name). */
+export function leadName(lead: Pick<LeadRecord, 'author'>): string {
+  return lead.author?.trim() || AUTHOR_FALLBACK;
+}
+
 export async function copyText(value: string): Promise<boolean> {
   try { await navigator.clipboard.writeText(value); return true; }
   catch { return false; }
