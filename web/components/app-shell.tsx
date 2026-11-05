@@ -4,6 +4,11 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Brand, Icon } from './visuals';
+import { PwaIcon } from './pwa-icons';
+import { InstallHint, PwaRuntime } from './pwa-runtime';
+import { releaseSubscriptionOnLogout } from '@/lib/push-client';
+import '@/lib/install-prompt';
+import './pwa.css';
 
 export type ShellUser = { displayName: string; isDevSession: boolean; leadMonitoringStatus: 'active' | 'suspended'; isAdmin?: boolean };
 const SessionContext = createContext<ShellUser | null>(null);
@@ -45,7 +50,8 @@ function LogoutButton({ compact = false }: { compact?: boolean }) {
   const [busy, setBusy] = useState(false);
   async function logout() {
     setBusy(true);
-    try { await fetch('/api/auth/logout', { method: 'POST' }); } finally { window.location.assign('/dang-nhap'); }
+    // This device stops receiving the account's lead notifications before the session ends (bounded, never blocks logout).
+    try { await releaseSubscriptionOnLogout(); await fetch('/api/auth/logout', { method: 'POST' }); } finally { window.location.assign('/dang-nhap'); }
   }
   return <button type="button" className={`btn btn-ghost ${compact ? 'btn-sm' : 'btn-sm logout-btn'}`} onClick={logout} disabled={busy}>{busy ? 'Đang thoát…' : 'Đăng xuất'}</button>;
 }
@@ -81,7 +87,7 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     setPending(href);
   };
-  return <FrameContext.Provider value={true}><ShellChrome active={active} onNav={onNav}>{children}</ShellChrome></FrameContext.Provider>;
+  return <FrameContext.Provider value={true}><PwaRuntime/><ShellChrome active={active} onNav={onNav}>{path === '/app' && <InstallHint/>}{children}</ShellChrome></FrameContext.Provider>;
 }
 
 /**
@@ -96,6 +102,7 @@ export function AppShell({ children, active = 'Hôm nay' }: { children: React.Re
 
 function ShellChrome({ children, active, onNav }: { children: React.ReactNode; active: NavLabel; onNav?: (href: string) => (event: React.MouseEvent<HTMLAnchorElement>) => void }) {
   const user = useContext(SessionContext);
+  const path = usePathname();
   return <div className="app-layout">
     <a className="skip-link" href="#app-content">Bỏ qua điều hướng</a>
     <aside className="sidebar" aria-label="Điều hướng chính">
@@ -103,12 +110,13 @@ function ShellChrome({ children, active, onNav }: { children: React.ReactNode; a
       <nav className="side-nav">{navItems.map(item => <Link key={item.href} href={item.href} onClick={onNav?.(item.href)} className={active === item.label ? 'active' : ''} aria-current={active === item.label ? 'page' : undefined}><Icon name={item.icon}/>{item.label}</Link>)}</nav>
       <div className="sidebar-bottom">
         <div className="profile"><span className="avatar" aria-hidden="true"><Icon name="user" size={16}/></span><span><b>{user?.displayName ?? 'Khách'}</b><small>{user?.isDevSession ? 'Phiên DEV' : 'Đã đăng nhập'}</small></span></div>
+        <Link className={`side-settings${path === '/app/thong-bao' ? ' active' : ''}`} href="/app/thong-bao" aria-current={path === '/app/thong-bao' ? 'page' : undefined}><PwaIcon name="bell" size={18}/>Ứng dụng và thông báo</Link>
         {user?.isAdmin && <Link className="btn btn-outline btn-sm admin-entry" href="/admin/workers"><Icon name="lock" size={16}/>Quản trị</Link>}
         <LogoutButton/>
       </div>
     </aside>
     <div className="app-main">
-      <header className="app-topbar"><Brand href="/app"/>{user?.isAdmin && <Link className="btn btn-ghost btn-sm" href="/admin/workers">Quản trị</Link>}<LogoutButton compact/></header>
+      <header className="app-topbar"><Brand href="/app"/><Link className="topbar-bell" href="/app/thong-bao" aria-label="Ứng dụng và thông báo" aria-current={path === '/app/thong-bao' ? 'page' : undefined}><PwaIcon name="bell" size={20}/></Link>{user?.isAdmin && <Link className="btn btn-ghost btn-sm" href="/admin/workers">Quản trị</Link>}<LogoutButton compact/></header>
       {user?.isDevSession && <div className="preview-strip" role="note"><Icon name="info" size={16}/><span><b>Phiên đăng nhập nhanh DEV</b> · {user.displayName}. Dữ liệu thật từ Postgres cục bộ.</span></div>}
       {user?.leadMonitoringStatus === 'suspended' && <div className="monitoring-suspended" role="status"><Icon name="info" size={16}/><span><b>Tính năng tìm lead của tài khoản đang tạm dừng.</b> Bạn vẫn có thể xem lead và lịch sử đã lưu. Lượt tìm mới sẽ không được tạo.</span></div>}
       <main className="app-content" id="app-content">{children}</main>
