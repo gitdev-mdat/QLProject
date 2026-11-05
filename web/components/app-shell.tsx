@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Brand, Icon } from './visuals';
 
-export type ShellUser = { displayName: string; isDevSession: boolean; leadMonitoringStatus: 'active' | 'suspended' };
+export type ShellUser = { displayName: string; isDevSession: boolean; leadMonitoringStatus: 'active' | 'suspended'; isAdmin?: boolean };
 const SessionContext = createContext<ShellUser | null>(null);
 
 /** Set by app/app/layout.tsx from the server-side session; client pages read it for the shell. */
@@ -58,11 +58,12 @@ export function AppShell({ children, active = 'Hôm nay' }: { children: React.Re
       <nav className="side-nav">{navItems.map(item => <Link key={item.href} href={item.href} className={active === item.label ? 'active' : ''} aria-current={active === item.label ? 'page' : undefined}><Icon name={item.icon}/>{item.label}</Link>)}</nav>
       <div className="sidebar-bottom">
         <div className="profile"><span className="avatar" aria-hidden="true"><Icon name="user" size={16}/></span><span><b>{user?.displayName ?? 'Khách'}</b><small>{user?.isDevSession ? 'Phiên DEV' : 'Đã đăng nhập'}</small></span></div>
+        {user?.isAdmin && <Link className="btn btn-outline btn-sm admin-entry" href="/admin/workers"><Icon name="lock" size={16}/>Quản trị</Link>}
         <LogoutButton/>
       </div>
     </aside>
     <div className="app-main">
-      <header className="app-topbar"><Brand href="/app"/><LogoutButton compact/></header>
+      <header className="app-topbar"><Brand href="/app"/>{user?.isAdmin && <Link className="btn btn-ghost btn-sm" href="/admin/workers">Quản trị</Link>}<LogoutButton compact/></header>
       {user?.isDevSession && <div className="preview-strip" role="note"><Icon name="info" size={16}/><span><b>Phiên đăng nhập nhanh DEV</b> · {user.displayName}. Dữ liệu thật từ Postgres cục bộ.</span></div>}
       {user?.leadMonitoringStatus === 'suspended' && <div className="monitoring-suspended" role="status"><Icon name="info" size={16}/><span><b>Tính năng tìm lead của tài khoản đang tạm dừng.</b> Bạn vẫn có thể xem lead và lịch sử đã lưu. Lượt tìm mới sẽ không được tạo.</span></div>}
       <main className="app-content" id="app-content">{children}</main>

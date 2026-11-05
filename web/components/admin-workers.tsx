@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AdminHandoff, AdminOverview, AdminWorker } from '@/lib/server/admin';
 import { connectorFor, hookActivationPrompt, hookDeactivationPrompt, runPrompt, setupPrompt, type ConnectorProfile } from '@/lib/admin-prompts';
+import { primaryWorker } from '@/lib/muse-connect';
 import { MuseConnect } from './muse-connect';
 import { Icon } from './visuals';
 
 const TZ = 'Asia/Ho_Chi_Minh';
 const TECH_KEY = "qlead:admin:muse-tech-open";
+const SELECTED_KEY = 'qlead:admin:muse-selected';
 const timeFmt = new Intl.DateTimeFormat('vi-VN', { timeZone: TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 const at = (value: string | null | undefined) => (value ? timeFmt.format(new Date(value)) : 'Chưa có');
 
@@ -97,6 +99,32 @@ export function AdminWorkers({ initial }: { initial: AdminOverview }) {
   const conn = connectorFor(data.environment);
   const isProd = data.environment === 'production';
 
+  // The account shown in the main card: the admin's last choice (per browser), else the most relevant one.
+  const [selectedId, setSelectedId] = useState<string | null>(() => primaryWorker(initial.workers)?.id ?? null);
+  useEffect(() => { try { const saved = window.localStorage.getItem(SELECTED_KEY); if (saved) setSelectedId(saved); } catch { /* default selection */ } }, []);
+  const selected = data.workers.some(w => w.id === selectedId) ? selectedId : primaryWorker(data.workers)?.id ?? null;
+  const select = useCallback((id: string) => {
+    setSelectedId(id);
+    try { window.localStorage.setItem(SELECTED_KEY, id); } catch { /* per view only */ }
+    if (window.matchMedia('(max-width: 900px)').matches) requestAnimationFrame(() => document.querySelector('.mc-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }, []);
+  const showHandoff = useCallback(() => {
+    setTechOpen(true);
+    requestAnimationFrame(() => document.getElementById('handoff-h')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }, []);
+
+  /** The existing safe handoff: preview the current work, then create a preparation record. Nothing changes before confirm. */
+  async function reviewHandoff(sourceId: string, destinationId: string) {
+    try {
+      const s = await call('/api/admin/handoffs/preview', { sourceId, destinationId });
+      setConfirm({
+        title: `Chuẩn bị chuyển từ ${s.source.name} sang ${s.destination.name}`, confirmLabel: 'Tạo bản chuẩn bị',
+        lines: <SummaryView summary={s} note="Bước này chỉ ghi lại hiện trạng. Chưa có tài khoản nào bị thay đổi và QLead không gọi Muse."/>,
+        run: async () => act(() => call('/api/admin/handoffs', { sourceId, destinationId }), 'Đã tạo bản chuẩn bị chuyển đổi. Chưa có tài khoản nào bị thay đổi.').then(showHandoff),
+      });
+    } catch (e) { setError((e as Error).message); }
+  }
+
   return <div className="admin-page">
     <div className="mc-head">
       <div>
@@ -108,11 +136,11 @@ export function AdminWorkers({ initial }: { initial: AdminOverview }) {
     {error && <div className="admin-alert admin-alert-error" role="alert"><Icon name="info" size={18}/><span>{error}</span><button type="button" className="btn btn-ghost btn-sm" onClick={() => setError(null)}>Đóng</button></div>}
     {notice && <div className="admin-alert admin-alert-ok" role="status"><Icon name="check" size={18}/><span>{notice}</span></div>}
 
-    <MuseConnect data={data} actions={{
-      busy, onReload: reload, onAdd: () => setAdding(true),
+    <MuseConnect data={data} selectedId={selected} onSelect={select} actions={{
+      busy, onReload: reload, onAdd: () => setAdding(true), onHandoff: reviewHandoff, onShowHandoff: showHandoff,
       onActivate: w => setConfirm({
         title: `Cho phép ${w.name} nhận việc?`, confirmLabel: 'Cho phép nhận việc',
-        lines: <><p>QLead sẽ giao lượt tìm cho {w.name}. Việc này <b>không</b> tự bật Hook trong Muse: sau đó hãy dán lại prompt kết nối vào Muse MAIN để Muse kiểm tra Hook.</p></>,
+        lines: <><p>QLead sẽ giao lượt tìm mới cho {w.name}. Việc này <b>không</b> tự bật Hook trong Muse: sau đó hãy dán lại prompt kết nối vào Muse MAIN của tài khoản này để Muse bật Hook riêng của nó.</p></>,
         run: async () => act(() => call(`/api/admin/workers/${w.id}`, { action: 'activate' }), `${w.name} đã được phép nhận việc.`),
       }),
       onNewCredential: w => setConfirm({
@@ -124,15 +152,12 @@ export function AdminWorkers({ initial }: { initial: AdminOverview }) {
     }}/>
 
     <details className="tech-details" open={techOpen || Boolean(open)} onToggle={e => { const v = (e.currentTarget as HTMLDetailsElement).open; setTechOpen(v); try { window.localStorage.setItem(TECH_KEY, v ? "1" : "0"); } catch { /* per view only */ } }}>
-      <summary>Chi tiết kỹ thuật <small>worker, hàng đợi, chuyển đổi, prompt riêng lẻ</small></summary>
+      <summary>Chi tiết kỹ thuật <small>chuyển đổi, worker, hàng đợi, prompt riêng lẻ</small></summary>
       <div className="tech-details-body">
-    <div className="mc-actions"><button type="button" className="btn btn-outline btn-sm" onClick={() => setAdding(true)}><Icon name="plug" size={16}/>Thêm tài khoản Muse</button></div>
-
     {open ? <HandoffPanel handoff={open} workers={data.workers} baseUrl={baseUrl} conn={conn} busy={busy}
       onAction={(action, label, extra) => act(() => call(`/api/admin/handoffs/${open.id}`, { action, ...extra }), label)}
       onConfirm={setConfirm}/>
-      : <StartHandoff workers={data.workers} busy={busy} onError={setError} onConfirm={setConfirm}
-        onPrepare={(sourceId, destinationId) => act(() => call('/api/admin/handoffs', { sourceId, destinationId }), 'Đã tạo bản chuẩn bị chuyển đổi. Chưa có tài khoản nào bị thay đổi.')}/>}
+      : <StartHandoff workers={data.workers} busy={busy} onReview={reviewHandoff}/>}
 
     <section className="admin-section" aria-labelledby="workers-h">
       <h2 id="workers-h">Danh sách tài khoản</h2>
@@ -171,7 +196,7 @@ export function AdminWorkers({ initial }: { initial: AdminOverview }) {
       </div>
     </details>
 
-    {adding && <AddWorker busy={busy} onClose={() => setAdding(false)} onCreated={async (name, credential) => { setAdding(false); setSecret({ workerName: name, credential }); await reload(); }} onError={setError}/>}
+    {adding && <AddWorker busy={busy} suggestedName={nextWorkerName(data.workers)} onClose={() => setAdding(false)} onCreated={async (id, name, credential) => { setAdding(false); setSecret({ workerName: name, credential }); await reload(); select(id); }} onError={setError}/>}
     {secret && <Modal title="Mã bảo mật mới (chỉ hiện một lần)" onClose={() => setSecret(null)}>
       <p>Copy credential của <b>{secret.workerName}</b> rồi dán thẳng vào <b>Secure Credentials Store</b> của connector "{conn.connector}" trong Muse. Không dán vào chat, prompt hay file. Đóng hộp thoại này thì không xem lại được nữa; nếu làm mất, hãy tạo lại credential.</p>
       <CopyBlock text={secret.credential} label="Credential"/>
@@ -270,24 +295,13 @@ function HookGuide({ worker, baseUrl, conn }: { worker: AdminWorker; baseUrl: st
   </>;
 }
 
-function StartHandoff({ workers, busy, onPrepare, onConfirm, onError }: {
-  workers: AdminWorker[]; busy: boolean; onPrepare: (s: string, d: string) => Promise<void>; onConfirm: (c: Confirm) => void; onError: (m: string) => void;
-}) {
+function StartHandoff({ workers, busy, onReview }: { workers: AdminWorker[]; busy: boolean; onReview: (sourceId: string, destinationId: string) => Promise<void> }) {
   const active = workers.find(w => w.status === 'active' || w.status === 'draining');
   const standby = workers.find(w => w.id !== active?.id && w.state === 'ready') ?? workers.find(w => w.id !== active?.id);
   const [source, setSource] = useState(active?.id ?? workers[0]?.id ?? '');
   const [destination, setDestination] = useState(standby?.id ?? '');
   if (workers.length < 2) return <section className="admin-section handoff-start"><h2>Chuẩn bị chuyển đổi</h2><p className="muted-text">Cần ít nhất hai tài khoản Muse để chuyển việc.</p></section>;
-  async function review() {
-    try {
-      const s = await call('/api/admin/handoffs/preview', { sourceId: source, destinationId: destination });
-      onConfirm({
-        title: `Chuẩn bị chuyển từ ${s.source.name} sang ${s.destination.name}`, confirmLabel: 'Tạo bản chuẩn bị',
-        lines: <SummaryView summary={s} note="Bước này chỉ ghi lại hiện trạng. Chưa có tài khoản nào bị thay đổi và QLead không gọi Muse."/>,
-        run: async () => onPrepare(source, destination),
-      });
-    } catch (e) { onError((e as Error).message); }
-  }
+  const review = () => onReview(source, destination);
   return <section className="admin-section handoff-start" aria-labelledby="start-h">
     <h2 id="start-h">Chuẩn bị chuyển đổi</h2>
     <p className="muted-text">Chọn tài khoản nguồn và tài khoản đích, xem lại hiện trạng công việc rồi xác nhận. Có thể chuẩn bị trước (ví dụ 23:30) và chuyển vào lúc nửa đêm.</p>
@@ -398,8 +412,14 @@ function HandoffPanel({ handoff: h, workers, baseUrl, conn, busy, onAction, onCo
   </section>;
 }
 
-function AddWorker({ busy, onClose, onCreated, onError }: { busy: boolean; onClose: () => void; onCreated: (name: string, credential: string) => Promise<void>; onError: (m: string) => void }) {
-  const [name, setName] = useState('Muse Worker 02');
+/** "Muse Worker 0N" after the highest number already used, so a new account never reuses an old name. */
+function nextWorkerName(workers: AdminWorker[]): string {
+  const used = workers.map(w => Number(/(\d+)\s*$/.exec(w.name)?.[1] ?? 0));
+  return `Muse Worker ${String(Math.max(0, ...used) + 1).padStart(2, '0')}`;
+}
+
+function AddWorker({ busy, suggestedName, onClose, onCreated, onError }: { busy: boolean; suggestedName: string; onClose: () => void; onCreated: (id: string, name: string, credential: string) => Promise<void>; onError: (m: string) => void }) {
+  const [name, setName] = useState(suggestedName);
   const [sources, setSources] = useState('social.search');
   const [maxJobs, setMaxJobs] = useState(2);
   const [saving, setSaving] = useState(false);
@@ -407,15 +427,17 @@ function AddWorker({ busy, onClose, onCreated, onError }: { busy: boolean; onClo
     e.preventDefault(); setSaving(true);
     try {
       const r = await call('/api/admin/workers', { name: name.trim(), sources: sources.split(',').map(s => s.trim()).filter(Boolean), maxJobs });
-      await onCreated(r.worker.name, r.credential);
+      await onCreated(r.worker.id, r.worker.name, r.credential);
     } catch (err) { onError((err as Error).message); onClose(); } finally { setSaving(false); }
   }
   return <Modal title="Thêm tài khoản Muse" onClose={onClose}>
     <form className="add-worker" onSubmit={submit}>
-      <p>Mỗi tài khoản Muse chỉ cần kết nối một lần. Tài khoản mới ở trạng thái <b>tạm dừng</b> và không nhận việc cho tới khi bạn chuyển việc sang nó.</p>
+      <p>Mỗi tài khoản Muse là một worker riêng. Worker mới bắt đầu ở trạng thái <b>tạm dừng</b>: tài khoản đang nhận việc, công việc đang chờ và lịch sử không bị thay đổi. Mã bảo mật sẽ hiện <b>một lần</b> ngay sau khi tạo.</p>
       <label className="field"><span>Tên tài khoản</span><input value={name} onChange={e => setName(e.target.value)} required maxLength={200}/></label>
+      <details className="add-worker-advanced"><summary>Tuỳ chọn nâng cao</summary>
       <label className="field"><span>Nguồn được phép</span><input value={sources} onChange={e => setSources(e.target.value)} required/><small>Chỉ ghi những nguồn Facebook mà tài khoản này thật sự truy cập được, phân cách bằng dấu phẩy. Tài khoản mới không kế thừa quyền Facebook của tài khoản cũ.</small></label>
       <label className="field"><span>Số job tối đa mỗi lần nhận</span><input type="number" min={1} max={10} value={maxJobs} onChange={e => setMaxJobs(Number(e.target.value))}/></label>
+      </details>
       <div className="modal-actions"><button type="button" className="btn btn-ghost" onClick={onClose}>Huỷ</button><button type="submit" className="btn btn-primary" disabled={busy || saving}>{saving ? 'Đang tạo…' : 'Tạo tài khoản'}</button></div>
     </form>
   </Modal>;

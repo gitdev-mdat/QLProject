@@ -35,7 +35,8 @@ const worker = (t: string) => ({
   status: () => app.inject({ method: 'GET', url: '/api/worker/status', headers: { authorization: `Bearer ${t}` } }),
   claim: async () => (await app.inject({ method: 'POST', url: '/api/worker/jobs/claim', headers: { authorization: `Bearer ${t}` }, payload: { max_jobs: 2 } })).json().jobs as any[],
   submit: (j: any, posts: Array<{ url: string; content: string }>) => app.inject({ method: 'POST', url: `/api/worker/jobs/${j.job_id}/results`, headers: { authorization: `Bearer ${t}` }, payload: {
-    event: 'facebook_scan_completed', source: 'muse', configuration_version: j.configuration_version, scan_id: j.scan_id, scanned_at: new Date().toISOString(),
+    // attempt_no is required for retried/released jobs since the attempt-identity contract (src/worker-api.ts).
+    event: 'facebook_scan_completed', source: 'muse', configuration_version: j.configuration_version, scan_id: j.scan_id, attempt_no: j.attempt_no, scanned_at: new Date().toISOString(),
     posts: posts.map(p => ({ url: p.url, content: p.content, author: 'E2E Page', published_at: new Date(Date.now() - 3600_000).toISOString(), platform: 'facebook', collected_via: 'qlead_shared_worker' })),
     stats: { total_found: posts.length }, errors: [] } }),
 });
@@ -176,7 +177,8 @@ try {
   });
   await check('16 refresh keeps the handoff state', async () => {
     await p.reload(); await p.getByText('Chờ Muse mới bắt đầu').first().waitFor();
-    assert(await p.getByText('Prompt một chu kỳ làm việc').isVisible(), 'activation prompt visible');
+    // Since 48b6120 the destination's work cycle is embedded in its Hook activation prompt.
+    assert(await p.getByText('Prompt kích hoạt Hook · E2E Muse 02').isVisible(), 'activation prompt visible');
     const prompt = await p.locator('.copy-block pre').first().innerText();
     assert(prompt.includes('https://qlead-e2e.example') && !prompt.includes(tok.w2) && !prompt.includes(tok.w1), 'prompt must have URL and no credential');
   });
@@ -273,7 +275,7 @@ try {
     await p.getByRole('button', { name: 'Thêm tài khoản Muse' }).click();
     await p.getByRole('dialog').getByLabel('Tên tài khoản').fill('E2E Muse 03');
     await p.getByRole('dialog').getByRole('button', { name: 'Tạo tài khoản' }).click();
-    const reveal = p.getByRole('dialog', { name: 'Credential mới (chỉ hiện một lần)' });
+    const reveal = p.getByRole('dialog', { name: 'Mã bảo mật mới (chỉ hiện một lần)' });
     await reveal.waitFor();
     const credential = (await reveal.locator('pre').innerText()).trim();
     assert(/^[A-Za-z0-9_-]{40,}$/.test(credential), 'credential format');

@@ -63,13 +63,17 @@ Step 2. Process each job in "jobs" separately, one after another:
 Step 3. Report per job: job_id, attempt_no, exact search phrase strategies and location used, start and end time, result count, posts submitted, every HTTP status, and any errors or limits. For each candidate inspected, record its Facebook URL, returned publication time (or "not returned"), evidence for business type/opening/recruiting/expansion/location, and whether it was submitted or excluded with a short reason. If the owner gives a benchmark post or terms, state whether social.search actually returned it; use "not observed" when absent and never infer it was searched from the count alone. Report usage or credit information only if Muse shows it; otherwise say "not shown".`;
 }
 
-/** Configures the long-lived Personal Agent Hook from Muse main account; it is never enabled by QLead itself. */
+/**
+ * Configures the long-lived Personal Agent Hook in the Muse MAIN account that owns this worker; it is never enabled
+ * by QLead itself. Each Muse account has its own Hook for its own environment: the Production account polls the
+ * Production wake endpoint, the Local account polls the ngrok one. No Hook is ever moved between accounts.
+ */
 export function hookActivationPrompt(workerName: string, baseUrl: string, c: ConnectorProfile = LOCAL): string {
   const root = baseUrl.replace(/\/+$/, '');
-  if (c.environment === 'production') return productionHookPrompt(workerName, root);
-  return `Chỉ từ Muse MAIN account, cấu hình hoặc cập nhật Muse Personal Agent Hook hiện có "qlead-worker-wake". Đây là Personal Agent Hook, không phải Muse Code lifecycle hook. Chỉ bật sau khi người quản trị đã phê duyệt và QLead Admin xác nhận ${workerName} là worker ACTIVE được chỉ định. Không bật hoặc polling từ Muse 02/worker standby. Cập nhật Hook hiện có; không tạo Hook trùng.
+  const header = c.ngrokHeader ? ', chỉ kèm header ngrok-skip-browser-warning: true' : ', không kèm header nào';
+  return `Chỉ từ Muse MAIN account đang giữ connector "${c.connector}", cấu hình hoặc cập nhật Muse Personal Agent Hook hiện có "qlead-worker-wake" của chính account này. Đây là Personal Agent Hook, không phải Muse Code lifecycle hook. Chỉ bật khi QLead Admin xác nhận ${workerName} là worker ACTIVE. Không bật hoặc polling khi worker này đang tạm dừng/dự phòng. Nếu Hook đã có thì cập nhật nó; không tạo Hook trùng. Không đụng tới Hook hay connector của account Muse khác.
 
-URL detector: GET ${root}/api/public/worker-wake mỗi 30 giây, chỉ kèm header ngrok-skip-browser-warning: true. Không gửi Authorization, cookie, query string, tenant data hay credential tới endpoint công khai. Detector chỉ đọc tín hiệu, tuyệt đối không claim job. HTTP error hoặc 429 thì không đánh thức agent; chờ chu kỳ polling bình thường tiếp theo, không tự tạo vòng retry.
+URL detector: GET ${root}/api/public/worker-wake mỗi 30 giây${header}. Không gửi Authorization, cookie, query string, tenant data hay credential tới endpoint công khai. Detector chỉ đọc tín hiệu, tuyệt đối không claim job. HTTP error hoặc 429 thì không đánh thức agent; chờ chu kỳ polling bình thường tiếp theo, không tự tạo vòng retry.
 
 Dùng hook_state_get và hook_state_set với state key cố định qlead_worker_wake_v1 để lưu bền last_processed_generation (và worker đích) qua các lần poll, restart, tắt/bật Hook và handoff. Không reset state khi tạm dừng. Bảo đảm các lần detector chạy tuần tự, không chồng lấn.
 - wake=false: không làm gì và không đổi state.
@@ -80,7 +84,7 @@ Dùng hook_state_get và hook_state_set với state key cố định qlead_worke
 Không tự tắt Hook sau lượt thành công: Hook phải tiếp tục nhận những generation mới. Nếu một lượt lỗi trước khi claim, không retry cùng generation. Backend chỉ tạo tối đa hai generation recovery mới cho cùng việc chưa được claim, sau 5 và 15 phút; xử lý từng marker một lần, không tự đặt retry khác. Backend chỉ phát wake khi worker ACTIVE duy nhất còn capacity (số lease hợp lệ nhỏ hơn max_jobs_per_claim) và có việc đủ điều kiện; một lease hợp lệ không chặn wake nếu vẫn còn capacity. Khi hết capacity, không có việc đủ điều kiện, worker paused, draining, unavailable hoặc không còn là worker ACTIVE duy nhất thì không chạy agent. Standby không được có Hook polling bật.
 
 Với mỗi generation mới, chạy đúng một chu kỳ QLead hiện có dưới đây và để agent hoàn tất:
-${runPrompt(workerName, root, 1)}
+${runPrompt(workerName, root, 1, c)}
 
 Sau mỗi lượt, dùng hooks.logs để ghi nhận generation, số claim, trạng thái job, HTTP acknowledgment và usage/quota nếu Muse thực sự hiển thị. Không suy đoán quota, không sửa credential hoặc lịch. Hook tiếp tục hoạt động cho generation mới cho tới khi quản trị viên tắt thủ công. Việc tạo/bật phải được xác nhận trong Muse MAIN account; QLead không thể tự xác minh trạng thái Hook.`;
 }
@@ -90,89 +94,47 @@ export function hookDeactivationPrompt(workerName: string, c: ConnectorProfile =
   return `Từ Muse MAIN account, dùng hooks.disable để tắt/tạm dừng Muse Personal Agent Hook "qlead-worker-wake" nhắm tới ${workerName}. Đây là Personal Agent Hook, không phải Muse Code lifecycle hook. Xác nhận trong Hook settings và hooks.logs rằng không còn poll kế tiếp hoặc Hook trùng. Giữ nguyên state key qlead_worker_wake_v1 qua hook_state_get/hook_state_set để có thể bật lại mà không mất dedupe. Không xóa connector "${c.connector}" hoặc credential bảo mật. Không hủy agent đang giữ lease QLead hợp lệ; để nó hoàn tất và gửi kết quả. Chỉ khi người quản trị yêu cầu xóa, dùng hooks.remove sau khi đã tắt và xác nhận không còn task đang chạy. QLead không thể xác minh hoặc đổi trạng thái Hook.`;
 }
 
-/**
- * Production Hook: the ONE existing Personal Agent Hook polls the environment-aware dispatcher. Production work wins;
- * local work is relayed only when the dispatcher is configured to do so. The woken agent picks the connector from the
- * response's `environment`, so credentials never cross environments.
- */
-function productionHookPrompt(workerName: string, root: string): string {
-  const prod = connectorFor('production');
-  return `Chỉ từ Muse MAIN account, cập nhật Muse Personal Agent Hook hiện có "qlead-worker-wake" (Personal Agent Hook, không phải Muse Code lifecycle hook). Cập nhật Hook hiện có; không tạo Hook trùng, không bật polling song song.
-
-URL detector: GET ${root}/api/public/worker-dispatch mỗi 30 giây. Không gửi Authorization, cookie, query string, tenant data hay credential tới endpoint công khai. Detector chỉ đọc tín hiệu, tuyệt đối không claim job. HTTP error hoặc 429 thì không đánh thức agent.
-
-Dùng hook_state_get và hook_state_set với state key cố định qlead_worker_wake_v1 để lưu last_processed_generation. Generation có tiền tố môi trường ("production:" hoặc "local:"), nên giữ nguyên state cũ là an toàn.
-- wake=false: không làm gì.
-- wake=true nhưng thiếu generation hoặc environment hợp lệ: không chạy agent; ghi Hook log.
-- generation trùng last_processed_generation: bỏ qua.
-- generation mới: lưu generation bằng hook_state_set trước, rồi chạy đúng một lượt theo environment:
-  • environment = "production": dùng connector "${prod.connector}" và chu kỳ Production bên dưới.
-  • environment = "local": dùng connector "QLead Worker" (URL ngrok đã lưu trong connector đó, kèm header ngrok-skip-browser-warning: true) và chu kỳ Local như trước.
-  Không bao giờ dùng credential của môi trường này cho môi trường kia.
-
-Chu kỳ Production (${workerName}):
-${runPrompt(workerName, root, 1, prod)}
-
-Sau mỗi lượt, ghi hooks.logs: generation, environment, số claim, HTTP status. Không suy đoán quota. QLead không thể tự xác minh trạng thái Hook.`;
-}
-
-export type MuseConnectInput = {
-  environment: QleadEnv;
-  baseUrl: string;
-  workerName: string;
-  /** Whether the production dispatcher also relays the local environment's wake signal. */
-  dispatchRelaysLocal: boolean;
-};
+export type MuseConnectInput = { environment: QleadEnv; baseUrl: string; workerName: string };
 
 /**
- * The single, self-contained onboarding prompt the owner pastes into Muse MAIN. Idempotent: every step checks first
- * and only does what is missing, so the same prompt can be pasted again after each owner action. It contains no
- * credential; the only secret travels from QLead's one-time display straight into the connector's secure field.
+ * The single, self-contained onboarding prompt the owner pastes into the Muse MAIN account that will run this worker.
+ * Idempotent: every step checks first and only does what is missing, so the same prompt can be pasted again after
+ * each owner action. It contains no credential; the only secret travels from QLead's one-time display straight into
+ * the connector's secure field. The Hook it sets up belongs to this Muse account only; no Hook is moved.
  */
-export function museConnectPrompt({ environment, baseUrl, workerName, dispatchRelaysLocal }: MuseConnectInput): string {
+export function museConnectPrompt({ environment, baseUrl, workerName }: MuseConnectInput): string {
   const root = baseUrl.replace(/\/+$/, '');
   const c = connectorFor(environment);
   const envLabel = environment === 'production' ? 'QLead Production' : 'QLead Local';
   const avoid = c.otherConnectors.map(n => `"${n}"`).join(', ');
   const extraHeader = c.ngrokHeader ? ' Kèm header ngrok-skip-browser-warning: true.' : '';
-  const hookStep = environment === 'production'
-    ? `BƯỚC 4 — Hook (đọc trước, chỉ sửa khi tôi xác nhận)
-Đọc các Personal Agent Hook hiện có liên quan đến QLead (thường tên "qlead-worker-wake"): tên, đang bật hay tắt, URL detector, số lượng. Báo lại đầy đủ. Không tạo Hook mới, không tạo Hook thứ hai.
-- Nếu URL detector đã là ${root}/api/public/worker-dispatch và agent đã chọn connector theo environment: báo "Hook đã tương thích" và dừng.
-- Nếu Hook đang GET một URL ngrok/local (/api/public/worker-wake): CHƯA SỬA. ${dispatchRelaysLocal
-      ? 'Giải thích cho tôi: sau khi đổi, Hook sẽ phục vụ cả Production và Local qua dispatcher (Production ưu tiên).'
-      : 'Giải thích cho tôi: Hook này đang đánh thức Local (Muse Worker 01). Dispatcher Production hiện CHƯA được cấu hình để chuyển tiếp tín hiệu Local, nên nếu đổi URL thì Local sẽ ngừng được đánh thức.'} Chỉ sửa khi tôi trả lời đúng câu: ĐỒNG Ý CHUYỂN HOOK SANG PRODUCTION
-  Khi tôi đã xác nhận, cập nhật Hook hiện có theo đúng nội dung sau (không tạo Hook mới):
----
-${productionHookPrompt(workerName, root)}
----
-- Nếu không có Hook QLead nào: không tự tạo. Báo lại để tôi quyết định.`
-    : `BƯỚC 4 — Hook (chỉ đọc)
-Đọc Personal Agent Hook "qlead-worker-wake": đang bật hay tắt, URL detector. Báo lại. Không tạo, sửa hay tắt Hook trong prompt này.`;
+  const wakeUrl = `${root}/api/public/worker-wake`;
 
   return `QLEAD — KẾT NỐI MUSE (${envLabel})
-Bạn là Muse MAIN. Hãy thiết lập kết nối giữa Muse và ${envLabel} cho worker "${workerName}" bằng chính các công cụ bạn có. Prompt này đầy đủ, không dựa vào hội thoại hay hướng dẫn nào khác. Có thể dán lại nhiều lần: mỗi bước kiểm tra trước, chỉ làm phần còn thiếu.
+Bạn là Muse MAIN của account Muse sẽ chạy worker "${workerName}". Hãy thiết lập kết nối giữa account này và ${envLabel} bằng chính các công cụ bạn có. Prompt này đầy đủ, không dựa vào hội thoại hay hướng dẫn nào khác. Có thể dán lại nhiều lần: mỗi bước kiểm tra trước, chỉ làm phần còn thiếu.
 
 THÔNG TIN MÔI TRƯỜNG
 - Môi trường: ${envLabel}
 - API QLead: ${root}
 - Worker: ${workerName}
 - Connector dành riêng: "${c.connector}" — base URL ${root}, xác thực Bearer token lấy từ ô bí mật (secure credential store) của connector.${extraHeader}
-- KHÔNG ĐỘNG VÀO các connector ${avoid}: không đọc, sửa, xoá, sao chép hay dùng credential của chúng cho môi trường này.
+- Hook riêng của account này: "qlead-worker-wake", GET ${wakeUrl}.
+- KHÔNG ĐỘNG VÀO các connector ${avoid} và Hook của account Muse khác: không đọc, sửa, xoá, sao chép hay dùng credential của chúng.
 
 QUY TẮC BẢO MẬT
 - Credential của QLead chỉ được nhập vào ô bí mật của connector "${c.connector}". Không bao giờ yêu cầu tôi dán credential vào chat. Nếu tôi lỡ dán, không nhắc lại nó và bảo tôi tạo mã mới trong QLead.
 - Không in, tóm tắt, ghi log hay báo cáo credential, kể cả một phần.
 - Trong prompt này: không gọi /api/worker/jobs/claim, không tìm Facebook, không tạo lịch chạy.
 
-BƯỚC 0 — Kiểm tra khả năng
-Liệt kê ngắn gọn công cụ bạn THẬT SỰ có để: (a) xem/tạo connector, (b) gửi HTTP qua connector, (c) xem/sửa Personal Agent Hook. Không giả định công cụ nào tồn tại.
+BƯỚC 0 — Kiểm tra khả năng và đúng account
+Liệt kê ngắn gọn công cụ bạn THẬT SỰ có để: (a) xem/tạo connector, (b) gửi HTTP qua connector, (c) xem/tạo/sửa Personal Agent Hook. Không giả định công cụ nào tồn tại.
+Nếu account này đã có connector ${avoid}, hoặc có Hook QLead trỏ tới URL khác ${wakeUrl}: dừng và báo "account này có vẻ đang phục vụ môi trường khác". Không sửa gì.
 
 BƯỚC 1 — Connector "${c.connector}"
 - Đã tồn tại: kiểm tra base URL đúng ${root}. Nếu sai, báo lại; không tự sửa connector đã có credential.
 - Chưa có và bạn có công cụ tạo connector: tạo với tên và base URL trên, xác thực Bearer từ ô bí mật.
 - Chưa có và bạn không có công cụ đó: dừng, chỉ nói đúng một việc tôi cần làm tay: tạo custom connector tên "${c.connector}", base URL ${root}.
-- Connector chưa có credential: nhờ tôi nhập vào ô bí mật của connector. Tôi lấy mã ở QLead Admin → Kết nối Muse → "Tạo mã bảo mật" (chỉ hiện một lần). Chờ tôi xác nhận đã nhập rồi mới sang bước 2.
+- Connector chưa có credential: nhờ tôi nhập vào ô bí mật của connector. Tôi lấy mã ở QLead Admin → Kết nối Muse → chọn "${workerName}" → "Tạo mã bảo mật" (chỉ hiện một lần). Chờ tôi xác nhận đã nhập rồi mới sang bước 2.
 
 BƯỚC 2 — Xác minh chỉ đọc (đúng một request)
 GET ${root}/api/worker/status qua connector "${c.connector}", bằng HTTP client trực tiếp (không dùng Browser).${extraHeader} Chỉ thử lại 1 lần nếu timeout hoặc 5xx.
@@ -181,17 +143,25 @@ GET ${root}/api/worker/status qua connector "${c.connector}", bằng HTTP client
 - Mã khác: báo mã HTTP và body (không kèm header).
 
 BƯỚC 3 — Trạng thái nhận việc (từ trường "status" ở bước 2)
-- Khác "active": báo "Đã xác minh, worker đang tạm dừng" rồi dừng. Tôi sẽ bấm "Cho phép nhận việc" trong QLead và dán lại prompt này.
+- Khác "active": báo "Đã xác minh, worker chưa được phép nhận việc" rồi dừng. Không tạo hay bật Hook khi worker chưa active, để không polling vô ích. Tôi sẽ bấm "Cho phép nhận việc" trong QLead và dán lại prompt này.
 - "active": sang bước 4.
 
-${hookStep}
+BƯỚC 4 — Hook riêng của account này
+Đọc các Personal Agent Hook hiện có trong account này. Account này chỉ được có tối đa MỘT Hook QLead.
+- Đã có "qlead-worker-wake" GET ${wakeUrl}: kiểm tra đang bật; nếu đang tắt thì bật lại. Không tạo Hook thứ hai.
+- Chưa có và bạn có công cụ tạo Hook: tạo đúng một Hook theo cấu hình bên dưới.
+- Chưa có và bạn không có công cụ đó: chỉ nói đúng một việc tôi cần làm tay: tạo Hook theo cấu hình bên dưới.
+Cấu hình Hook:
+---
+${hookActivationPrompt(workerName, root, c)}
+---
 
 BÁO CÁO CUỐI (luôn trả lời đúng mẫu này)
 - Công cụ có sẵn: …
 - Connector "${c.connector}": đã có / vừa tạo / cần tôi tạo tay
 - Credential trong ô bí mật: đã có / chưa có (không in giá trị)
 - Xác minh GET /api/worker/status: HTTP … · name … · status …
-- Hook: …
+- Hook "qlead-worker-wake": đã có / vừa tạo / chưa tạo vì worker chưa active / cần tôi tạo tay · đang bật hay tắt
 - Việc tôi cần làm tiếp (nếu có): chỉ nêu đúng việc bắt buộc.
 Không tuyên bố đã kết nối thành công nếu bước 2 không trả về 200.`;
 }
