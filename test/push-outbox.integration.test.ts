@@ -20,7 +20,7 @@ const migrationNames = [
   '005_lead_workflow.sql', '006_shared_workers.sql', '007_worker_handoffs.sql', '008_group_requests.sql',
   '009_search_profile_details.sql', '010_user_accounts.sql', '011_initial_search_jobs.sql', '012_natural_language_search.sql',
   '013_account_lead_monitoring.sql', '014_admin_user_deletion_audit.sql', '015_initial_discovery_followup.sql',
-  '016_add_summary_vi_to_facebook_posts.sql', '20261105121616_push_notifications.sql',
+  '016_add_summary_vi_to_facebook_posts.sql', '017_push_notifications.sql',
 ];
 const realAgentIds = ['a366abd8-4e93-46dc-be80-bbf3df2af06d', 'e84ffff9-fb61-4887-a19a-6fc452a1f66c'];
 const token = randomBytes(32).toString('base64url');

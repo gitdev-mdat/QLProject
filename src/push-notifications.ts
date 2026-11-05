@@ -116,7 +116,9 @@ function allowedPushHost(hostname: string): boolean {
     || host === 'push.services.mozilla.com'
     || host.endsWith('.push.services.mozilla.com')
     || host === 'push.opera.com'
-    || host.endsWith('.push.opera.com');
+    || host.endsWith('.push.opera.com')
+    // Microsoft Edge on Windows subscribes through WNS (e.g. wns2-par02p.notify.windows.com).
+    || host.endsWith('.notify.windows.com');
 }
 
 export function encryptPushSubscription(subscription: PushSubscriptionInput): string {

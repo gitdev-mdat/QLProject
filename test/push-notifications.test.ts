@@ -50,6 +50,8 @@ test('push endpoint validation allows known HTTPS push services and rejects arbi
   withEnv({ NODE_ENV: 'production', VERCEL: '1', QLEAD_ENVIRONMENT: 'production', QLEAD_PUSH_ALLOW_LOCAL_ENDPOINTS: undefined }, () => {
     assert.equal(isAllowedPushEndpoint(fixtureSubscription.endpoint), true);
     assert.equal(isAllowedPushEndpoint('https://web.push.apple.com/synthetic'), true);
+    assert.equal(isAllowedPushEndpoint('https://wns2-par02p.notify.windows.com/w/?token=synthetic'), true);
+    assert.equal(isAllowedPushEndpoint('https://notify.windows.com.attacker.example/w'), false);
     assert.equal(isAllowedPushEndpoint('https://attacker.example/push'), false);
     assert.equal(isAllowedPushEndpoint('http://127.0.0.1:8888/push'), false);
     assert.equal(isAllowedPushEndpoint('https://user:pass@fcm.googleapis.com/push'), false);

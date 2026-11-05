@@ -28,6 +28,19 @@ const router = {
   get: (path: string, handler: Handler) => { routes.push({ method: 'GET', ...compile(path), handler }); },
   post: (path: string, handler: Handler) => { routes.push({ method: 'POST', ...compile(path), handler }); },
 };
+/**
+ * Retry pass for the push outbox. The Vercel Hobby plan only allows a daily Cron, so due retries are also drained
+ * after Muse's own frequent requests (dispatch/wake polls, claims, results): at most once a minute per instance, after
+ * the response is sent, and never affecting the worker reply. The daily Cron stays as a backstop.
+ */
+let lastOpportunisticDrain = 0;
+function scheduleOpportunisticDrain() {
+  const now = Date.now();
+  if (now - lastOpportunisticDrain < 60_000) return;
+  lastOpportunisticDrain = now;
+  try { after(() => drainPushNotifications({ limit: 5 }).catch(() => undefined)); } catch { /* outside a request scope */ }
+}
+
 const registered = Promise.all([
   workerRoutes(router as any, { onPushNotificationQueued: (outboxId) => { after(() => drainPushNotifications({ outboxId, limit: 25 })); } }),
   wakeSignalRoutes(router as any),
@@ -52,6 +65,7 @@ function clientIp(request: NextRequest): string {
 
 export async function handleWorkerRoute(request: NextRequest): Promise<Response> {
   await registered;
+  scheduleOpportunisticDrain();
   const path = new URL(request.url).pathname.replace(/\/+$/, '');
   const method = request.method === 'HEAD' ? 'GET' : request.method;
   const candidates = routes.filter(r => r.pattern.test(path));
