@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { SessionProvider } from '@/components/app-shell';
+import { AppFrame, SessionProvider } from '@/components/app-shell';
 import { needsOnboarding } from '@/lib/server/accounts';
 import { isAdmin } from '@/lib/server/admin';
 import { requireSession } from '@/lib/server/session';
@@ -8,10 +8,12 @@ import { requireSession } from '@/lib/server/session';
  * Every /app route requires a valid server-side session; otherwise redirect to the login page. A newly registered
  * customer who has not saved a first search request is sent back to onboarding. Admins (server-side allowlist) are
  * not forced through customer onboarding, so /app/admin and the shell's Admin link work for a fresh admin account.
+ * The navigation frame lives here so it stays mounted between /app routes; pages render only their content, and
+ * loading.tsx below fills <main> while a destination's data loads. Each page still checks the session itself.
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await requireSession();
   const admin = isAdmin(session.userId);
   if (!admin && session.leadMonitoringStatus === 'active' && await needsOnboarding(session.userId)) redirect('/bat-dau');
-  return <SessionProvider user={{ displayName: session.displayName, isDevSession: session.createdVia === 'dev_quick_login', leadMonitoringStatus: session.leadMonitoringStatus, isAdmin: admin }}>{children}</SessionProvider>;
+  return <SessionProvider user={{ displayName: session.displayName, isDevSession: session.createdVia === 'dev_quick_login', leadMonitoringStatus: session.leadMonitoringStatus, isAdmin: admin }}><AppFrame>{children}</AppFrame></SessionProvider>;
 }

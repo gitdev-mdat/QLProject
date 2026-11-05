@@ -1,0 +1,491 @@
+{
+  "summary": {
+    "label": "after-hnd1",
+    "base": "http://127.0.0.1:3053",
+    "width": 1440,
+    "browserLatencyMs": 150,
+    "steps": 42,
+    "reloads": 0,
+    "shellRemounts": 0,
+    "timeouts": 0,
+    "cold": {
+      "feedback": 5,
+      "content": 337,
+      "contentP95": 648
+    },
+    "warm": {
+      "feedback": 8,
+      "content": 323,
+      "contentP95": 407
+    },
+    "all": {
+      "feedbackP95": 32,
+      "contentMedian": 329,
+      "contentP95": 438
+    }
+  },
+  "steps": [
+    {
+      "from": "/app",
+      "to": "/app/bai-viet",
+      "how": "nav",
+      "round": 1,
+      "feedback": 5,
+      "url": 26,
+      "content": 452,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/bai-viet",
+      "to": "/app",
+      "how": "nav",
+      "round": 1,
+      "feedback": 5,
+      "url": 28,
+      "content": 333,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app",
+      "to": "/app/bo-loc",
+      "how": "nav",
+      "round": 1,
+      "feedback": 4,
+      "url": 11,
+      "content": 428,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/bo-loc",
+      "to": "/app/de-xuat-nhom",
+      "how": "nav",
+      "round": 1,
+      "feedback": 5,
+      "url": 17,
+      "content": 345,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/de-xuat-nhom",
+      "to": "/app/bai-viet",
+      "how": "nav",
+      "round": 1,
+      "feedback": 8,
+      "url": 22,
+      "content": 333,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/bai-viet",
+      "to": "/app/bai-viet/51f5e49a-769e-4709-9157-82cb1176f071",
+      "how": "push",
+      "round": 1,
+      "feedback": 13,
+      "url": 13,
+      "content": 337,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/bai-viet/51f5e49a-769e-4709-9157-82cb1176f071",
+      "to": "/app/bai-viet",
+      "how": "back",
+      "round": 1,
+      "feedback": 2,
+      "url": 109,
+      "content": 109,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/bai-viet",
+      "to": "/app/lich-su-quet",
+      "how": "push",
+      "round": 1,
+      "feedback": 32,
+      "url": 32,
+      "content": 648,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/lich-su-quet",
+      "to": "/app",
+      "how": "nav",
+      "round": 1,
+      "feedback": 2,
+      "url": 9,
+      "content": 341,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app",
+      "to": "/app/lich-su-quet",
+      "how": "back",
+      "round": 1,
+      "feedback": 9,
+      "url": 9,
+      "content": 9,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/lich-su-quet",
+      "to": "/app",
+      "how": "forward",
+      "round": 1,
+      "feedback": 0,
+      "url": 63,
+      "content": 63,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app",
+      "to": "/app/bai-viet",
+      "how": "nav",
+      "round": 2,
+      "feedback": 2,
+      "url": 10,
+      "content": 329,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/bai-viet",
+      "to": "/app",
+      "how": "nav",
+      "round": 2,
+      "feedback": 3,
+      "url": 19,
+      "content": 328,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app",
+      "to": "/app/bo-loc",
+      "how": "nav",
+      "round": 2,
+      "feedback": 5,
+      "url": 24,
+      "content": 339,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/bo-loc",
+      "to": "/app/de-xuat-nhom",
+      "how": "nav",
+      "round": 2,
+      "feedback": 4,
+      "url": 14,
+      "content": 322,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/de-xuat-nhom",
+      "to": "/app/bai-viet",
+      "how": "nav",
+      "round": 2,
+      "feedback": 3,
+      "url": 24,
+      "content": 321,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/bai-viet",
+      "to": "/app/bai-viet/51f5e49a-769e-4709-9157-82cb1176f071",
+      "how": "push",
+      "round": 2,
+      "feedback": 36,
+      "url": 36,
+      "content": 179,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/bai-viet/51f5e49a-769e-4709-9157-82cb1176f071",
+      "to": "/app/bai-viet",
+      "how": "back",
+      "round": 2,
+      "feedback": 80,
+      "url": 80,
+      "content": 80,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/bai-viet",
+      "to": "/app/lich-su-quet",
+      "how": "push",
+      "round": 2,
+      "feedback": 25,
+      "url": 25,
+      "content": 438,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/lich-su-quet",
+      "to": "/app",
+      "how": "nav",
+      "round": 2,
+      "feedback": 2,
+      "url": 9,
+      "content": 316,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app",
+      "to": "/app/lich-su-quet",
+      "how": "back",
+      "round": 2,
+      "feedback": 32,
+      "url": 32,
+      "content": 32,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/lich-su-quet",
+      "to": "/app",
+      "how": "forward",
+      "round": 2,
+      "feedback": 4,
+      "url": 68,
+      "content": 68,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app",
+      "to": "/app/bai-viet",
+      "how": "nav",
+      "round": 3,
+      "feedback": 8,
+      "url": 36,
+      "content": 347,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/bai-viet",
+      "to": "/app",
+      "how": "nav",
+      "round": 3,
+      "feedback": 4,
+      "url": 22,
+      "content": 327,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app",
+      "to": "/app/bo-loc",
+      "how": "nav",
+      "round": 3,
+      "feedback": 5,
+      "url": 22,
+      "content": 335,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/bo-loc",
+      "to": "/app/de-xuat-nhom",
+      "how": "nav",
+      "round": 3,
+      "feedback": 5,
+      "url": 20,
+      "content": 328,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/de-xuat-nhom",
+      "to": "/app/bai-viet",
+      "how": "nav",
+      "round": 3,
+      "feedback": 8,
+      "url": 36,
+      "content": 332,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/bai-viet",
+      "to": "/app/bai-viet/51f5e49a-769e-4709-9157-82cb1176f071",
+      "how": "push",
+      "round": 3,
+      "feedback": 11,
+      "url": 11,
+      "content": 190,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/bai-viet/51f5e49a-769e-4709-9157-82cb1176f071",
+      "to": "/app/bai-viet",
+      "how": "back",
+      "round": 3,
+      "feedback": 6,
+      "url": 73,
+      "content": 73,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/bai-viet",
+      "to": "/app/lich-su-quet",
+      "how": "push",
+      "round": 3,
+      "feedback": 11,
+      "url": 11,
+      "content": 407,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/lich-su-quet",
+      "to": "/app",
+      "how": "nav",
+      "round": 3,
+      "feedback": 2,
+      "url": 9,
+      "content": 335,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app",
+      "to": "/app/lich-su-quet",
+      "how": "back",
+      "round": 3,
+      "feedback": 30,
+      "url": 30,
+      "content": 30,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/app/lich-su-quet",
+      "to": "/app",
+      "how": "forward",
+      "round": 3,
+      "feedback": 31,
+      "url": 31,
+      "content": 31,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/admin/users",
+      "to": "/admin/workers",
+      "how": "nav",
+      "round": 1,
+      "feedback": 28,
+      "url": 28,
+      "content": 399,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/admin/workers",
+      "to": "/admin/group-requests",
+      "how": "nav",
+      "round": 1,
+      "feedback": 12,
+      "url": 12,
+      "content": 343,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/admin/group-requests",
+      "to": "/admin/users",
+      "how": "nav",
+      "round": 1,
+      "feedback": 8,
+      "url": 8,
+      "content": 334,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/admin/users",
+      "to": "/admin/workers",
+      "how": "nav",
+      "round": 2,
+      "feedback": 13,
+      "url": 13,
+      "content": 323,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/admin/workers",
+      "to": "/admin/group-requests",
+      "how": "nav",
+      "round": 2,
+      "feedback": 10,
+      "url": 10,
+      "content": 314,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/admin/group-requests",
+      "to": "/admin/users",
+      "how": "nav",
+      "round": 2,
+      "feedback": 16,
+      "url": 16,
+      "content": 336,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/admin/users",
+      "to": "/admin/workers",
+      "how": "nav",
+      "round": 3,
+      "feedback": 19,
+      "url": 19,
+      "content": 332,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/admin/workers",
+      "to": "/admin/group-requests",
+      "how": "nav",
+      "round": 3,
+      "feedback": 11,
+      "url": 11,
+      "content": 316,
+      "reload": false,
+      "shellKept": true
+    },
+    {
+      "from": "/admin/group-requests",
+      "to": "/admin/users",
+      "how": "nav",
+      "round": 3,
+      "feedback": 13,
+      "url": 13,
+      "content": 331,
+      "reload": false,
+      "shellKept": true
+    }
+  ]
+}
