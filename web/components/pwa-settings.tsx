@@ -6,7 +6,8 @@ import { Icon } from './visuals';
 import { PwaIcon } from './pwa-icons';
 import { promptInstall, useInstallPrompt } from '@/lib/install-prompt';
 import { detectPlatform, isIosSafari, isStandalone, pushBlocker, type Platform } from '@/lib/pwa';
-import { currentSubscription, disablePush, enablePush, fetchPushConfig, PushError, sendTestPush, serverHasSubscription } from '@/lib/push-client';
+import { disablePush, enablePush, fetchPushConfig, PushError, sendTestPush, syncSubscription } from '@/lib/push-client';
+import { usePushOwner } from './app-shell';
 
 type Env = { platform: Platform; standalone: boolean; iosSafari: boolean };
 
@@ -107,6 +108,7 @@ function PushCard({ env }: { env: Env | null }) {
   const [busy, setBusy] = useState<'enable' | 'disable' | 'test' | null>(null);
   const [message, setMessage] = useState<{ tone: 'ok' | 'warn'; text: string } | null>(null);
 
+  const owner = usePushOwner();
   const load = useCallback(async () => {
     const blocker = pushBlocker();
     if (blocker) { setState({ kind: 'blocked-env', reason: blocker }); return; }
@@ -114,15 +116,14 @@ function PushCard({ env }: { env: Env | null }) {
     try {
       const config = await fetchPushConfig();
       if (!config.enabled || !config.vapidPublicKey) { setState({ kind: 'not-configured' }); return; }
-      const subscription = Notification.permission === 'granted' ? await currentSubscription() : null;
-      const on = subscription ? await serverHasSubscription(subscription) : false;
+      const on = Notification.permission === 'granted' ? await syncSubscription(owner) : false;
       setState(on ? { kind: 'on', key: config.vapidPublicKey } : { kind: 'off', key: config.vapidPublicKey });
     } catch (error) {
       if (error instanceof PushError && error.code === 'unauthorized') setState({ kind: 'signed-out' });
       else if (error instanceof PushError && error.code === 'not_configured') setState({ kind: 'not-configured' });
       else { setState({ kind: 'not-configured' }); setMessage({ tone: 'warn', text: 'Chưa tải được trạng thái thông báo. Kiểm tra mạng rồi tải lại trang.' }); }
     }
-  }, []);
+  }, [owner]);
 
   useEffect(() => { if (env) void load(); }, [env, load]);
   // Permission can change in browser settings while QLead stays open; re-read it when the person comes back.
@@ -145,7 +146,7 @@ function PushCard({ env }: { env: Env | null }) {
   const enable = async (key: string) => {
     setBusy('enable'); setMessage(null);
     try {
-      const result = await enablePush(key);
+      const result = await enablePush(key, owner);
       if (result === 'granted') { setState({ kind: 'on', key }); setMessage({ tone: 'ok', text: 'Đã bật. QLead sẽ báo khi tìm thấy khách hàng tiềm năng mới.' }); }
       else if (result === 'denied') setState({ kind: 'denied' });
       else setState({ kind: 'off', key, dismissed: true });

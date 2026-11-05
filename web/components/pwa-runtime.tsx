@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { PwaIcon } from './pwa-icons';
 import { promptInstall, useInstallPrompt } from '@/lib/install-prompt';
 import { detectPlatform, isIosSafari, isStandalone, localFlag } from '@/lib/pwa';
-import { currentSubscription, PushError, registerServiceWorker, serverHasSubscription } from '@/lib/push-client';
+import { PushError, registerServiceWorker, syncSubscription } from '@/lib/push-client';
+import { usePushOwner } from './app-shell';
 
 const DISMISSED_KEY = 'qlead.installHint.dismissed';
 const VISITS_KEY = 'qlead.visits';
@@ -17,25 +18,22 @@ const VISIT_COUNTED_KEY = 'qlead.visitCounted';
  * account on this device does not keep delivering that account's leads.
  */
 export function PwaRuntime() {
+  const owner = usePushOwner();
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
     let cancelled = false;
     const run = async () => {
       await registerServiceWorker();
       if (cancelled || !('Notification' in window) || Notification.permission !== 'granted') return;
-      const subscription = await currentSubscription().catch(() => null);
-      if (!subscription) return;
-      try {
-        // Only an explicit "not yours" answer releases it; an outage or a backend that is not deployed yet changes nothing.
-        if (!await serverHasSubscription(subscription)) await subscription.unsubscribe();
-      } catch (error) { if (!(error instanceof PushError)) throw error; }
+      // Only an explicit server answer changes anything; an outage or a backend that is not deployed yet leaves it as is.
+      try { await syncSubscription(owner); } catch (error) { if (!(error instanceof PushError)) throw error; }
     };
     // Two seconds after load keeps registration off the critical path of the first paint and of route switches.
     let timer = 0;
     const schedule = () => { timer = window.setTimeout(() => { void run().catch(() => undefined); }, 2000); };
     if (document.readyState === 'complete') schedule(); else window.addEventListener('load', schedule, { once: true });
     return () => { cancelled = true; window.clearTimeout(timer); window.removeEventListener('load', schedule); };
-  }, []);
+  }, [owner]);
   return null;
 }
 

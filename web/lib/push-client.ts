@@ -6,6 +6,36 @@ import { detectPlatform, isStandalone, pushSupported, urlBase64ToUint8Array } fr
 
 export const SW_URL = '/sw.js';
 
+/**
+ * The server ties a device subscription to the sign-in session that created it, so it ends with that session (logout,
+ * a new sign-in, or the 7-day expiry). This marker remembers which account turned notifications on here, so the same
+ * account signing in again keeps its notifications without another tap, while a different account never inherits them.
+ */
+const OWNER_KEY = 'qlead.push.owner';
+const ownerFlag = {
+  get(): string | null { try { return window.localStorage.getItem(OWNER_KEY); } catch { return null; } },
+  set(owner: string): void { try { window.localStorage.setItem(OWNER_KEY, owner); } catch { /* ignore */ } },
+  clear(): void { try { window.localStorage.removeItem(OWNER_KEY); } catch { /* ignore */ } },
+};
+
+/**
+ * Reconciles this browser's subscription with the server for the signed-in account. Returns true when notifications
+ * are on for this account on this device. Throws PushError when the server cannot answer (nothing is changed then).
+ */
+export async function syncSubscription(owner: string | null): Promise<boolean> {
+  // Register first (idempotent): on a fresh page load the worker may not be registered yet, and an unregistered worker
+  // must not be read as "no subscription".
+  if (!pushSupported() || !await registerServiceWorker()) return false;
+  const subscription = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+  if (!subscription) { ownerFlag.clear(); return false; }
+  if (await serverHasSubscription(subscription)) { if (owner) ownerFlag.set(owner); return true; }
+  if (owner && ownerFlag.get() === owner) { await saveSubscription(subscription); return true; }
+  // Left over from another account (or turned off elsewhere): release it so it stops receiving anyone's leads.
+  await subscription.unsubscribe().catch(() => false);
+  ownerFlag.clear();
+  return false;
+}
+
 export type PushApiError = 'unauthorized' | 'not_configured' | 'rate_limited' | 'not_subscribed' | 'network' | 'server';
 
 export class PushError extends Error {
@@ -75,7 +105,7 @@ export async function serverHasSubscription(subscription: PushSubscription): Pro
  * Must run inside the click handler that the person pressed: browsers only show the permission prompt for a user
  * gesture, and Safari refuses it after an await that loses the gesture, so requestPermission() is the first await.
  */
-export async function enablePush(vapidPublicKey: string): Promise<'granted' | 'denied' | 'default'> {
+export async function enablePush(vapidPublicKey: string, owner: string | null): Promise<'granted' | 'denied' | 'default'> {
   // The key is fetched before the click (see the settings card), so nothing slow sits between the tap and the prompts.
   const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
   if (permission !== 'granted') return permission;
@@ -92,6 +122,7 @@ export async function enablePush(vapidPublicKey: string): Promise<'granted' | 'd
     await subscription.unsubscribe().catch(() => false);
     throw error;
   }
+  if (owner) ownerFlag.set(owner);
   return 'granted';
 }
 
@@ -104,6 +135,7 @@ function sameKey(subscription: PushSubscription, key: Uint8Array): boolean {
 
 /** Removes this device on the server first (so pushes stop even if the browser call fails), then in the browser. */
 export async function disablePush(): Promise<void> {
+  ownerFlag.clear();
   const subscription = await currentSubscription();
   if (!subscription) return;
   await call('/api/push/subscription', { method: 'DELETE', body: JSON.stringify({ endpoint: subscription.endpoint }) });
@@ -121,6 +153,7 @@ export async function sendTestPush(): Promise<void> {
  * the server also hands the endpoint to whoever subscribes from this browser next.
  */
 export async function releaseSubscriptionOnLogout(timeoutMs = 1500): Promise<void> {
+  ownerFlag.clear();
   const work = (async () => {
     const subscription = await currentSubscription();
     if (!subscription) return;

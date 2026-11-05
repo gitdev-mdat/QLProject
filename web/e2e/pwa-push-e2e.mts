@@ -9,6 +9,7 @@
 // Real push delivery, real notification taps and real installs need physical devices and the real backend.
 import { chromium, type BrowserContext, type Page } from 'playwright-core';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 
 const [BASE = 'http://localhost:3100', SEED = 'nav-perf-seed.json', SHOTS_ARG] = process.argv.slice(2);
@@ -451,6 +452,17 @@ await check('account switch on a device: another account\'s leftover subscriptio
   await page.goto('/app', { waitUntil: 'networkidle' });
   await page.waitForFunction(() => !localStorage.getItem('__fakeSub'), null, { timeout: 10000 });
   assert(!backend.calls.some(call => call.startsWith('PUT')), 'adopted silently');
+  await context.close();
+});
+
+await check('same account signs in again (new session): its device subscription is kept without another tap', async () => {
+  const backend: Backend = { enabled: true, endpoints: new Set(), calls: [] };
+  const { context, page } = await ctx({ width: 1440, permission: 'granted', fakePush: true, backend });
+  const owner = createHash('sha256').update(`qlead-push-owner:${seed.large.userId}`).digest('hex').slice(0, 24);
+  await context.addInitScript(`localStorage.setItem('__fakeSub', JSON.stringify({ endpoint: 'https://push.example/same-account' })); localStorage.setItem('qlead.push.owner', '${owner}');`);
+  await page.goto('/app/thong-bao', { waitUntil: 'networkidle' });
+  await card(page).locator('.pwa-status.is-on').waitFor();
+  assert(backend.endpoints.has('https://push.example/same-account'), 'not re-registered for the new session');
   await context.close();
 });
 

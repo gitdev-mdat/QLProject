@@ -10,10 +10,15 @@ import { releaseSubscriptionOnLogout } from '@/lib/push-client';
 import '@/lib/install-prompt';
 import './pwa.css';
 
-export type ShellUser = { displayName: string; isDevSession: boolean; leadMonitoringStatus: 'active' | 'suspended'; isAdmin?: boolean };
+export type ShellUser = { displayName: string; isDevSession: boolean; leadMonitoringStatus: 'active' | 'suspended'; isAdmin?: boolean; pushOwner?: string };
 const SessionContext = createContext<ShellUser | null>(null);
 
 /** Set by app/app/layout.tsx from the server-side session; client pages read it for the shell. */
+/** Which account this device's push subscription was turned on for (see lib/push-client.ts). */
+export function usePushOwner(): string | null {
+  return useContext(SessionContext)?.pushOwner ?? null;
+}
+
 /** True while an admin has stopped new lead searches for this account; saved leads and settings stay available. */
 export function useMonitoringSuspended(): boolean {
   return useContext(SessionContext)?.leadMonitoringStatus === 'suspended';
