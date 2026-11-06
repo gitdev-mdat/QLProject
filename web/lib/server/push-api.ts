@@ -18,14 +18,16 @@ const NO_STORE = { 'Cache-Control': 'no-store, max-age=0' };
 const json = (status: number, body: unknown, extra: Record<string, string> = {}) =>
   Response.json(body, { status, headers: { ...NO_STORE, ...extra } });
 const endpointSchema = z.string().min(1).max(2048).refine(isAllowedPushEndpoint);
-const keySchema = z.string().regex(/^[A-Za-z0-9_-]{16,100}$/);
+// Some browsers pad base64url keys with "="; the stored form never has padding.
+const keySchema = z.string().max(110).transform(value => value.replace(/=+$/, '')).pipe(z.string().regex(/^[A-Za-z0-9_-]{16,100}$/));
 const endpointOnlySchema = z.object({ endpoint: endpointSchema }).strict();
 
 const subscriptionSchema = z.object({
   endpoint: endpointSchema,
-  expirationTime: z.number().finite().positive().max(8_640_000_000_000_000).nullable(),
-  keys: z.object({ p256dh: keySchema, auth: keySchema }).strict(),
-}).strict().superRefine((subscription, ctx) => {
+  // Safari omits expirationTime and older builds send 0 for "never"; both mean no expiry.
+  expirationTime: z.number().finite().nonnegative().max(8_640_000_000_000_000).nullish().transform(value => value ? value : null),
+  keys: z.object({ p256dh: keySchema, auth: keySchema }),
+}).superRefine((subscription, ctx) => {
   if (Buffer.from(subscription.keys.p256dh, 'base64url').length !== 65 || Buffer.from(subscription.keys.auth, 'base64url').length !== 16) {
     ctx.addIssue({ code: 'custom', message: 'Invalid subscription keys.' });
   }
@@ -43,7 +45,7 @@ async function authenticated() {
   return session;
 }
 
-async function readBody<T>(request: Request, schema: z.ZodType<T>): Promise<{ data: T } | { error: Response }> {
+async function readBody<T>(request: Request, schema: z.ZodType<T, any>): Promise<{ data: T } | { error: Response; issues?: string }> {
   const contentLength = Number(request.headers.get('content-length'));
   if (Number.isFinite(contentLength) && contentLength > 4096) return { error: json(400, { error: 'invalid_request' }) };
   if (!request.body) return { error: json(400, { error: 'invalid_request' }) };
@@ -64,7 +66,13 @@ async function readBody<T>(request: Request, schema: z.ZodType<T>): Promise<{ da
   let value: unknown;
   try { value = JSON.parse(bodyText); } catch { return { error: json(400, { error: 'invalid_request' }) }; }
   const parsed = schema.safeParse(value);
-  return parsed.success ? { data: parsed.data } : { error: json(400, { error: 'invalid_request' }) };
+  if (parsed.success) return { data: parsed.data };
+  return { error: json(400, { error: 'invalid_request' }), issues: issueSummary(parsed.error) };
+}
+
+/** Field paths and issue codes only (e.g. "subscription.keys.auth:invalid_format"), never the submitted values. */
+function issueSummary(error: z.ZodError): string {
+  return error.issues.slice(0, 5).map(issue => `${issue.path.join('.') || '(root)'}:${issue.code}`).join(',').slice(0, 300);
 }
 
 function normalizeOrigin(value: string | null): string | null {
@@ -96,8 +104,8 @@ export async function getPushConfig(request: Request): Promise<Response> {
 }
 
 /** One line per refused registration, so a failure on a real phone can be traced. No endpoint, key or user data. */
-function logRefused(reason: string, request: Request) {
-  console.warn(JSON.stringify({ level: 'warn', path: '/api/push/subscription', msg: 'Push subscription refused', reason,
+function logRefused(reason: string, request: Request, issues?: string) {
+  console.warn(JSON.stringify({ level: 'warn', path: '/api/push/subscription', msg: 'Push subscription refused', reason, issues,
     origin: normalizeOrigin(request.headers.get('origin')) ?? (request.headers.get('origin') ? 'invalid' : 'missing') }));
 }
 
@@ -107,7 +115,7 @@ export async function putPushSubscription(request: Request): Promise<Response> {
   if (!originAllowed(request)) { logRefused('origin', request); return json(403, { error: 'forbidden' }); }
   if (!isPushConfigured()) return json(503, { error: 'push_not_configured' });
   const parsed = await readBody(request, registerSchema);
-  if ('error' in parsed) { logRefused('invalid_body', request); return parsed.error; }
+  if ('error' in parsed) { logRefused('invalid_body', request, parsed.issues); return parsed.error; }
   if (normalizeOrigin(parsed.data.origin) !== normalizeOrigin(request.headers.get('origin'))) { logRefused('origin_mismatch', request); return json(403, { error: 'forbidden' }); }
   const registered = await registerPushSubscription({
     userId: session.userId,
