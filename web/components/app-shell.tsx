@@ -7,6 +7,7 @@ import { Brand, Icon } from './visuals';
 import { PwaIcon } from './pwa-icons';
 import { InstallHint, PwaRuntime } from './pwa-runtime';
 import { releaseSubscriptionOnLogout } from '@/lib/push-client';
+import { FeedbackEntry, FeedbackInvite } from './customer-feedback';
 import '@/lib/install-prompt';
 import './pwa.css';
 
@@ -126,7 +127,10 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     setPending(href);
   };
-  return <FrameContext.Provider value={true}><PwaRuntime/><ShellChrome active={active} onNav={onNav}>{path === '/app' && <InstallHint/>}{children}</ShellChrome></FrameContext.Provider>;
+  const user = useContext(SessionContext);
+  return <FrameContext.Provider value={true}><PwaRuntime/><ShellChrome active={active} onNav={onNav}>{path === '/app' && <InstallHint/>}{children}</ShellChrome>
+    {/* The one-time feedback invitation: the server decides, and it appears only at a calm moment (components/customer-feedback.tsx). */}
+    <FeedbackInvite owner={user?.pushOwner ?? null} suspended={user?.leadMonitoringStatus === 'suspended'}/></FrameContext.Provider>;
 }
 
 /**
@@ -152,6 +156,7 @@ function ShellChrome({ children, active, onNav }: { children: React.ReactNode; a
       <div className="sidebar-bottom">
         <div className="profile"><span className="avatar" aria-hidden="true"><Icon name="user" size={16}/></span><span><b>{user?.displayName ?? 'Khách'}</b><small>{user?.isDevSession ? 'Phiên DEV' : 'Đã đăng nhập'}</small></span></div>
         <Link className={`side-settings${path === '/app/thong-bao' ? ' active' : ''}`} href="/app/thong-bao" aria-current={path === '/app/thong-bao' ? 'page' : undefined} aria-label={bellLabel}><PwaIcon name="bell" size={18}/>Thông báo{unread > 0 && <span className="unread-count" aria-hidden="true">{unread > 9 ? '9+' : unread}</span>}</Link>
+        <FeedbackEntry owner={user?.pushOwner ?? null} className="side-settings fb-side"><Icon name="edit" size={18}/>Góp ý cho QLead</FeedbackEntry>
         {user?.isAdmin && <Link className="btn btn-outline btn-sm admin-entry" href="/admin/workers"><Icon name="lock" size={16}/>Quản trị</Link>}
         <LogoutButton/>
       </div>

@@ -12,6 +12,7 @@ import { compareLeadByPostedAt, type LeadDateOrder } from '@/lib/lead-order';
 import { AppShell } from './app-shell';
 import { Icon } from './visuals';
 import { GoatMascot } from './goat-mascot';
+import { reportSourceOpen } from '@/lib/feedback-client';
 
 const DESKTOP_QUERY = '(min-width: 1080px)';
 const PAGE_SIZE = 50;
@@ -52,12 +53,14 @@ export function StatusPill({ status }: { status: LeadStatus }) {
 
 /**
  * The original Facebook post, exactly as stored by the backend (never built or guessed). It is the main way to judge
- * an opportunity, so it sits on every card; opening it does not open the lead or change its status.
+ * an opportunity, so it sits on every card; opening it does not open the lead or change its status. The click (left
+ * or middle button) is reported in the background as feedback evidence; the link itself is never delayed or prevented.
  */
 export function FacebookLink({ lead, compact = false, className = '' }: { lead: Lead; compact?: boolean; className?: string }) {
   if (!lead.original_url) return compact ? null : <span className="no-link-note"><Icon name="info" size={16}/>Chưa có liên kết bài Facebook</span>;
   return <a className={`fb-link ${compact ? 'is-compact' : ''} ${className}`} href={lead.original_url} target="_blank" rel="noopener noreferrer"
-    onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()} aria-label={`Xem bài Facebook của ${leadName(lead)} (mở tab mới)`}>
+    onClick={event => { event.stopPropagation(); reportSourceOpen(lead.id); }} onAuxClick={event => { if (event.button === 1) reportSourceOpen(lead.id); }}
+    onKeyDown={event => event.stopPropagation()} aria-label={`Xem bài Facebook của ${leadName(lead)} (mở tab mới)`}>
     Xem bài Facebook<Icon name="external" size={compact ? 14 : 16}/>
   </a>;
 }

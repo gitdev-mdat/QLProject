@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { NotificationCenter } from '@/components/notification-center';
 import { AppSettingsPage } from '@/components/pwa-settings';
+import { FeedbackEntry } from '@/components/customer-feedback';
 import { listNotifications } from '@/lib/server/notifications';
 import { requireSession } from '@/lib/server/session';
 
@@ -17,5 +18,10 @@ export default async function NotificationsPage() {
     <header className="page-head"><div><h1>Thông báo</h1><p>Những thay đổi quan trọng với tài khoản của bạn.</p></div></header>
     <NotificationCenter initial={initial}/>
     <AppSettingsPage embedded/>
+    {/* The customer's own way to send feedback (also in the desktop sidebar); it never opens by itself. */}
+    <section className="fb-entry-card" aria-label="Góp ý cho QLead">
+      <p><b>Góp ý cho QLead</b>Điều gì dễ dùng, điều gì cần tốt hơn? QLead đọc mọi góp ý.</p>
+      <FeedbackEntry owner={null} className="btn btn-outline">Gửi góp ý</FeedbackEntry>
+    </section>
   </div>;
 }
