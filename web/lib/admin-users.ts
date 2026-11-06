@@ -12,7 +12,9 @@ export type AdminUserDetail = AdminUserRow & { profiles: AdminUserProfile[] };
 export type AdminUserPage = { users: AdminUserRow[]; total: number; limit: number; offset: number };
 export type MonitoringChange = {
   changed: boolean; userId: string; status: 'active' | 'suspended'; changedAt: string; changedByUserId: string | null;
-  suspendedAt: string | null; suspendedByUserId: string | null; reason: string | null; inFlightJobCount: number;
+  suspendedAt: string | null; suspendedByUserId: string | null; reason: string | null; publicReason: string | null; inFlightJobCount: number;
+  /** True when this change created a customer notification (false for a no-op retry). */
+  notified: boolean;
 };
 export type UserDeletionImpact = {
   targetUserId: string; profileCount: number; legacyConnectionCount: number; museCredentialCount: number; searchConfigCount: number; jobCount: number; attemptCount: number;

@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Brand, Icon } from './visuals';
@@ -10,8 +10,20 @@ import { releaseSubscriptionOnLogout } from '@/lib/push-client';
 import '@/lib/install-prompt';
 import './pwa.css';
 
-export type ShellUser = { displayName: string; isDevSession: boolean; leadMonitoringStatus: 'active' | 'suspended'; isAdmin?: boolean; pushOwner?: string };
+export type ShellUser = { displayName: string; isDevSession: boolean; leadMonitoringStatus: 'active' | 'suspended'; isAdmin?: boolean; pushOwner?: string; unreadNotifications?: number };
 const SessionContext = createContext<ShellUser | null>(null);
+/** Lets the notification center report a new unread count right after marking items read. */
+const UnreadSetterContext = createContext<(count: number) => void>(() => undefined);
+
+/** Unread account notifications for the bell; refreshed with the shell's status poll. */
+export function useUnreadNotifications(): number {
+  return useContext(SessionContext)?.unreadNotifications ?? 0;
+}
+export function useSetUnreadNotifications(): (count: number) => void {
+  return useContext(UnreadSetterContext);
+}
+/** Fired on window when the shell learns that the account's notifications changed (status flip or new unread). */
+export const NOTIFICATIONS_CHANGED = 'qlead:notifications-changed';
 
 /** Set by app/app/layout.tsx from the server-side session; client pages read it for the shell. */
 /** Which account this device's push subscription was turned on for (see lib/push-client.ts). */
@@ -26,21 +38,43 @@ export function useMonitoringSuspended(): boolean {
 
 export function SessionProvider({ user, children }: { user: ShellUser; children: React.ReactNode }) {
   const [current, setCurrent] = useState(user);
+  const setUnread = useCallback((count: number) => setCurrent(value => ({ ...value, unreadNotifications: count })), []);
   useEffect(() => {
     let live = true;
+    let inFlight = false;
     const refresh = async () => {
+      // One request at a time, and none while the tab is hidden (the next visibility change catches up).
+      if (inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
       try {
         const response = await fetch('/api/account/monitoring', { cache: 'no-store' });
         if (!response.ok) return;
-        const data = await response.json() as { status?: 'active' | 'suspended' };
-        if (live && (data.status === 'active' || data.status === 'suspended')) setCurrent(value => ({ ...value, leadMonitoringStatus: data.status! }));
+        const data = await response.json() as { status?: 'active' | 'suspended'; unread?: number };
+        if (!live) return;
+        setCurrent(value => {
+          const status = data.status === 'active' || data.status === 'suspended' ? data.status : value.leadMonitoringStatus;
+          const unread = typeof data.unread === 'number' ? data.unread : value.unreadNotifications;
+          if (status === value.leadMonitoringStatus && unread === value.unreadNotifications) return value;
+          if (status !== value.leadMonitoringStatus || (unread ?? 0) > (value.unreadNotifications ?? 0)) queueMicrotask(() => window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED)));
+          return { ...value, leadMonitoringStatus: status, unreadNotifications: unread };
+        });
       } catch { /* The server-rendered status remains available if a poll is temporarily offline. */ }
+      finally { inFlight = false; }
     };
+    const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
+    // A push received by this device's service worker means something changed now; refresh without waiting for the poll.
+    const onWorkerMessage = (event: MessageEvent) => { if (event.data?.type === 'qlead:push') void refresh(); };
     void refresh();
     const timer = window.setInterval(() => void refresh(), 30_000);
-    return () => { live = false; window.clearInterval(timer); };
+    document.addEventListener('visibilitychange', onVisible);
+    navigator.serviceWorker?.addEventListener('message', onWorkerMessage);
+    return () => {
+      live = false; window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      navigator.serviceWorker?.removeEventListener('message', onWorkerMessage);
+    };
   }, []);
-  return <SessionContext.Provider value={current}>{children}</SessionContext.Provider>;
+  return <SessionContext.Provider value={current}><UnreadSetterContext.Provider value={setUnread}>{children}</UnreadSetterContext.Provider></SessionContext.Provider>;
 }
 
 const navItems = [
@@ -108,6 +142,8 @@ export function AppShell({ children, active = 'Hôm nay' }: { children: React.Re
 function ShellChrome({ children, active, onNav }: { children: React.ReactNode; active: NavLabel; onNav?: (href: string) => (event: React.MouseEvent<HTMLAnchorElement>) => void }) {
   const user = useContext(SessionContext);
   const path = usePathname();
+  const unread = user?.unreadNotifications ?? 0;
+  const bellLabel = unread ? `Thông báo, ${unread} chưa đọc` : 'Thông báo';
   return <div className="app-layout">
     <a className="skip-link" href="#app-content">Bỏ qua điều hướng</a>
     <aside className="sidebar" aria-label="Điều hướng chính">
@@ -115,15 +151,14 @@ function ShellChrome({ children, active, onNav }: { children: React.ReactNode; a
       <nav className="side-nav">{navItems.map(item => <Link key={item.href} href={item.href} onClick={onNav?.(item.href)} className={active === item.label ? 'active' : ''} aria-current={active === item.label ? 'page' : undefined}><Icon name={item.icon}/>{item.label}</Link>)}</nav>
       <div className="sidebar-bottom">
         <div className="profile"><span className="avatar" aria-hidden="true"><Icon name="user" size={16}/></span><span><b>{user?.displayName ?? 'Khách'}</b><small>{user?.isDevSession ? 'Phiên DEV' : 'Đã đăng nhập'}</small></span></div>
-        <Link className={`side-settings${path === '/app/thong-bao' ? ' active' : ''}`} href="/app/thong-bao" aria-current={path === '/app/thong-bao' ? 'page' : undefined}><PwaIcon name="bell" size={18}/>Ứng dụng và thông báo</Link>
+        <Link className={`side-settings${path === '/app/thong-bao' ? ' active' : ''}`} href="/app/thong-bao" aria-current={path === '/app/thong-bao' ? 'page' : undefined} aria-label={bellLabel}><PwaIcon name="bell" size={18}/>Thông báo{unread > 0 && <span className="unread-count" aria-hidden="true">{unread > 9 ? '9+' : unread}</span>}</Link>
         {user?.isAdmin && <Link className="btn btn-outline btn-sm admin-entry" href="/admin/workers"><Icon name="lock" size={16}/>Quản trị</Link>}
         <LogoutButton/>
       </div>
     </aside>
     <div className="app-main">
-      <header className="app-topbar"><Brand href="/app"/><Link className="topbar-bell" href="/app/thong-bao" aria-label="Ứng dụng và thông báo" aria-current={path === '/app/thong-bao' ? 'page' : undefined}><PwaIcon name="bell" size={20}/></Link>{user?.isAdmin && <Link className="btn btn-ghost btn-sm" href="/admin/workers">Quản trị</Link>}<LogoutButton compact/></header>
+      <header className="app-topbar"><Brand href="/app"/><Link className="topbar-bell" href="/app/thong-bao" aria-label={bellLabel} aria-current={path === '/app/thong-bao' ? 'page' : undefined}><PwaIcon name="bell" size={20}/>{unread > 0 && <span className="unread-dot" aria-hidden="true"/>}</Link>{user?.isAdmin && <Link className="btn btn-ghost btn-sm" href="/admin/workers">Quản trị</Link>}<LogoutButton compact/></header>
       {user?.isDevSession && <div className="preview-strip" role="note"><Icon name="info" size={16}/><span><b>Phiên đăng nhập nhanh DEV</b> · {user.displayName}. Dữ liệu thật từ Postgres cục bộ.</span></div>}
-      {user?.leadMonitoringStatus === 'suspended' && <div className="monitoring-suspended" role="status"><Icon name="info" size={16}/><span><b>Tính năng tìm lead của tài khoản đang tạm dừng.</b> Bạn vẫn có thể xem lead và lịch sử đã lưu. Lượt tìm mới sẽ không được tạo.</span></div>}
       <main className="app-content" id="app-content">{children}</main>
     </div>
     <nav className="bottom-nav" aria-label="Điều hướng chính">{navItems.map(item => <Link key={item.href} href={item.href} onClick={onNav?.(item.href)} className={active === item.label ? 'active' : ''} aria-current={active === item.label ? 'page' : undefined}><Icon name={item.icon} size={20}/><span>{item.label === 'Danh sách lead' ? 'Lead' : item.label === 'Nhu cầu theo dõi' ? 'Theo dõi' : item.label === 'Đề xuất nhóm' ? 'Đề xuất' : item.label}</span></Link>)}</nav>

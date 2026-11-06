@@ -15,13 +15,15 @@ export async function getLeadMonitoringStatus(userId: string): Promise<{ status:
 export type AdminUserMonitoring = {
   id: string; displayName: string; email: string | null; createdAt: string; status: LeadMonitoringStatus;
   changedAt: string; changedByUserId: string | null; suspendedAt: string | null; suspendedByUserId: string | null; reason: string | null;
+  /** Text the Admin published to the customer with the latest suspension (separate from the internal note `reason`). */
+  publicReason: string | null;
   profileCount: number; activeProfileCount: number; leadCount: number; scanCount: number; pendingJobCount: number; claimedJobCount: number;
   // Read-only display fields for /admin/users: enabled = the profile's own latest pause setting, independent of the account status.
   enabledProfileCount: number; lastScanAt: string | null; lastScanStatus: string | null; changedByName: string | null; suspendedByName: string | null;
 };
 
 const ADMIN_USER_SELECT = `SELECT u.id, u.display_name, ua.email, u.created_at, u.lead_monitoring_status, u.lead_monitoring_changed_at,
-    u.lead_monitoring_changed_by_user_id, u.lead_monitoring_suspended_at, u.lead_monitoring_suspended_by_user_id, u.lead_monitoring_reason,
+    u.lead_monitoring_changed_by_user_id, u.lead_monitoring_suspended_at, u.lead_monitoring_suspended_by_user_id, u.lead_monitoring_reason, u.lead_monitoring_public_reason,
     (SELECT count(*)::int FROM agent_connections ac WHERE ac.user_id = u.id AND ac.kind = 'search_profile') AS profile_count,
     (SELECT count(*)::int FROM agent_connections ac WHERE ac.user_id = u.id AND ac.kind = 'search_profile' AND ac.status = 'active') AS active_profile_count,
     (SELECT count(*)::int FROM facebook_posts fp JOIN agent_connections ac ON ac.id = fp.agent_connection_id WHERE ac.user_id = u.id) AS lead_count,
@@ -42,7 +44,7 @@ function toAdminUser(row: any): AdminUserMonitoring {
     id: row.id, displayName: row.display_name, email: row.email, createdAt: new Date(row.created_at).toISOString(),
     status: row.lead_monitoring_status, changedAt: new Date(row.lead_monitoring_changed_at).toISOString(),
     changedByUserId: row.lead_monitoring_changed_by_user_id, suspendedAt: row.lead_monitoring_suspended_at ? new Date(row.lead_monitoring_suspended_at).toISOString() : null,
-    suspendedByUserId: row.lead_monitoring_suspended_by_user_id, reason: row.lead_monitoring_reason,
+    suspendedByUserId: row.lead_monitoring_suspended_by_user_id, reason: row.lead_monitoring_reason, publicReason: row.lead_monitoring_public_reason ?? null,
     profileCount: row.profile_count, activeProfileCount: row.active_profile_count, leadCount: row.lead_count, scanCount: row.scan_count,
     pendingJobCount: row.pending_job_count, claimedJobCount: row.claimed_job_count,
     enabledProfileCount: row.enabled_profile_count, lastScanAt: row.last_scan_at ? new Date(row.last_scan_at).toISOString() : null,

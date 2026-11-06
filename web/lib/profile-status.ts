@@ -28,10 +28,12 @@ type Clock = (iso: string) => string;
 
 export function profileStatus(profile: SearchProfile, scan: ProfileScan | null, suspended: boolean, time: Clock): ProfileStatus {
   const base = { live: false, freshness: null } as const;
-  if (suspended && scan?.state !== 'running') return { ...base, tone: 'off', title: 'Tài khoản đang tạm ngưng tìm khách mới', detail: 'QLead chưa tìm thêm cho tài khoản này. Khách hàng đã tìm được vẫn được giữ.' };
+  // The customer's own pause/draft setting is shown as usual; it is what applies again after an Admin reactivation.
   if (!profile.enabled) return profile.state === 'draft'
     ? { ...base, tone: 'off', title: 'Chưa bật theo dõi', detail: 'Đã lưu. Bật theo dõi để QLead bắt đầu tìm.', action: 'enable' }
     : { ...base, tone: 'off', title: 'Đã tạm dừng theo dõi', detail: 'QLead không tìm thêm. Khách hàng đã tìm được vẫn được giữ.', action: 'resume' };
+  // Account-level hold: stated once on the page, so the card itself has nothing to warn about (and never shows "late").
+  if (suspended && scan?.state !== 'running') return { ...base, tone: 'off', title: 'Tìm lead mới đang tạm dừng', detail: 'Nhu cầu này vẫn bật và sẽ tự tiếp tục khi tài khoản được kích hoạt lại.' };
 
   if (scan?.kind === 'followup') return followupStatus(profile, scan);
   if (scan) {

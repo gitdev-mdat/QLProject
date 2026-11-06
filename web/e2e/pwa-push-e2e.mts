@@ -474,7 +474,7 @@ for (const width of [390, 768, 1440]) {
     const entry = width < 1080 ? page.locator('.topbar-bell') : page.locator('.side-settings');
     await entry.click();
     await page.waitForURL(url => new URL(url).pathname === '/app/thong-bao');
-    await page.locator('#app-content h1', { hasText: 'Ứng dụng và thông báo' }).waitFor();
+    await page.locator('#app-content h1', { hasText: 'Thông báo' }).waitFor();
     const navCount = await page.locator(width < 1080 ? '.bottom-nav a' : '.side-nav a').count();
     assert(navCount === 4, `nav items ${navCount}`);
     for (const path of ['/app', '/app/bai-viet', '/app/thong-bao']) { await page.goto(path, { waitUntil: 'networkidle' }); assert(await noHorizontalScroll(page), `scroll on ${path}`); }

@@ -5,7 +5,7 @@
  * through it or get stored by it; the browser loads everything from the network exactly as without a worker.
  * Bump SW_VERSION when this file changes (the browser re-checks /sw.js on every navigation; see next.config.ts).
  */
-const SW_VERSION = '2026-11-05.1';
+const SW_VERSION = '2026-11-06.1';
 const FALLBACK_URL = '/app/bai-viet';
 const ICON = '/icons/icon-192.png';
 const BADGE = '/icons/badge-96.png';
@@ -45,7 +45,7 @@ function text(value, fallback, max) {
 self.addEventListener('push', event => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch { data = {}; }
-  const kind = data.kind === 'test' ? 'test' : 'new_leads';
+  const kind = data.kind === 'test' ? 'test' : data.kind === 'account_status' ? 'account_status' : 'new_leads';
   const title = text(data.title, kind === 'test' ? 'QLead' : 'QLead có cơ hội mới', 80);
   const body = text(data.body, kind === 'test' ? 'Thông báo đã bật trên thiết bị này.' : 'Nhấn để xem khách hàng tiềm năng mới.', 180);
   const tag = text(data.tag, kind === 'test' ? 'qlead-test' : 'new-leads', 64);
@@ -60,6 +60,10 @@ self.addEventListener('push', event => {
     lang: 'vi',
     timestamp: Date.now(),
     data: { url },
+  }).then(async () => {
+    // Open QLead windows refresh their notification badge now instead of waiting for their next poll.
+    const windows = await self.clients.matchAll({ type: 'window' });
+    windows.forEach(client => client.postMessage({ type: 'qlead:push', kind }));
   }));
 });
 
