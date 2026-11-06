@@ -218,6 +218,7 @@ if (!process.env.SWEEP_ONLY) {
       const overclaims = ['bình luận', 'hình ảnh', 'mọi bài', 'không bỏ sót', 'toàn bộ', 'chắc chắn'].filter(word => bodyText.toLocaleLowerCase('vi').includes(word));
       record(g, 'No unverified or absolute claims on the landing', overclaims.length === 0, overclaims.join(', '));
       record(g, 'Signal example is labelled as an illustration', await page.locator('.signal-example .sample-tag', { hasText: 'Ví dụ minh họa' }).isVisible() && await page.locator('.scan-caption', { hasText: 'Minh họa' }).isVisible());
+      record(g, '"QLead giúp bạn" shows the three steps in order', (await page.locator('#cach-hoat-dong .flow h3').allInnerTexts()).join(' > ') === 'Tìm cơ hội > Lọc và xếp trước > Báo cho bạn');
       const navCta = page.locator('.site-nav-actions .btn-primary');
       record(g, 'Nav "Bắt đầu ngay" visible and reachable', await navCta.isVisible() && (await navCta.boundingBox()).x + (await navCta.boundingBox()).width <= width);
       await click(page.locator('.suggestions button').nth(2));

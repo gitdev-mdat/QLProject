@@ -259,6 +259,26 @@ img, svg { display: block; }
 .kind-badge.is-reel { background: #FDECEF; border-color: #F6CFD7; color: #A3324B; }
 .scan-found li b small { color: var(--muted); font-size: 12px; font-weight: 500; }
 
+/* "QLead giúp bạn": three steps joined by a connector on wide screens, a vertical timeline on phones */
+#cach-hoat-dong { scroll-margin-top: 68px; }
+#cach-hoat-dong .section-head p { max-width: 560px; margin-inline: auto; }
+.flow { position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; max-width: 1040px; margin: 0 auto; padding: 0; list-style: none; }
+.flow::before { content: ''; position: absolute; top: 50px; left: 16%; right: 16%; height: 2px; background: repeating-linear-gradient(90deg, var(--line-strong) 0 8px, transparent 8px 14px); }
+.flow li { position: relative; padding: 26px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); }
+.flow-top { display: flex; align-items: center; gap: 12px; }
+.flow-icon { position: relative; z-index: 1; display: grid; place-items: center; width: 48px; height: 48px; border-radius: 14px; background: var(--green-100); color: var(--green-700); flex: none; box-shadow: 0 0 0 6px var(--surface); }
+.flow-step { color: var(--green-800); font-size: 14px; font-weight: 600; }
+.flow h3 { margin: 16px 0 6px; font-size: 19px; }
+.flow p { color: var(--muted); }
+@media (max-width: 860px) {
+  .flow { grid-template-columns: minmax(0, 1fr); gap: 14px; max-width: 560px; }
+  .flow::before { top: 40px; bottom: 40px; left: 47px; right: auto; width: 2px; height: auto; background: repeating-linear-gradient(180deg, var(--line-strong) 0 8px, transparent 8px 14px); }
+  .flow li { display: grid; grid-template-columns: 48px minmax(0, 1fr); column-gap: 16px; padding: 20px 22px; }
+  .flow-top { grid-row: span 2; flex-direction: column; align-items: center; gap: 6px; }
+  .flow-step { font-size: 13px; white-space: nowrap; }
+  .flow h3 { margin: 2px 0 4px; }
+}
+
 /* Compare: an illustrated signal example, then a row-by-row comparison */
 .vs-section .section-head p { max-width: 640px; margin-inline: auto; }
 .signal-example { max-width: 920px; margin: 0 auto 28px; padding: clamp(16px, 3vw, 24px); border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); }

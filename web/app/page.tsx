@@ -18,6 +18,14 @@ const example = [
   { kind: 'Reel', text: 'Mới nhận mặt bằng, đang sửa sang tiệm bánh, tháng sau gặp mọi người nha.', keyword: false, signal: 'Mới thuê mặt bằng' },
 ];
 
+/** How QLead helps, as a three-step flow. Each line is backed by the product: search-plan.ts (signals, posts + Reels),
+ * lead-ranking.ts (relevance/freshness order) and Web Push for new leads (opt-in, configured in production). */
+const flow = [
+  { icon: 'search', title: 'Tìm cơ hội', text: 'Từ mô tả của bạn, QLead tìm trong bài đăng và Reels theo nhiều dấu hiệu, kể cả bài không chứa đúng từ khóa bạn nghĩ tới.' },
+  { icon: 'filter', title: 'Lọc và xếp trước', text: 'Bỏ bài không liên quan. Bài mới và sát với mô tả của bạn được đưa lên đầu. Liên hệ ai vẫn do bạn quyết định.' },
+  { icon: 'bell', title: 'Báo cho bạn', text: 'Cơ hội mới vào thẳng danh sách, có đánh dấu bài mới. Bật thông báo để được báo trên điện thoại hoặc máy tính.' },
+];
+
 const differences = [
   { label: 'Cách tìm', manual: 'Gõ một từ khóa, chỉ ra bài có đúng chữ đó.', qlead: 'Một mô tả được mở rộng thành nhiều hướng tìm theo loại hình và dấu hiệu.' },
   { label: 'Thời điểm', manual: 'Dễ chỉ thấy khi tin khai trương đã đăng.', qlead: 'Có thể thấy từ lúc thuê mặt bằng, tuyển người, trước ngày mở cửa.' },
@@ -33,7 +41,7 @@ export default function LandingPage() {
     <header className="site-nav">
       <div className="wrap site-nav-inner">
         <Brand/>
-        <nav aria-label="Trang giới thiệu"><a href="#khac-biet">Khác gì tự tìm</a><a href="#demo">Dùng thử</a><a href="#lead-gom-gi">Mỗi lead có gì</a></nav>
+        <nav aria-label="Trang giới thiệu"><a href="#khac-biet">Khác gì tự tìm</a><a href="#cach-hoat-dong">Cách hoạt động</a><a href="#demo">Dùng thử</a><a href="#lead-gom-gi">Mỗi lead có gì</a></nav>
         <div className="site-nav-actions"><Link className="btn btn-ghost" href="/dang-nhap">Đăng nhập</Link><Link className="btn btn-primary" href="/dang-ky">Bắt đầu ngay</Link></div>
       </div>
     </header>
@@ -91,6 +99,16 @@ export default function LandingPage() {
               <p className="vs-qlead" role="cell"><Icon name="check" size={18}/><span><span className="vs-who">Với QLead:</span>{row.qlead}</span></p>
             </div>)}
           </div>
+        </div>
+      </section>
+
+      <section className="section" id="cach-hoat-dong" aria-labelledby="flow-title">
+        <div className="wrap">
+          <div className="section-head centered" data-reveal><h2 id="flow-title">QLead giúp bạn</h2><p>Bạn mô tả khách một lần. Phần tìm, lọc và báo tin, QLead làm thay.</p></div>
+          <ol className="flow">{flow.map((step, index) => <li key={step.title} data-reveal style={{ transitionDelay: `${index * 110}ms` }}>
+            <div className="flow-top"><span className="flow-icon"><Icon name={step.icon} size={22}/></span><span className="flow-step">Bước {index + 1}</span></div>
+            <h3>{step.title}</h3><p>{step.text}</p>
+          </li>)}</ol>
         </div>
       </section>
 
