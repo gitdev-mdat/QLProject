@@ -7,6 +7,7 @@ const items = [
   { href: '/admin/users', label: 'Khách hàng' },
   { href: '/admin/workers', label: 'Kết nối Muse' },
   { href: '/admin/group-requests', label: 'Đề xuất nhóm' },
+  { href: '/admin/feedback', label: 'Phản hồi khách hàng' },
 ];
 
 export function AdminNav() {

@@ -1,0 +1,18 @@
+PASS 1. Tài khoản mới chưa có lead: không hiện lời mời
+PASS 2. Có lead nhưng chưa mở bài Facebook: không hiện
+PASS 3. Mới mở 1–2 bài Facebook: không hiện
+PASS 4. Đã mở 3 bài nhưng chưa đủ 24 giờ: không hiện
+PASS 19. Tài khoản bị Admin tạm dừng: không tự mời
+PASS 20 + 6. "Xem bài Facebook" mở ngay, ghi nhận 1 lần mỗi lead, không đổi trạng thái "Đã xem" — Facebook mở sau 97 ms; 4 lần bấm cùng 1 bài → 1 dòng; bài thứ hai → 2 dòng
+PASS 5 + 12 + 10 + 13 + 14 + 11. Đủ điều kiện: hiện đúng lúc, lỗi mạng giữ câu trả lời, gửi lại thành công, cảm ơn
+PASS 8 + 9. Đăng xuất/đăng nhập lại và thiết bị khác (390px): không hiện lại
+PASS 7. Bấm X (390px): đóng ngay, ghi "đã đóng", không bao giờ hiện lại — đóng sau 38 ms
+PASS 18. Nhiều tab cùng lúc: chỉ một lời mời
+PASS Tự góp ý từ "Góp ý cho QLead" (390px + 1440px), bỏ trống câu 1 và 2
+PASS 15 + 16. Khách khác không đọc được góp ý, không vào được Admin, không giả mạo được yêu cầu
+PASS 17. Admin xem thống kê và nội dung chính xác (1440/768/390), ký tự đặc biệt hiển thị an toàn
+PASS 21 + 22. Điều hướng không thêm yêu cầu góp ý; GOAT và PWA vẫn hoạt động — chuyển trang (ms): 230, 392, 360, 373, 377, 352
+PASS Giảm chuyển động: lời mời và cảm ơn không có animation
+PASS Không có lỗi JavaScript trên trang
+
+16/16 passed
