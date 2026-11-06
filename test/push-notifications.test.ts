@@ -10,6 +10,7 @@ import {
   isPushConfigured,
   newLeadsPayload,
   testPushPayload,
+  pushRequestOptions,
   type PushSubscriptionInput,
 } from '../src/push-notifications.js';
 
@@ -105,4 +106,19 @@ test('server reports push configured only for a matching VAPID pair and 32-byte 
   withEnv(env, () => assert.equal(isPushConfigured(), true));
   withEnv({ ...env, VAPID_PRIVATE_KEY: other.privateKey }, () => assert.equal(isPushConfigured(), false));
   withEnv({ ...env, QLEAD_WEB_PUSH_ENCRYPTION_KEY: randomBytes(31).toString('base64') }, () => assert.equal(isPushConfigured(), false));
+});
+
+test('Apple push gets no Topic header (it answers 400 BadWebPushTopic); other services keep it', () => {
+  const vapid = webpush.generateVAPIDKeys();
+  const p256 = generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).publicKey.export({ format: 'jwk' });
+  const keys = { p256dh: Buffer.concat([Buffer.from([4]), Buffer.from(p256.x!, 'base64url'), Buffer.from(p256.y!, 'base64url')]).toString('base64url'), auth: randomBytes(16).toString('base64url') };
+  const build = (endpoint: string) => webpush.generateRequestDetails({ endpoint, keys }, JSON.stringify(testPushPayload()), {
+    ...pushRequestOptions(endpoint, 'push-test'), vapidDetails: { subject: 'https://qlead.vercel.app/', ...vapid },
+  });
+  const apple = build('https://web.push.apple.com/QGsynthetic');
+  assert.equal(apple.headers.Topic, undefined);
+  assert.equal(apple.headers.Urgency, 'normal');
+  assert.equal(apple.headers.TTL, 43_200);
+  assert.equal(build('https://fcm.googleapis.com/fcm/send/synthetic').headers.Topic, 'push-test');
+  assert.equal(pushRequestOptions('not a url', 'new-leads').topic, 'new-leads');
 });
