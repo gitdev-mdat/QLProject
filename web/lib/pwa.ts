@@ -41,8 +41,37 @@ export function isStandalone(): boolean {
 export function isIosSafari(): boolean {
   if (!hasWindow()) return false;
   const ua = navigator.userAgent;
-  if (/CriOS|FxiOS|EdgiOS|OPiOS|GSA\/|FBAN|FBAV|FB_IAB|Instagram|Zalo|Line\//i.test(ua)) return false;
+  if (/CriOS|FxiOS|EdgiOS|OPiOS|GSA\//i.test(ua) || IN_APP.test(ua)) return false;
   return /Safari\//i.test(ua) && /Version\//i.test(ua);
+}
+
+/** Apps that open links in their own browser view (Facebook, Zalo, …): they cannot add to the Home Screen or install. */
+const IN_APP = /FBAN|FBAV|FB_IAB|Instagram|Zalo|Line\/|TikTok|musical_ly|Messenger|; wv\)/i;
+
+/**
+ * Which "add to Home Screen" path this browser really has, for the install guide shown when no one-tap prompt exists.
+ * - ios-safari: Share → Thêm vào MH chính (Safari 26 puts Share behind "•••").
+ * - ios-browser: Chrome/Edge/Firefox on iOS 16.4+ add through their own Share sheet.
+ * - in-app: open in Safari / Chrome first.
+ * - android-samsung: Samsung Internet's ≡ menu.  android: Chrome-style ⋮ menu.  desktop: the address-bar install icon.
+ */
+export type InstallGuide = 'ios-safari' | 'ios-browser' | 'android' | 'android-samsung' | 'in-app' | 'desktop';
+
+export function installGuide(): InstallGuide {
+  if (!hasWindow()) return 'desktop';
+  const ua = navigator.userAgent;
+  const platform = detectPlatform();
+  if ((platform === 'ios' || platform === 'android') && IN_APP.test(ua)) return 'in-app';
+  if (platform === 'ios') return isIosSafari() ? 'ios-safari' : 'ios-browser';
+  if (platform === 'android') return /SamsungBrowser/i.test(ua) ? 'android-samsung' : 'android';
+  return 'desktop';
+}
+
+/** Safari 26+ (its UA keeps "OS 18_6" but reports Version/26): the Share button sits behind "•••". */
+export function safariMajor(): number | null {
+  if (!hasWindow()) return null;
+  const match = navigator.userAgent.match(/Version\/(\d+)/);
+  return match ? Number(match[1]) : null;
 }
 
 /** iOS major version, or null when not iOS / unknown. Web Push on iOS needs 16.4+ and a Home Screen app. */

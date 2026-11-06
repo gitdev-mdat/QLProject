@@ -5,7 +5,7 @@
  * through it or get stored by it; the browser loads everything from the network exactly as without a worker.
  * Bump SW_VERSION when this file changes (the browser re-checks /sw.js on every navigation; see next.config.ts).
  */
-const SW_VERSION = '2026-11-06.1';
+const SW_VERSION = '2026-11-06.2';
 const FALLBACK_URL = '/app/bai-viet';
 const ICON = '/icons/icon-192.png';
 const BADGE = '/icons/badge-96.png';
@@ -95,6 +95,18 @@ self.addEventListener('notificationclick', event => {
   event.waitUntil(openFromNotification(event.notification.data && event.notification.data.url));
 });
 
+/** Same shape as lib/push-client.ts: built from parts, because Safari's toJSON() differs from Chrome's. */
+function base64Url(buffer) {
+  if (!buffer) return '';
+  let binary = '';
+  new Uint8Array(buffer).forEach(byte => { binary += String.fromCharCode(byte); });
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function subscriptionPayload(subscription) {
+  const expirationTime = typeof subscription.expirationTime === 'number' && subscription.expirationTime > 0 ? subscription.expirationTime : null;
+  return { endpoint: subscription.endpoint, expirationTime, keys: { p256dh: base64Url(subscription.getKey('p256dh')), auth: base64Url(subscription.getKey('auth')) } };
+}
+
 // The push service rotated or expired the subscription: subscribe again with the same key and tell the server.
 // If the session has ended the server refuses it, and the app re-registers on its next open (see lib/push-client.ts).
 self.addEventListener('pushsubscriptionchange', event => {
@@ -108,7 +120,7 @@ self.addEventListener('pushsubscriptionchange', event => {
         method: 'PUT',
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ subscription: next.toJSON(), platform: 'other', standalone: false, origin: self.location.origin }),
+        body: JSON.stringify({ subscription: subscriptionPayload(next), platform: 'other', standalone: false, origin: self.location.origin }),
       });
     } catch { /* Best effort; the app repairs the subscription when it is next opened. */ }
   })());
