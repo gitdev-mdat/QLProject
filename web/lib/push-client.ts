@@ -39,7 +39,7 @@ export async function syncSubscription(owner: string | null): Promise<boolean> {
 export type PushApiError = 'unauthorized' | 'not_configured' | 'rate_limited' | 'not_subscribed' | 'network' | 'server' | 'forbidden' | 'invalid' | 'device';
 
 /** Where enabling failed. Shown to the person as a short code and reported to the server so a failure can be traced. */
-export type PushStage = 'permission' | 'service_worker' | 'subscribe' | 'save';
+export type PushStage = 'permission' | 'service_worker' | 'subscribe' | 'save' | 'test';
 
 export class PushError extends Error {
   constructor(
@@ -203,7 +203,7 @@ export async function disablePush(): Promise<void> {
 export async function sendTestPush(): Promise<void> {
   const subscription = await currentSubscription();
   if (!subscription) throw new PushError('not_subscribed');
-  await call('/api/push/test', { method: 'POST', body: JSON.stringify({ endpoint: subscription.endpoint }) });
+  await step('test', () => call('/api/push/test', { method: 'POST', body: JSON.stringify({ endpoint: subscription.endpoint }) }));
 }
 
 /**

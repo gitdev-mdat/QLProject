@@ -87,6 +87,7 @@ export function pushFailureText(error: unknown): string {
     ? `Thiết bị đang chặn thông báo của QLead. Vào Cài đặt › Thông báo › QLead để cho phép, rồi thử lại.${code}`
     : `Dịch vụ thông báo của thiết bị chưa phản hồi. Thử lại sau ít phút.${code}`;
   if (failure.code === 'device') return `Thiết bị chưa bật được thông báo. Thử lại sau ít phút.${code}`;
+  if (failure.stage === 'test' && failure.code === 'server') return `Dịch vụ thông báo của Apple/Google chưa nhận thông báo thử. QLead đã ghi lại lỗi để xử lý.${code}`;
   if (failure.code === 'forbidden') return `QLead chưa xác minh được trang đang mở. Mở QLead từ địa chỉ qlead.vn rồi thử lại.${code}`;
   return `QLead chưa lưu được thiết bị này. Thử lại sau ít phút.${code}`;
 }
