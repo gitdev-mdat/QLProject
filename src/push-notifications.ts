@@ -389,7 +389,9 @@ export async function drainPushNotifications(options: { outboxId?: string; limit
         await pool.query(`UPDATE push_subscriptions SET last_success_at=now(), last_failure_at=NULL, failure_count=0, updated_at=now() WHERE id=$1`, [rows[0]!.subscription_id]);
         totals.sent++;
       } catch (error) {
-        const statusCode = Number((error as { statusCode?: number })?.statusCode) || null;
+        const failure = describePushFailure(error);
+        console.warn(JSON.stringify({ level: 'warn', msg: 'Push delivery refused by push service', ...failure }));
+        const statusCode = failure.statusCode;
         if (statusCode === 404 || statusCode === 410) {
           await pool.query(`UPDATE push_notification_deliveries SET status='expired', push_status_code=$2, last_error_code='endpoint_gone', lease_expires_at=NULL, updated_at=now() WHERE id=ANY($1::uuid[])`, [ids, statusCode]);
           await pool.query('DELETE FROM push_subscriptions WHERE id=$1', [rows[0]!.subscription_id]);
@@ -474,6 +476,26 @@ export async function getPushPreference(userId: string): Promise<boolean> {
   return row?.enabled ?? false;
 }
 
+/**
+ * What a push service said when it refused a message, for one log line: HTTP status, the service's short reason
+ * (Apple: {"reason":"BadJwtToken"}, FCM/Mozilla: a short text) and the service host. Never the endpoint path,
+ * keys or payload.
+ */
+export function describePushFailure(error: unknown, endpoint?: string): { statusCode: number | null; reason: string | null; service: string | null } {
+  const err = error as { statusCode?: number; body?: unknown; name?: string; code?: string; message?: string } | null;
+  const statusCode = Number(err?.statusCode) || null;
+  let reason: string | null = null;
+  const body = typeof err?.body === 'string' ? err.body.trim() : '';
+  try { const parsed = JSON.parse(body) as { reason?: unknown }; if (typeof parsed.reason === 'string') reason = parsed.reason; } catch { /* not JSON */ }
+  if (!reason && body) reason = body;
+  if (!reason && !statusCode) reason = err?.code ?? err?.name ?? null;
+  if (!reason && err?.message) reason = err.message;
+  reason = reason ? reason.replace(/[^A-Za-z0-9 _.:-]/g, '').slice(0, 80) || null : null;
+  let service: string | null = null;
+  try { service = endpoint ? new URL(endpoint).hostname : null; } catch { service = null; }
+  return { statusCode, reason, service };
+}
+
 export async function sendTestPush(input: { userId: string; sessionId: string; endpoint: string }, sender: PushSender = sendPush): Promise<'sent' | 'not_subscribed' | 'rate_limited' | 'failed'> {
   const hash = endpointHash(input.endpoint);
   const client = await pool.connect();
@@ -496,12 +518,15 @@ export async function sendTestPush(input: { userId: string; sessionId: string; e
     await client.query('ROLLBACK').catch(() => undefined);
     throw error;
   } finally { client.release(); }
+  const subscription = decryptPushSubscription(ciphertext!);
   try {
-    await sender(decryptPushSubscription(ciphertext!), testPushPayload(), 'push-test');
+    await sender(subscription, testPushPayload(), 'push-test');
     await pool.query(`UPDATE push_subscriptions SET last_success_at=now(), last_failure_at=NULL, failure_count=0, updated_at=now() WHERE user_id=$1 AND session_id=$2 AND endpoint_hash=$3`, [input.userId, input.sessionId, hash]);
     return 'sent';
   } catch (error) {
-    const statusCode = Number((error as { statusCode?: number })?.statusCode) || null;
+    const failure = describePushFailure(error, subscription.endpoint);
+    console.warn(JSON.stringify({ level: 'warn', msg: 'Test push refused by push service', ...failure }));
+    const statusCode = failure.statusCode;
     if (statusCode === 404 || statusCode === 410) {
       await pool.query(`DELETE FROM push_subscriptions WHERE user_id=$1 AND session_id=$2 AND endpoint_hash=$3`, [input.userId, input.sessionId, hash]);
       return 'not_subscribed';
