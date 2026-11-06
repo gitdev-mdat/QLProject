@@ -4,7 +4,8 @@ import { QUEUED_GRACE_MINUTES, type ProfileScan } from './profile-scan';
  * Customer-facing state of a saved search profile, derived on the server from scan_configs, scan_runs and
  * search_jobs. Nothing here describes workers or connectors.
  */
-export type ProfileState = 'draft' | 'paused' | 'pending_first_scan' | 'active' | 'waiting_worker' | 'delayed' | 'attention';
+/** 'on_hold': enabled by the customer while an Admin has suspended the whole account (never shown as late or failing). */
+export type ProfileState = 'draft' | 'paused' | 'pending_first_scan' | 'active' | 'waiting_worker' | 'delayed' | 'attention' | 'on_hold';
 
 export type SearchProfile = {
   id: string;
@@ -42,6 +43,7 @@ export const PROFILE_STATE_LABEL: Record<ProfileState, string> = {
   waiting_worker: 'Đến lịch · chờ xử lý',
   delayed: 'Đang chậm',
   attention: 'Cần kiểm tra',
+  on_hold: 'Tạm dừng cùng tài khoản',
 };
 
 export const PROFILE_STATE_HINT: Record<ProfileState, string> = {
@@ -52,6 +54,7 @@ export const PROFILE_STATE_HINT: Record<ProfileState, string> = {
   waiting_worker: 'Lượt theo dõi đã đến lịch và đang chờ hệ thống nhận việc. Bạn không cần bấm lại.',
   delayed: 'Lượt theo dõi đã quá lịch dự kiến và chưa được nhận xử lý. Yêu cầu vẫn được giữ; bạn không cần bấm lại.',
   attention: 'Lượt quét gần nhất không thành công. QLead đang xử lý.',
+  on_hold: 'Tìm lead mới của tài khoản đang tạm dừng. Nhu cầu này vẫn bật và sẽ tiếp tục khi tài khoản được kích hoạt lại.',
 };
 
 export const PROFILE_FREQUENCIES = [30, 60, 360, 1440] as const;
@@ -72,12 +75,23 @@ export function isMonitoring(profile: SearchProfile): boolean {
   return profile.enabled;
 }
 
-export function deriveProfileState(input: { enabled: boolean; everEnabled: boolean; frequencyMinutes: number; enabledSince: string; lastScan: SearchProfile['lastScan']; lastSuccessAt: string | null; blocked: boolean; recurringDueAt?: string | null }, now: number): ProfileState {
+/**
+ * accountSuspended: an Admin stopped new searches for the account; an enabled need is then on hold, not late.
+ * monitoringSince: when the account's monitoring status last changed; after a reactivation the schedule restarts from it,
+ * so time spent suspended is not counted as a delay.
+ */
+export function deriveProfileState(input: { enabled: boolean; everEnabled: boolean; frequencyMinutes: number; enabledSince: string; lastScan: SearchProfile['lastScan']; lastSuccessAt: string | null; blocked: boolean; recurringDueAt?: string | null; accountSuspended?: boolean; monitoringSince?: string | null }, now: number): ProfileState {
   if (!input.enabled) return input.everEnabled ? 'paused' : 'draft';
+  if (input.accountSuspended) return 'on_hold';
   if (input.blocked || input.lastScan?.status === 'failed') return 'attention';
   const grace = 2 * input.frequencyMinutes * 60_000;
-  const reference = Math.max(new Date(input.enabledSince).getTime(), input.lastSuccessAt ? new Date(input.lastSuccessAt).getTime() : 0);
-  if (input.recurringDueAt) return now - new Date(input.recurringDueAt).getTime() > QUEUED_GRACE_MINUTES * 60_000 || now - reference > grace ? 'delayed' : 'waiting_worker';
+  const reference = Math.max(new Date(input.enabledSince).getTime(), input.lastSuccessAt ? new Date(input.lastSuccessAt).getTime() : 0,
+    input.monitoringSince ? new Date(input.monitoringSince).getTime() : 0);
+  if (input.recurringDueAt) {
+    // A slot that began while the account was suspended is counted from the reactivation, not from the slot start.
+    const due = Math.max(new Date(input.recurringDueAt).getTime(), input.monitoringSince ? new Date(input.monitoringSince).getTime() : 0);
+    return now - due > QUEUED_GRACE_MINUTES * 60_000 || now - reference > grace ? 'delayed' : 'waiting_worker';
+  }
   if (now - reference <= grace) return input.lastSuccessAt ? 'active' : 'pending_first_scan';
   return 'delayed';
 }

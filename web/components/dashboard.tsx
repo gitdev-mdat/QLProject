@@ -6,7 +6,7 @@ import type { ScanRun, ScanTotals } from '@/lib/server/leads';
 import type { Lead } from '@/lib/lead-source';
 import { compareLeadRank } from '@/lib/lead-ranking';
 import { frequencyLabel, PROFILE_STATE_LABEL, type LegacySummary, type SearchProfile } from '@/lib/profile-state';
-import { AppShell } from './app-shell';
+import { AppShell, useMonitoringSuspended } from './app-shell';
 import { Icon } from './visuals';
 import { GoatMascot } from './goat-mascot';
 import { LeadListItem } from './lead-results';
@@ -25,11 +25,15 @@ export function Dashboard({ records, profiles, legacy, scans, scanTotals, firstR
   const unseen = byPriority.filter(lead => workflow.get(lead.id).status === "new");
   const contacted = records.filter(lead => workflow.get(lead.id).status === "contacted").length;
   const interested = records.filter(lead => workflow.get(lead.id).status === "interested").length;
+  const suspended = useMonitoringSuspended();
   const today = now ? new Intl.DateTimeFormat('vi-VN', { weekday: 'long', day: 'numeric', month: 'numeric', timeZone: 'Asia/Ho_Chi_Minh' }).format(now) : '';
 
   return <AppShell active="Hôm nay">
     <div className="page-head">
-      <div><h1>Hôm nay</h1><p>{today && <span className="capitalize">{today}</span>}{today && ' · '}Ưu tiên bài mới, đúng nhu cầu và còn cơ hội.</p></div>
+      <div><h1>Hôm nay</h1>{suspended
+        // The one place on this page that states the account hold (the event itself lives in Thông báo).
+        ? <>{today && <p><span className="capitalize">{today}</span></p>}<p className="hold-note"><span className="hold-dot" aria-hidden="true"/><span>Tìm lead mới đang tạm dừng. Lead đã lưu vẫn xem được.</span></p></>
+        : <p>{today && <span className="capitalize">{today}</span>}{today && ' · '}Ưu tiên bài mới, đúng nhu cầu và còn cơ hội.</p>}</div>
       <Link href="/app/bai-viet" className="btn btn-primary">Xem tất cả lead <Icon name="arrow" size={16}/></Link>
     </div>
 
@@ -56,7 +60,7 @@ export function Dashboard({ records, profiles, legacy, scans, scanTotals, firstR
       </section>
 
       <aside className="today-aside">
-        <ScanHistoryPanel profiles={profiles} legacy={legacy} scans={scans} totals={scanTotals}/>
+        <ScanHistoryPanel profiles={profiles} legacy={legacy} scans={scans} totals={scanTotals} suspended={suspended}/>
       </aside>
     </div>
     </>}
@@ -81,7 +85,7 @@ const MONITOR_PREVIEW = 3;
  * panel stays the same size however long QLead has been running; every scan is on /app/lich-su-quet. Jobs only run
  * when a scan is actually picked up, so the next slot is shown as an estimate, and only while scans arrive on time.
  */
-function ScanHistoryPanel({ profiles, legacy, scans, totals }: { profiles: SearchProfile[]; legacy: LegacySummary | null; scans: ScanRun[]; totals: ScanTotals }) {
+function ScanHistoryPanel({ profiles, legacy, scans, totals, suspended }: { profiles: SearchProfile[]; legacy: LegacySummary | null; scans: ScanRun[]; totals: ScanTotals; suspended: boolean }) {
   const [now, setNow] = useState(0);
   useEffect(() => {
     setNow(Date.now());
@@ -101,7 +105,10 @@ function ScanHistoryPanel({ profiles, legacy, scans, totals }: { profiles: Searc
 
   return <section className="panel scan-panel" aria-labelledby="scan-title">
     <div className="panel-head"><h2 id="scan-title">Lịch sử quét</h2><Link className="text-link" href="/app/bo-loc">Nhu cầu ({profiles.length})</Link></div>
-    <div className="monitor-summary">
+    {suspended
+      // An Admin hold is a state, not a fault: no countdown, no "late" warning, no per-need status pills.
+      ? <div className="monitor-summary"><p><b>Lượt quét theo lịch đang tạm dừng.</b>{monitoring.length > 0 && <span className="muted-text"> {monitoring.length} nhu cầu đang bật sẽ tự tiếp tục.</span>}</p></div>
+      : <><div className="monitor-summary">
       {monitoring.length
         ? <p><b>Đang theo dõi {monitoring.length} nhu cầu</b>{profiles.length > monitoring.length && <span className="muted-text"> · {profiles.length - monitoring.length} tạm dừng hoặc nháp</span>}</p>
         : <p><b>Chưa có nhu cầu nào đang bật.</b> {legacy ? 'Lead từ lượt quét trước vẫn ở danh sách.' : ''} <Link className="text-link" href="/app/bo-loc">{profiles.length ? 'Bật lại' : 'Tạo nhu cầu'}</Link></p>}
@@ -122,7 +129,7 @@ function ScanHistoryPanel({ profiles, legacy, scans, totals }: { profiles: Searc
         </>
         : now ? <span className="scan-late-note">{lastSuccess ? `Chưa có lượt quét mới từ ${scanTime(lastSuccess)}.` : 'Chưa có lượt quét nào hoàn tất.'} Lượt quét đang chậm hơn lịch, lead mới có thể đến muộn.</span>
         : <p className="muted-text">Đang tính…</p>}
-    </div>}
+    </div>}</>}
     {scans.length > 0 ? <>
       <div className="scan-recent-head">
         <h3>Gần đây</h3>

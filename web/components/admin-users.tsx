@@ -200,9 +200,10 @@ function UserDetail({ userId, currentAdminId, onClose, onChanged, onDeleted }: {
     setConfirm(null);
     if (change.status === 'suspended') {
       const inFlight = change.inFlightJobCount > 0 ? ` ${change.inFlightJobCount} lượt tìm đã được giao trước đó có thể vẫn hoàn tất và lưu kết quả.` : '';
-      setNotice({ kind: 'ok', text: change.changed ? `Đã ngưng tìm lead cho ${name} lúc ${at(change.changedAt)}.${inFlight}` : `Tài khoản này đã ở trạng thái ngưng từ trước. Không có gì thay đổi.${inFlight}` });
+      const told = change.notified ? (change.publicReason ? ' Khách đã được thông báo, kèm lý do bạn gửi.' : ' Khách đã được thông báo.') : '';
+      setNotice({ kind: 'ok', text: change.changed ? `Đã ngưng tìm lead cho ${name} lúc ${at(change.changedAt)}.${told}${inFlight}` : `Tài khoản này đã ở trạng thái ngưng từ trước. Không có gì thay đổi.${inFlight}` });
     } else {
-      setNotice({ kind: 'ok', text: change.changed ? `Đã kích hoạt lại tìm lead cho ${name} lúc ${at(change.changedAt)}. Nhu cầu đang bật sẽ quét ở lượt theo lịch tiếp theo.` : 'Tài khoản này vốn đang tìm lead. Không có gì thay đổi.' });
+      setNotice({ kind: 'ok', text: change.changed ? `Đã kích hoạt lại tìm lead cho ${name} lúc ${at(change.changedAt)}.${change.notified ? ' Khách đã được thông báo.' : ''} Nhu cầu đang bật sẽ quét ở lượt theo lịch tiếp theo.` : 'Tài khoản này vốn đang tìm lead. Không có gì thay đổi.' });
     }
     await load();
     onChanged();
@@ -241,8 +242,9 @@ function UserDetail({ userId, currentAdminId, onClose, onChanged, onDeleted }: {
               : `Không tạo lượt tìm Facebook mới cho tài khoản này${profiles.length ? `. Cả ${profiles.length} nhu cầu đều không được quét mới` : ''}. Lead và ghi chú cũ vẫn còn.`}</p>
             <dl className="mon-facts">
               {d.status === 'suspended' && <div><dt>Ngưng lúc</dt><dd>{at(d.suspendedAt)}{d.suspendedByName ? ` · bởi ${d.suspendedByName}` : ''}</dd></div>}
-              {d.status === 'suspended' && <div><dt>Lý do</dt><dd>{d.reason || <span className="muted-text">Không ghi lý do</span>}</dd></div>}
-              {d.status === 'active' && d.suspendedAt && <div><dt>Lần ngưng gần nhất</dt><dd>{at(d.suspendedAt)}{d.suspendedByName ? ` · bởi ${d.suspendedByName}` : ''}{d.reason ? ` · “${d.reason}”` : ''}</dd></div>}
+              {d.status === 'suspended' && <div><dt>Lý do gửi khách</dt><dd className="pre-line">{d.publicReason || <span className="muted-text">Không gửi lý do</span>}</dd></div>}
+              {d.status === 'suspended' && <div><dt>Ghi chú nội bộ</dt><dd className="pre-line">{d.reason || <span className="muted-text">Không có</span>}</dd></div>}
+              {d.status === 'active' && d.suspendedAt && <div><dt>Lần ngưng gần nhất</dt><dd>{at(d.suspendedAt)}{d.suspendedByName ? ` · bởi ${d.suspendedByName}` : ''}{d.reason ? ` · ghi chú nội bộ “${d.reason}”` : ''}</dd></div>}
               {d.status === 'active' && d.suspendedAt && <div><dt>Kích hoạt lại lúc</dt><dd>{at(d.changedAt)}{d.changedByName ? ` · bởi ${d.changedByName}` : ''}</dd></div>}
               <div><dt>Đăng nhập</dt><dd><Icon name="lock" size={14}/> Vẫn đăng nhập được <small>Ngưng tìm lead không khóa tài khoản.</small></dd></div>
             </dl>
@@ -435,6 +437,7 @@ function DeleteAccountDialog({ user, onCancel, onDeleted, onGone }: { user: Admi
 
 function ConfirmChange({ user, target, profileCount, onCancel, onDone }: { user: AdminUserDetail; target: 'suspended' | 'active'; profileCount: number; onCancel: () => void; onDone: (change: MonitoringChange) => void }) {
   const [reason, setReason] = useState('');
+  const [publicReason, setPublicReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -448,7 +451,7 @@ function ConfirmChange({ user, target, profileCount, onCancel, onDone }: { user:
 
   async function submit() {
     setBusy(true); setError('');
-    const body = suspend ? { status: 'suspended', reason: reason.trim() || null } : { status: 'active' };
+    const body = suspend ? { status: 'suspended', reason: reason.trim() || null, publicReason: publicReason.trim() || null } : { status: 'active' };
     const result = await call<MonitoringChange>(`/api/admin/users/${user.id}/monitoring`, 'change', {
       method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-qlead-admin': '1' }, body: JSON.stringify(body),
     });
@@ -464,17 +467,22 @@ function ConfirmChange({ user, target, profileCount, onCancel, onDone }: { user:
         <p className="confirm-who"><b>{user.displayName}</b>{user.email && <small>{user.email}</small>}</p>
         <ul className="confirm-points" id="confirm-desc">{suspend ? <>
           <li className="is-stop"><Icon name="info" size={16}/><span>QLead dừng tạo lượt tìm Facebook mới cho khách này{profileCount ? `, áp dụng cho cả ${profileCount} nhu cầu` : ''}.</span></li>
-          <li><Icon name="check" size={16}/><span>Lead, ghi chú và lịch sử quét cũ vẫn còn nguyên, khách vẫn xem được.</span></li>
-          <li><Icon name="check" size={16}/><span>Khách vẫn đăng nhập bình thường và thấy thông báo tìm lead đang tạm dừng.</span></li>
+          <li><Icon name="check" size={16}/><span>Lead, ghi chú, lịch sử quét và cài đặt bật/tạm dừng của từng nhu cầu được giữ nguyên.</span></li>
+          <li><Icon name="check" size={16}/><span>Khách nhận một thông báo trong QLead (và trên thiết bị đã bật thông báo) rằng quản trị viên đã tạm dừng tìm lead mới.</span></li>
           <li><Icon name="clock" size={16}/><span>Lượt tìm đã được giao trước đó{user.claimedJobCount ? ` (hiện có ${user.claimedJobCount})` : ''} có thể vẫn chạy xong và lưu kết quả.</span></li>
-          <li><Icon name="check" size={16}/><span>Bạn có thể kích hoạt lại bất cứ lúc nào. Cài đặt bật/tạm dừng của từng nhu cầu được giữ nguyên.</span></li>
         </> : <>
           <li><Icon name="check" size={16}/><span>Các nhu cầu khách đang bật sẽ được quét lại ở lượt theo lịch tiếp theo.</span></li>
           <li><Icon name="clock" size={16}/><span>Lượt bị bỏ lỡ trong lúc ngưng không được chạy bù.</span></li>
           <li><Icon name="check" size={16}/><span>Nhu cầu khách tự tạm dừng vẫn giữ tạm dừng.</span></li>
+          <li><Icon name="check" size={16}/><span>Khách nhận thông báo QLead đã tiếp tục tìm lead mới.</span></li>
         </>}</ul>
-        {suspend && <label className="field">Lý do <span className="field-optional">(không bắt buộc, chỉ quản trị viên thấy)</span>
-          <textarea rows={2} maxLength={1000} value={reason} onChange={event => setReason(event.target.value)} disabled={busy} placeholder="Ví dụ: Khách yêu cầu tạm ngưng, hết hạn dùng thử"/></label>}
+        {suspend && <>
+          <label className="field">Lý do gửi cho khách <span className="field-optional">(không bắt buộc)</span>
+            <textarea rows={2} maxLength={500} value={publicReason} onChange={event => setPublicReason(event.target.value)} disabled={busy} placeholder="Ví dụ: Gói dùng thử đã hết hạn. Liên hệ QLead để gia hạn."/>
+            <small>{publicReason.trim() ? 'Khách thấy đúng nội dung này khi bấm “Xem lý do”.' : 'Để trống: khách chỉ nhận thông báo tạm dừng, không nhắc tới lý do.'}</small></label>
+          <label className="field">Ghi chú nội bộ <span className="field-optional">(không bắt buộc, chỉ quản trị viên thấy)</span>
+            <textarea rows={2} maxLength={1000} value={reason} onChange={event => setReason(event.target.value)} disabled={busy} placeholder="Ví dụ: Khách yêu cầu qua Zalo ngày 06/11"/></label>
+        </>}
         {error && <div className="admin-alert admin-alert-error" role="alert"><Icon name="info" size={18}/><span>{error}</span></div>}
         <div className="modal-actions">
           <button type="button" ref={cancelRef} className="btn btn-ghost" onClick={onCancel} disabled={busy}>Hủy</button>

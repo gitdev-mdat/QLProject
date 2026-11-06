@@ -30,7 +30,7 @@ async function send(url: string, method: 'POST' | 'PATCH', body?: unknown): Prom
 
 type Saved = { at: number; request: ScanRequestOutcome | null };
 
-const SUSPENDED_SCAN_HINT = 'Tài khoản đang tạm ngưng tìm khách mới nên chưa tìm lại được. Bạn vẫn lưu được thay đổi.';
+const SUSPENDED_SCAN_HINT = 'Tìm lead mới đang tạm dừng nên chưa tìm lại được. Bạn vẫn lưu được thay đổi.';
 
 /** "14:05" today, "14:05 · 02/11" on other days (Vietnam time). */
 function shortTime(value: string): string {
@@ -312,7 +312,8 @@ function ProfileCard({ profile, saved, onEdit }: { profile: SearchProfile; saved
 
   const status = profileStatus(profile, scan, suspended, shortTime);
   const button = rescanButton(profile, scan, suspended, busy === 'scan', waitUntil, now);
-  const monitoring = suspended ? { label: 'Tạm ngưng', tone: 'off' } : profile.enabled ? { label: 'Đang theo dõi', tone: 'on' } : profile.state === 'draft' ? { label: 'Bản nháp', tone: 'off' } : { label: 'Tạm dừng', tone: 'off' };
+  // While the account is on hold an enabled need keeps its own "on" setting (grey, since nothing is searched right now).
+  const monitoring = suspended && profile.enabled ? { label: 'Đang bật', tone: 'off' } : profile.enabled ? { label: 'Đang theo dõi', tone: 'on' } : profile.state === 'draft' ? { label: 'Bản nháp', tone: 'off' } : { label: 'Tạm dừng', tone: 'off' };
   // A finished scan of an older save can be followed by one of the latest save (the cooldown only covers the same save).
   const canRescanLatest = button.show && !button.disabled;
 
@@ -332,7 +333,8 @@ function ProfileCard({ profile, saved, onEdit }: { profile: SearchProfile; saved
     </p>
 
     {justSaved && <p className="saved-line pf-saved" role="status"><Icon name="check" size={16}/>Đã lưu thay đổi.</p>}
-    <StatusPanel status={status} scan={suspended && scan?.state !== 'running' ? null : scan} profile={profile} scanOpen={scanOpen} onEdit={onEdit} onToggle={toggle} onRescan={rescan} toggling={busy === 'toggle'} canRescanLatest={canRescanLatest}/>
+    {/* The page header already says the account is on hold; an enabled card adds nothing until a running search finishes. */}
+    {!(suspended && profile.enabled && scan?.state !== 'running') && <StatusPanel status={status} scan={suspended && scan?.state !== 'running' ? null : scan} profile={profile} scanOpen={scanOpen} onEdit={onEdit} onToggle={toggle} onRescan={rescan} toggling={busy === 'toggle'} canRescanLatest={canRescanLatest}/>}
     {note && <p className={note.tone === 'ok' ? 'pf-note' : 'pf-note is-warn'} role="status"><Icon name="info" size={14}/>{note.text}</p>}
 
     <footer className="pf-foot">
@@ -358,7 +360,7 @@ export function ProfilesPage({ profiles, legacy, startCreating = false }: { prof
   const monitoring = profiles.filter(profile => profile.enabled).length;
   const suspended = useMonitoringSuspended();
   const summary = !profiles.length ? 'Cho QLead biết bạn muốn tìm khách hàng nào.'
-    : suspended ? 'Tài khoản đang tạm ngưng tìm khách mới.'
+    : suspended ? `Tìm lead mới đang tạm dừng cho tài khoản của bạn.${monitoring ? ` ${monitoring} nhu cầu đang bật sẽ tự tiếp tục khi được kích hoạt lại.` : ''}`
       : monitoring ? `${monitoring} nhu cầu đang được theo dõi${monitoring < profiles.length ? `, ${profiles.length - monitoring} đang tạm dừng` : ''}.`
         : 'Chưa có nhu cầu nào đang được theo dõi.';
 
