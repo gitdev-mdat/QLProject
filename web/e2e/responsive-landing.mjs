@@ -206,13 +206,19 @@ if (!process.env.SWEEP_ONLY) {
     const g = `interaction ${width}px`;
     const click = async locator => mobile ? locator.tap() : locator.click();
     try {
-      const primary = page.locator('.hero-actions a', { hasText: 'Khám phá QLead' });
-      await click(primary);
+      const signup = page.locator('.hero-actions a', { hasText: 'Bắt đầu ngay' });
+      record(g, 'Hero primary CTA "Bắt đầu ngay" links to /dang-ky', (await signup.getAttribute('href')) === '/dang-ky' && await signup.isVisible() && (await signup.getAttribute('class')).includes('btn-primary'));
+      const preview = page.locator('.hero-actions a', { hasText: 'Xem thử' });
+      await click(preview);
       await page.waitForTimeout(900);
       const demoTop = await page.evaluate(() => document.querySelector('#demo').getBoundingClientRect().top);
-      record(g, 'Hero CTA "Khám phá QLead" scrolls to the demo', Math.abs(demoTop) < 120, `demo top ${Math.round(demoTop)}`);
-      const signup = page.locator('.hero-actions a', { hasText: 'Bắt đầu ngay' });
-      record(g, 'Hero CTA "Bắt đầu ngay" links to /dang-ky', (await signup.getAttribute('href')) === '/dang-ky' && await signup.isVisible());
+      record(g, 'Hero CTA "Xem thử" scrolls to the demo', Math.abs(demoTop) < 120, `demo top ${Math.round(demoTop)}`);
+      // Claims: only verified sources (posts, Reels) are named; comments/images are not promised; examples are labelled.
+      const bodyText = await page.locator('main').innerText();
+      const overclaims = ['bình luận', 'hình ảnh', 'mọi bài', 'không bỏ sót', 'toàn bộ', 'chắc chắn'].filter(word => bodyText.toLocaleLowerCase('vi').includes(word));
+      record(g, 'No unverified or absolute claims on the landing', overclaims.length === 0, overclaims.join(', '));
+      record(g, 'Signal example is labelled as an illustration', await page.locator('.signal-example .sample-tag', { hasText: 'Ví dụ minh họa' }).isVisible() && await page.locator('.scan-caption', { hasText: 'Minh họa' }).isVisible());
+      record(g, '"QLead giúp bạn" shows the three steps in order', (await page.locator('#cach-hoat-dong .flow h3').allInnerTexts()).join(' > ') === 'Tìm cơ hội > Lọc và xếp trước > Báo cho bạn');
       const navCta = page.locator('.site-nav-actions .btn-primary');
       record(g, 'Nav "Bắt đầu ngay" visible and reachable', await navCta.isVisible() && (await navCta.boundingBox()).x + (await navCta.boundingBox()).width <= width);
       await click(page.locator('.suggestions button').nth(2));
