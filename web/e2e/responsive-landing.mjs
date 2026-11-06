@@ -208,17 +208,23 @@ if (!process.env.SWEEP_ONLY) {
     try {
       const signup = page.locator('.hero-actions a', { hasText: 'Bắt đầu ngay' });
       record(g, 'Hero primary CTA "Bắt đầu ngay" links to /dang-ky', (await signup.getAttribute('href')) === '/dang-ky' && await signup.isVisible() && (await signup.getAttribute('class')).includes('btn-primary'));
-      const preview = page.locator('.hero-actions a', { hasText: 'Xem thử' });
+      const preview = page.locator('.hero-actions a', { hasText: 'Thử ngay' });
       await click(preview);
       await page.waitForTimeout(900);
       const demoTop = await page.evaluate(() => document.querySelector('#demo').getBoundingClientRect().top);
-      record(g, 'Hero CTA "Xem thử" scrolls to the demo', Math.abs(demoTop) < 120, `demo top ${Math.round(demoTop)}`);
+      record(g, 'Hero CTA "Thử ngay" scrolls to the demo', Math.abs(demoTop) < 120, `demo top ${Math.round(demoTop)}`);
       // Claims: only verified sources (posts, Reels) are named; comments/images are not promised; examples are labelled.
       const bodyText = await page.locator('main').innerText();
       const overclaims = ['bình luận', 'hình ảnh', 'mọi bài', 'không bỏ sót', 'toàn bộ', 'chắc chắn'].filter(word => bodyText.toLocaleLowerCase('vi').includes(word));
       record(g, 'No unverified or absolute claims on the landing', overclaims.length === 0, overclaims.join(', '));
-      record(g, 'Signal example is labelled as an illustration', await page.locator('.signal-example .sample-tag', { hasText: 'Ví dụ minh họa' }).isVisible() && await page.locator('.scan-caption', { hasText: 'Minh họa' }).isVisible());
-      record(g, '"QLead giúp bạn" shows the three steps in order', (await page.locator('#cach-hoat-dong .flow h3').allInnerTexts()).join(' > ') === 'Tìm cơ hội > Lọc và xếp trước > Báo cho bạn');
+      record(g, 'Illustrations are labelled (hero scene, demo)', await page.locator('.scan-caption', { hasText: 'Minh họa' }).isVisible() && await page.locator('#demo .section-head p', { hasText: 'không phải lead thật' }).isVisible());
+      record(g, 'Hero headline reads "Tìm lead tự động trên Facebook"', (await page.locator('#hero-title').innerText()).replace(/\s+/g, ' ').trim() === 'Tìm lead tự động trên Facebook');
+      const order = await page.evaluate(() => [...document.querySelectorAll('main > section')].map(s => s.id || s.className.split(' ')[0]));
+      record(g, 'Sections in order: hero, demo, cách hoạt động, so sánh, CTA', order.join(',') === 'hero,demo,cach-hoat-dong,so-sanh,final-cta', order.join(','));
+      record(g, '"Mỗi lead có đủ thông tin" section is gone', await page.locator('text=Mỗi lead có đủ thông tin').count() === 0);
+      const anchors = await page.evaluate(() => [...document.querySelectorAll('a[href^="#"]')].map(a => a.getAttribute('href')).filter(h => h !== '#main' && !document.querySelector(h)));
+      record(g, 'Every in-page link points to an existing section', anchors.length === 0, anchors.join(', '));
+      record(g, '"QLead giúp bạn" shows the three steps in order', (await page.locator('#cach-hoat-dong .flow h3').allInnerTexts()).map(t => t.replace(/^\d+\.\s*/, '')).join(' > ') === 'Tìm khách hàng tiềm năng > Đánh giá > Thông báo cho bạn');
       const navCta = page.locator('.site-nav-actions .btn-primary');
       record(g, 'Nav "Bắt đầu ngay" visible and reachable', await navCta.isVisible() && (await navCta.boundingBox()).x + (await navCta.boundingBox()).width <= width);
       await click(page.locator('.suggestions button').nth(2));
@@ -236,11 +242,6 @@ if (!process.env.SWEEP_ONLY) {
       await page.waitForTimeout(1200);
       const problems = await page.evaluate(audit);
       record(g, 'No layout problems after interacting with the demo', problems.length === 0, problems.slice(0, 4).join(' | '));
-      // Keyboard: every anatomy field is focusable and shows a focus ring.
-      await page.locator('.anatomy-list li').nth(1).focus();
-      await page.keyboard.press('Shift+Tab');
-      const ring = await page.evaluate(() => getComputedStyle(document.activeElement).outlineStyle);
-      record(g, 'Anatomy field takes keyboard focus with a visible outline', ring !== 'none', ring);
       if (!process.env.SWEEP_ONLY) await page.screenshot({ path: resolve(SHOTS, `${LABEL}-${width}-demo-interaction.png`), fullPage: false });
     } catch (error) { record(g, 'interaction run', false, error.message.split('\n')[0]); }
     await context.close();

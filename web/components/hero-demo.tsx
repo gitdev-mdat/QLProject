@@ -143,7 +143,8 @@ export function HeroDemo() {
         <p className="muted-text">Bấm một gợi ý bên trái để xem một lead trông như thế nào.</p>
       </div>}
       <div className="demo-results-foot">
-        <Link href="/app/bai-viet" className="text-link">Mở bảng lead mẫu <Icon name="arrow" size={16}/></Link>
+        <p>Bài mẫu để minh họa.</p>
+        <Link href="/dang-ky" className="text-link">Tìm lead thật cho ngành của bạn <Icon name="arrow" size={16}/></Link>
       </div>
     </div>
   </div>;
