@@ -4,6 +4,7 @@ import { AppFrame, SessionProvider } from '@/components/app-shell';
 import { needsOnboarding } from '@/lib/server/accounts';
 import { isAdmin } from '@/lib/server/admin';
 import { requireSession } from '@/lib/server/session';
+import { unreadNotificationCount } from '@/lib/server/notifications';
 
 /**
  * Every /app route requires a valid server-side session; otherwise redirect to the login page. A newly registered
@@ -18,6 +19,11 @@ const pushOwnerKey = (userId: string) => createHash('sha256').update(`qlead-push
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await requireSession();
   const admin = isAdmin(session.userId);
-  if (!admin && session.leadMonitoringStatus === 'active' && await needsOnboarding(session.userId)) redirect('/bat-dau');
-  return <SessionProvider user={{ displayName: session.displayName, isDevSession: session.createdVia === 'dev_quick_login', leadMonitoringStatus: session.leadMonitoringStatus, isAdmin: admin, pushOwner: pushOwnerKey(session.userId) }}><AppFrame>{children}</AppFrame></SessionProvider>;
+  // The unread count is one indexed query run alongside the onboarding check; the shell keeps it fresh afterwards.
+  const [onboarding, unread] = await Promise.all([
+    !admin && session.leadMonitoringStatus === 'active' ? needsOnboarding(session.userId) : false,
+    unreadNotificationCount(session.userId).catch(() => 0),
+  ]);
+  if (onboarding) redirect('/bat-dau');
+  return <SessionProvider user={{ displayName: session.displayName, isDevSession: session.createdVia === 'dev_quick_login', leadMonitoringStatus: session.leadMonitoringStatus, isAdmin: admin, pushOwner: pushOwnerKey(session.userId), unreadNotifications: unread }}><AppFrame>{children}</AppFrame></SessionProvider>;
 }

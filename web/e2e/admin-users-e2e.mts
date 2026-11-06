@@ -42,7 +42,9 @@ async function resetFixtures() {
     await pool.query(`INSERT INTO scan_configs(agent_connection_id, version, enabled, keywords, location, sources, frequency_minutes, description) VALUES ($1, 1, $2, '["e2e"]', '', '["social.search"]', 30, $3)`, [p.id, enabled, `Tìm ${name.toLowerCase()}`]);
     P.push(p.id);
   }
-  for (let i = 1; i <= 4; i++) await pool.query(`INSERT INTO facebook_posts(agent_connection_id, normalized_url, original_url, content, author, published_at, platform) VALUES ($1, $2, $2, $3, 'E2E Page', now() - interval '2 hours', 'facebook')`, [P[0], `https://facebook.com/e2e-admin-users/${i}`, `Bài viết E2E số ${i}: quán cafe sắp khai trương cần máy POS`]);
+  for (let i = 1; i <= 4; i++) await pool.query(`INSERT INTO facebook_posts(agent_connection_id, normalized_url, original_url, content, author, published_at, platform) VALUES ($1, $2, $2, $3, 'E2E Page', now() - interval '2 hours', 'facebook')`, [P[0], `https://facebook.com/groups/e2e-admin-users/posts/${i}`, `Bài viết E2E số ${i}: quán cafe sắp khai trương cần máy POS`]);
+  // Leads are customer-visible only when source-linked to a search configuration (lead-eligibility.ts).
+  await pool.query(`INSERT INTO facebook_post_search_configs(agent_connection_id, normalized_url, configuration_version) SELECT agent_connection_id, normalized_url, 1 FROM facebook_posts WHERE agent_connection_id = $1`, [P[0]]);
   await pool.query(`INSERT INTO scan_runs(agent_connection_id, external_scan_id, configuration_version, scanned_at, total_found, received_posts, new_posts, duplicates_skipped) VALUES ($1, 'e2e-admin-users-1', 1, now() - interval '20 minutes', 9, 4, 4, 0)`, [P[0]]);
 }
 
@@ -171,7 +173,7 @@ try {
     const c = p.getByRole('alertdialog');
     await c.waitFor();
     const text = await c.innerText();
-    for (const s of ['lượt tìm Facebook mới', 'cả 3 nhu cầu', 'Lead, ghi chú và lịch sử quét cũ vẫn còn', 'vẫn đăng nhập', 'có thể vẫn chạy xong', 'kích hoạt lại bất cứ lúc nào'])
+    for (const s of ['lượt tìm Facebook mới', 'cả 3 nhu cầu', 'Lead, ghi chú, lịch sử quét và cài đặt bật/tạm dừng', 'Khách nhận một thông báo', 'có thể vẫn chạy xong', 'Lý do gửi cho khách', 'chỉ quản trị viên thấy'])
       assert(text.includes(s), `missing ${s}`);
     await p.screenshot({ path: `${SHOTS}/confirm-suspend-1440.png`, caret: 'initial' });
     await c.getByRole('button', { name: 'Hủy' }).click();
@@ -183,7 +185,7 @@ try {
     await p.route('**/monitoring', async r => { await gate; await r.continue(); });
     await p.getByRole('dialog').getByRole('button', { name: 'Ngưng tìm lead' }).click();
     const c = p.getByRole('alertdialog');
-    await c.getByRole('textbox').fill('Khách yêu cầu tạm ngưng (E2E)');
+    await c.getByLabel(/Ghi chú nội bộ/).fill('Khách yêu cầu tạm ngưng (E2E)');
     const submit = c.getByRole('button', { name: 'Ngưng tìm lead' });
     await submit.click();
     const busy = c.getByRole('button', { name: 'Đang ngưng…' });
@@ -217,20 +219,18 @@ try {
   });
 
   // ---------- customer while suspended ----------
-  await check('customer sees the notice, keeps historical leads, rescan is disabled with a reason', async () => {
+  await check('customer is notified, keeps historical leads, and sees the hold once (no rescan offered)', async () => {
     const c = cust.page;
     await c.goto(`${BASE}/app/bai-viet`);
     await shot(c, 'customer-suspended-leads-390');
-    await c.getByText('Tính năng tìm lead của tài khoản đang tạm dừng.').waitFor();
+    await c.locator('.topbar-bell .unread-dot').waitFor();
     await c.getByText('Bài viết E2E số 1').filter({ visible: true }).first().waitFor({ timeout: 10_000 }).catch(() => { throw new Error('historical lead hidden'); });
     await c.goto(`${BASE}/app/bo-loc`);
     const card = c.getByRole('article', { name: 'Quán cafe sắp khai trương' });
-    const rescan = card.getByRole('button', { name: 'Tìm lại ngay' });
-    await rescan.waitFor();
-    assert(await rescan.isDisabled(), 'rescan enabled');
-    assert(await card.getByText('chưa thể tìm lại').isVisible(), 'reason not shown');
-    assert(await card.getByText('Chưa tìm mới').isVisible(), 'state label');
-    assert(await c.getByText('Tìm lead đang tạm dừng · 2/3 nhu cầu đang bật.').isVisible(), 'page summary');
+    await card.waitFor();
+    assert(!(await card.getByRole('button', { name: 'Tìm lại ngay' }).count()), 'rescan offered while suspended');
+    assert(await card.locator('.pf-monitor').innerText() === 'Đang bật', 'state label');
+    assert(await c.getByText('Tìm lead mới đang tạm dừng cho tài khoản của bạn. 2 nhu cầu đang bật sẽ tự tiếp tục khi được kích hoạt lại.').isVisible(), 'page summary');
     const paused = c.getByRole('article', { name: 'Nhà thuốc cần phần mềm' });
     assert(await paused.getByRole('button', { name: /^Bật/ }).isEnabled(), 'profile pause toggle must stay usable');
     const body = await c.locator('body').innerText();
@@ -279,7 +279,7 @@ try {
     await c.goto(`${BASE}/app/bo-loc`);
     const card = c.getByRole('article', { name: 'Quán cafe sắp khai trương' });
     await card.getByRole('button', { name: 'Tìm lại ngay' }).waitFor();
-    assert(!(await c.getByText('Tính năng tìm lead của tài khoản đang tạm dừng.').count()), 'notice still shown');
+    assert(!(await c.getByText('Tìm lead mới đang tạm dừng', { exact: false }).count()), 'hold still shown');
     assert(await card.getByRole('button', { name: 'Tìm lại ngay' }).isEnabled(), 'rescan still disabled');
   });
 

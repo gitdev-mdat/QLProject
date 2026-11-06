@@ -393,8 +393,6 @@ img, svg { display: block; }
 .preview-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: 13px; font-weight: 500; }
 .preview-strip { display: flex; align-items: center; gap: 10px; padding: 10px 32px; background: var(--gold-100); border-bottom: 1px solid #F0D79F; color: var(--gold-ink); font-size: 14px; }
 .preview-strip b { color: var(--ink); font-weight: 600; }
-  .monitoring-suspended { display: flex; align-items: flex-start; gap: 10px; padding: 12px 32px; background: #fff2df; border-bottom: 1px solid #efd5ad; color: #704514; font-size: 14px; }
-  .monitoring-suspended b { color: #51330e; font-weight: 650; }
 .app-content { padding: 28px 32px 48px; max-width: 1360px; }
 .bottom-nav { display: none; }
 
@@ -585,7 +583,6 @@ img, svg { display: block; }
   .app-topbar { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; background: var(--surface); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 20; }
   .app-topbar .logo-mark { width: 32px; height: 32px; }
   .preview-strip { padding: 10px 20px; }
-    .monitoring-suspended { padding: 10px 20px; }
   .app-content { padding: 22px 20px 100px; }
   .bottom-nav { position: fixed; inset: auto 0 0 0; z-index: 30; display: grid; grid-template-columns: repeat(4, 1fr); padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--line); }
   .bottom-nav a { display: grid; justify-items: center; gap: 2px; padding: 6px 4px; border-radius: var(--radius-sm); color: var(--muted); font-size: 12px; font-weight: 500; }
@@ -1283,3 +1280,9 @@ a.scan-row-source:hover { text-decoration: underline; text-underline-offset: 3px
   .history-runs .scan-row-main { grid-template-columns: minmax(0, 1fr) minmax(0, 22em); align-items: baseline; column-gap: 16px; }
   .history-runs .scan-row-source { text-align: right; }
 }
+
+/* Account hold (Admin suspended lead search): a neutral state, never styled as a warning. */
+.profile-state.is-on_hold { background: var(--surface-2); color: var(--muted); }
+.profile-card.is-on_hold { border-left-color: var(--line-strong); }
+.page-head p.hold-note { display: flex; align-items: center; gap: 9px; margin-top: 2px; color: var(--ink-2); }
+.hold-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--line-strong); box-shadow: 0 0 0 3px var(--surface-2); }

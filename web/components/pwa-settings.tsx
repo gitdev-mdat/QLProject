@@ -24,10 +24,13 @@ function useEnv(): Env | null {
   return env;
 }
 
-export function AppSettingsPage() {
+export function AppSettingsPage({ embedded = false }: { embedded?: boolean }) {
   const env = useEnv();
+  const intro = 'Mở QLead nhanh như một ứng dụng và biết ngay khi có khách hàng tiềm năng mới.';
   return <div className="pwa-page">
-    <header className="page-head"><div><h1>Ứng dụng và thông báo</h1><p>Mở QLead nhanh như một ứng dụng và biết ngay khi có khách hàng tiềm năng mới.</p></div></header>
+    {embedded
+      ? <header className="pwa-section-head"><h2>Ứng dụng và thông báo trên thiết bị này</h2><p>{intro}</p></header>
+      : <header className="page-head"><div><h1>Ứng dụng và thông báo</h1><p>{intro}</p></div></header>}
     {/* On an iPhone tab, installing comes first: iOS only offers notifications to the Home Screen app. */}
     <div className={`pwa-grid${env?.platform === 'ios' && !env.standalone ? ' install-first' : ''}`}>
       <PushCard env={env}/>

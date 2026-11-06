@@ -47,7 +47,7 @@ function scanFrom(row: Partial<ScanRow> & { kind: string | null }, now: number, 
 
 export async function listProfilesForUser(userId: string, now = Date.now()): Promise<SearchProfile[]> {
   const { rows } = await db().query(`SELECT ac.id, ac.name, ac.created_at,
-      sc.version, sc.keywords, sc.keywords_source, sc.location, sc.frequency_minutes, sc.enabled, sc.description, sc.updated_at, u.lead_monitoring_status,
+      sc.version, sc.keywords, sc.keywords_source, sc.location, sc.frequency_minutes, sc.enabled, sc.description, sc.updated_at, u.lead_monitoring_status, u.lead_monitoring_changed_at,
       (SELECT count(*)::int FROM scan_configs WHERE agent_connection_id = ac.id) AS versions,
       (SELECT count(DISTINCT (keywords::text, location, coalesce(description, '')))::int FROM scan_configs WHERE agent_connection_id = ac.id) > 1 AS conditions_changed,
       EXISTS (SELECT 1 FROM scan_configs WHERE agent_connection_id = ac.id AND enabled) AS ever_enabled,
@@ -80,7 +80,8 @@ export async function listProfilesForUser(userId: string, now = Date.now()): Pro
       id: row.id, name: row.name, description: row.description, version: row.version, versions: row.versions, conditionsChanged: row.conditions_changed,
       keywords: row.keywords, keywordsSource: row.keywords_source, location: row.location, frequencyMinutes: row.frequency_minutes, enabled: row.enabled,
       createdAt: iso(row.created_at)!, updatedAt: iso(row.updated_at)!, lastScan, lastSuccessAt, leadCount: row.lead_count,
-      state: deriveProfileState({ enabled: row.enabled, everEnabled: row.ever_enabled, frequencyMinutes: row.frequency_minutes, enabledSince: row.updated_at, lastScan, lastSuccessAt, blocked: row.blocked, recurringDueAt: iso(row.recurring_due_at) }, now),
+      state: deriveProfileState({ enabled: row.enabled, everEnabled: row.ever_enabled, frequencyMinutes: row.frequency_minutes, enabledSince: row.updated_at, lastScan, lastSuccessAt, blocked: row.blocked, recurringDueAt: iso(row.recurring_due_at),
+        accountSuspended: row.lead_monitoring_status === 'suspended', monitoringSince: iso(row.lead_monitoring_changed_at) }, now),
       scan: row.lead_monitoring_status === 'suspended' && row.status !== 'claimed' && !row.run_at ? null : scanFrom({ ...row, created_at: row.job_created_at }, now),
     };
   });

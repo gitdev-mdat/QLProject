@@ -58,3 +58,32 @@
   .pwa-card { padding: 16px; }
   .pwa-card-head { flex-wrap: wrap; }
 }
+
+/* Unread account notifications: a small count in the sidebar, a dot on the mobile bell. */
+.side-settings .unread-count { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--green-700); color: #fff; font-size: 12px; font-weight: 700; line-height: 20px; text-align: center; }
+.topbar-bell { position: relative; }
+.topbar-bell .unread-dot { position: absolute; top: 10px; right: 10px; width: 9px; height: 9px; border-radius: 50%; background: var(--green-700); box-shadow: 0 0 0 2px var(--surface); }
+
+/* ───────────── Notification center (/app/thong-bao) ───────────── */
+.notif-page { display: grid; gap: 16px; max-width: 760px; }
+.notif-page > .page-head { margin-bottom: 0; }
+.notif-page .pwa-page { margin-top: 12px; }
+.pwa-section-head { display: grid; gap: 4px; margin-bottom: 12px; }
+.pwa-section-head h2 { font-size: 18px; }
+.pwa-section-head p { color: var(--muted); font-size: 15px; }
+.notif-panel { overflow: hidden; }
+.notif-panel .panel-head { padding-bottom: 8px; }
+.notif-all { padding: 0; border: 0; background: none; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.notif-empty { padding: 4px 20px 20px; font-size: 15px; }
+.notif-list { margin: 0; padding: 0; list-style: none; }
+.notif { display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: 12px; padding: 14px 20px 16px; border-top: 1px solid var(--line); }
+.notif-mark { width: 8px; height: 8px; margin-top: 9px; border-radius: 50%; background: transparent; }
+.notif.is-new .notif-mark { background: var(--green-700); }
+.notif-body { display: grid; gap: 4px; min-width: 0; }
+.notif-title { color: var(--ink); font-size: 15.5px; font-weight: 500; line-height: 1.5; }
+.notif.is-new .notif-title { font-weight: 650; }
+.notif-detail { color: var(--muted); font-size: 14.5px; line-height: 1.5; }
+.notif-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-top: 2px; color: var(--muted); font-size: 13.5px; }
+.notif-reason-toggle, .notif-link { min-height: 32px; padding: 0; border: 0; background: none; color: var(--green-700); font: inherit; font-weight: 600; cursor: pointer; }
+.notif-reason-toggle:hover, .notif-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.notif-reason { margin-top: 4px; padding: 10px 14px; border-left: 3px solid var(--line-strong); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; background: var(--surface-2); color: var(--ink); font-size: 15px; white-space: pre-line; overflow-wrap: anywhere; }
