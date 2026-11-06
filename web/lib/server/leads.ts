@@ -58,23 +58,55 @@ function groupByPost(rows: Row[]): Lead[] {
   });
 }
 
-export async function listLeadsForUser(userId: string, limit = 200, _rankingNow = Date.now()): Promise<Lead[]> {
-  const { rows } = await db().query<Row>(`WITH lead_page AS (
-      SELECT chosen.normalized_url, chosen.id, chosen.published_at FROM (
-        SELECT DISTINCT ON (fp.normalized_url) fp.normalized_url, fp.id, fp.published_at
-        FROM facebook_posts fp JOIN agent_connections ac ON ac.id = fp.agent_connection_id
-        WHERE ac.user_id = $1 AND ${sourceLinkedPostSql('fp')}
-        ORDER BY fp.normalized_url, (fp.published_at IS NULL), fp.id
+/**
+ * Which leads a list request covers. `profile`: leads at least one of whose rows was stored by that search profile;
+ * the profile must belong to the same user (checked in SQL, so another user's id simply matches nothing). `legacy`:
+ * leads with a row from an older integration. Every other source of the same Facebook post is still returned, so a
+ * post found by two searches shows both and counts once.
+ */
+export type LeadScope = { kind: 'all' } | { kind: 'profile'; profileId: string } | { kind: 'legacy' };
+
+/** Newest leads in scope, plus how many leads the scope holds in total (before the limit). */
+export type LeadPage = { leads: Lead[]; total: number };
+
+/** Upper bound for one scoped list. A single search profile is far below this; the total says when it is not. */
+export const SCOPED_LEAD_LIMIT = 2000;
+
+export async function listLeadPageForUser(userId: string, scope: LeadScope, limit = 200): Promise<LeadPage> {
+  const params: unknown[] = [userId, limit];
+  let scopeSql = '';
+  if (scope.kind === 'profile') {
+    if (!UUID.test(scope.profileId)) return { leads: [], total: 0 };
+    params.push(scope.profileId);
+    scopeSql = `AND EXISTS (SELECT 1 FROM facebook_posts sp JOIN agent_connections sac ON sac.id = sp.agent_connection_id
+          WHERE sac.id = $3 AND sac.user_id = $1 AND sac.kind = 'search_profile' AND sp.normalized_url = fp.normalized_url AND ${sourceLinkedPostSql('sp')})`;
+  } else if (scope.kind === 'legacy') {
+    scopeSql = `AND EXISTS (SELECT 1 FROM facebook_posts sp JOIN agent_connections sac ON sac.id = sp.agent_connection_id
+          WHERE sac.user_id = $1 AND sac.kind <> 'search_profile' AND sp.normalized_url = fp.normalized_url AND ${sourceLinkedPostSql('sp')})`;
+  }
+  const { rows } = await db().query<Row & { scope_total: number }>(`WITH lead_page AS (
+      SELECT chosen.normalized_url, chosen.id, chosen.published_at, chosen.scope_total FROM (
+        SELECT url_pick.*, count(*) OVER ()::int AS scope_total FROM (
+          SELECT DISTINCT ON (fp.normalized_url) fp.normalized_url, fp.id, fp.published_at
+          FROM facebook_posts fp JOIN agent_connections ac ON ac.id = fp.agent_connection_id
+          WHERE ac.user_id = $1 AND ${sourceLinkedPostSql('fp')} ${scopeSql}
+          ORDER BY fp.normalized_url, (fp.published_at IS NULL), fp.id
+        ) url_pick
       ) chosen
       ORDER BY chosen.published_at DESC NULLS LAST, chosen.id LIMIT $2
     )
-    ${POST_SELECT}
+    ${POST_SELECT.replace('SELECT fp.id,', 'SELECT page.scope_total, fp.id,')}
     JOIN lead_page page ON page.normalized_url = fp.normalized_url
-    WHERE ac.user_id = $1 AND ${sourceLinkedPostSql('fp')} GROUP BY fp.id, ac.id, page.published_at, page.id
-    ORDER BY page.published_at DESC NULLS LAST, page.id, fp.first_seen_at ASC NULLS LAST, fp.id`, [userId, limit]);
-  return groupByPost(rows)
+    WHERE ac.user_id = $1 AND ${sourceLinkedPostSql('fp')} GROUP BY fp.id, ac.id, page.published_at, page.id, page.scope_total
+    ORDER BY page.published_at DESC NULLS LAST, page.id, fp.first_seen_at ASC NULLS LAST, fp.id`, params);
+  const leads = groupByPost(rows)
     .sort((a, b) => compareLeadByPostedAt(a, b))
     .slice(0, limit);
+  return { leads, total: rows[0]?.scope_total ?? 0 };
+}
+
+export async function listLeadsForUser(userId: string, limit = 200, _rankingNow = Date.now()): Promise<Lead[]> {
+  return (await listLeadPageForUser(userId, { kind: 'all' }, limit)).leads;
 }
 
 /** Returns null both for unknown ids and for posts owned by someone else, so ownership is not revealed. */

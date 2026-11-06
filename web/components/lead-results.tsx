@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useOptimistic, useState, useTransition, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { copyText, displayArea, exactTime, isRecent, leadName, readLead, relativeTime, sourceLabel, type LeadReading } from '@/lib/lead-format';
@@ -41,8 +41,11 @@ export function ReadingTags({ reading, limit = 3 }: { reading: LeadReading; limi
 }
 
 /** Which saved search found the lead; older integrations get an explicit "previous scans" label instead. */
-export function SourceLine({ lead }: { lead: Lead }) {
-  const [first, ...rest] = lead.sources;
+export function SourceLine({ lead, prefer }: { lead: Lead; prefer?: string }) {
+  // On a list scoped to one need, that need is named first, so a post found by several needs reads as belonging here.
+  const preferred = prefer ? lead.sources.findIndex(source => source.kind === 'profile' ? source.profileId === prefer : prefer === LEGACY_FILTER) : -1;
+  const ordered = preferred > 0 ? [lead.sources[preferred], ...lead.sources.filter((_, index) => index !== preferred)] : lead.sources;
+  const [first, ...rest] = ordered;
   if (!first) return null;
   return <span className={`lead-source ${first.kind === 'legacy' ? 'is-legacy' : ''}`}><Icon name="target" size={14}/>{sourceName(first)}{rest.length > 0 && <> · +{rest.length} nhu cầu</>}</span>;
 }
@@ -94,7 +97,7 @@ function PostedOrFound({ lead, now }: { lead: Lead; now: number }) {
 }
 
 /** Compact lead row used on the Today page and on mobile. The card opens the lead; the Facebook link opens the post. */
-export function LeadListItem({ lead, now, workflow }: { lead: Lead; now: number; workflow: LeadWorkflowApi }) {
+export function LeadListItem({ lead, now, workflow, source }: { lead: Lead; now: number; workflow: LeadWorkflowApi; source?: string }) {
   const state = workflow.get(lead.id);
   const area = displayArea(lead);
   const text = leadText(lead).kind !== 'fallback';
@@ -114,7 +117,7 @@ export function LeadListItem({ lead, now, workflow }: { lead: Lead; now: number;
       </div>
     </Link>
     <div className="lead-item-foot">
-      <SourceLine lead={lead}/>
+      <SourceLine lead={lead} prefer={source}/>
       <FacebookLink lead={lead} compact/>
     </div>
   </li>;
@@ -228,7 +231,16 @@ type StatusFilter = 'all' | LeadStatus;
 
 export type ProfileOption = { id: string; name: string };
 
-export function LeadResultsPage({ records, workflow: initialWorkflow, profiles, initialSource = 'all', notice }: { records: Lead[]; workflow: WorkflowMap; profiles: ProfileOption[]; initialSource?: string; notice?: ReactNode }) {
+/** The list URL for one need ('all' = every need). The URL is what selects the need; nothing else stores it. */
+export function leadListHref(source: string) { return source === 'all' ? '/app/bai-viet' : `/app/bai-viet?nhu-cau=${encodeURIComponent(source)}`; }
+
+/**
+ * `records` are already scoped on the server to `source` (resolved from ?nhu-cau=), and `total` is how many leads that
+ * scope holds before the list limit. Choosing another need navigates to its URL, so the URL, the dropdown and the rows
+ * always describe the same need, and Back/Forward/refresh restore it. The page is keyed by source, so no client state
+ * from the previous need survives the switch.
+ */
+export function LeadResultsPage({ records, total = records.length, workflow: initialWorkflow, profiles, hasLegacy = false, source = 'all', notice }: { records: Lead[]; total?: number; workflow: WorkflowMap; profiles: ProfileOption[]; hasLegacy?: boolean; source?: string; notice?: ReactNode }) {
   const now = useNow();
   const router = useRouter();
   const workflow = useLeadWorkflow(initialWorkflow);
@@ -239,9 +251,15 @@ export function LeadResultsPage({ records, workflow: initialWorkflow, profiles, 
   const [onlyNotes, setOnlyNotes] = useState(false);
   const [dateOrder, setDateOrder] = useState<LeadDateOrder>('newest');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const hasLegacy = useMemo(() => records.some(lead => lead.sources.some(source => source.kind === 'legacy')), [records]);
-  const sourceOptions = useMemo(() => [...profiles, ...(hasLegacy ? [{ id: LEGACY_FILTER, name: LEGACY_SOURCE_LABEL }] : [])], [profiles, hasLegacy]);
-  const [source, setSource] = useState(sourceOptions.some(option => option.id === initialSource) ? initialSource : 'all');
+  const sourceOptions = useMemo(() => [...profiles, ...(hasLegacy || source === LEGACY_FILTER ? [{ id: LEGACY_FILTER, name: LEGACY_SOURCE_LABEL }] : [])], [profiles, hasLegacy, source]);
+  const [switching, startSwitch] = useTransition();
+  // Shows the chosen need in the dropdown while its leads load; falls back to the URL's need once navigation settles.
+  const [shownSource, showSource] = useOptimistic(source);
+  const selected = sourceOptions.find(option => option.id === source) ?? null;
+  function chooseSource(next: string) {
+    if (next === source) return;
+    startSwitch(() => { showSource(next); router.push(leadListHref(next), { scroll: false }); });
+  }
   const [openId, setOpenId] = useState<string | null>(null);
 
   const counts = useMemo(() => {
@@ -260,7 +278,7 @@ export function LeadResultsPage({ records, workflow: initialWorkflow, profiles, 
         && (statusFilter === 'all' || state.status === statusFilter)
         && (!onlyContact || Boolean(lead.contact))
         && (!onlyNotes || state.notes.length > 0)
-        && matchesSourceFilter(lead, source);
+        && matchesSourceFilter(lead, source); // already scoped on the server; kept as a guard
     }).sort((a, b) => compareLeadByPostedAt(a, b, dateOrder));
   }, [records, now, query, range, statusFilter, onlyContact, onlyNotes, source, workflow, dateOrder]);
   const visible = filtered.slice(0, visibleCount);
@@ -280,11 +298,14 @@ export function LeadResultsPage({ records, workflow: initialWorkflow, profiles, 
     if (window.matchMedia(DESKTOP_QUERY).matches) setOpenId(id); else router.push(leadHref(id));
   }
   const activeFilters = Number(Boolean(query)) + Number(range !== 'all') + Number(statusFilter !== 'all') + Number(onlyContact) + Number(onlyNotes) + Number(source !== 'all');
-  function reset() { setQuery(''); setRange('all'); setStatusFilter('all'); setOnlyContact(false); setOnlyNotes(false); setSource('all'); }
+  function reset() { setQuery(''); setRange('all'); setStatusFilter('all'); setOnlyContact(false); setOnlyNotes(false); chooseSource('all'); }
 
   return <AppShell active="Danh sách lead">
     <div className="page-head">
-      <div><h1>Danh sách lead</h1><p>{records.length} lead · <b>{counts.new} chưa xem</b> · sắp xếp theo thời gian đăng Facebook</p></div>
+      <div><h1>Danh sách lead</h1>
+        {selected && <p className="lead-scope"><Icon name="target" size={15}/>Khách hàng từ: <b>{selected.name}</b> · <Link href={leadListHref('all')} className="text-link" scroll={false}>Xem mọi nhu cầu</Link></p>}
+        <p>{total} lead · <b>{counts.new} chưa xem</b> · sắp xếp theo thời gian đăng Facebook</p>
+        {total > records.length && <p className="lead-limit-note">Đang hiển thị {records.length} lead mới nhất.{source === 'all' ? ' Chọn một nhu cầu để xem toàn bộ lead của nhu cầu đó.' : ''}</p>}</div>
       <Link href="/app/bo-loc" className="btn btn-outline hide-mobile"><Icon name="target" size={16}/>Sửa nhu cầu theo dõi</Link>
     </div>
     {notice}
@@ -297,7 +318,7 @@ export function LeadResultsPage({ records, workflow: initialWorkflow, profiles, 
 
     <section className="filter-bar" aria-label="Lọc lead">
       <label className="search-field"><Icon name="search" size={18}/><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Tìm theo nội dung, người đăng, số điện thoại, ghi chú" aria-label="Tìm lead"/></label>
-      {sourceOptions.length > 0 && <label className="select-field"><span className="sr-only">Nhu cầu tìm kiếm</span><select value={source} onChange={event => setSource(event.target.value)} aria-label="Lọc theo nhu cầu"><option value="all">Mọi nhu cầu</option>{sourceOptions.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}</select></label>}
+      {sourceOptions.length > 0 && <label className="select-field"><span className="sr-only">Nhu cầu tìm kiếm</span><select value={shownSource} onChange={event => chooseSource(event.target.value)} aria-label="Lọc theo nhu cầu" aria-busy={switching}><option value="all">Mọi nhu cầu</option>{sourceOptions.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}</select></label>}
       <label className="select-field"><span className="sr-only">Thời gian đăng</span><select value={range} onChange={event => setRange(event.target.value as DateRange)}><option value="all">Mọi thời gian</option><option value="24h">Đăng trong 24 giờ</option><option value="7d">Đăng trong 7 ngày</option></select></label>
       <label className="select-field"><span className="sr-only">Sắp xếp lead</span><select value={dateOrder} onChange={event => setDateOrder(event.target.value as LeadDateOrder)} aria-label="Sắp xếp lead"><option value="newest">Mới nhất</option><option value="oldest">Cũ nhất</option></select></label>
       <div className="toggle-chips" role="group" aria-label="Lọc nhanh">
@@ -307,8 +328,12 @@ export function LeadResultsPage({ records, workflow: initialWorkflow, profiles, 
       </div>
     </section>
 
+    {switching && <p className="sr-only" role="status">Đang tải lead của nhu cầu đã chọn…</p>}
+    <div className={switching ? 'lead-results-body is-switching' : 'lead-results-body'} aria-busy={switching}>
     {filtered.length === 0
-      ? <div className="panel empty-state"><GoatMascot size="sm"/><h2>{records.length ? 'Không có lead khớp bộ lọc' : 'Chưa có lead nào'}</h2><p>{records.length ? 'Thử bỏ bớt điều kiện lọc.' : 'Khi QLead tìm thấy bài phù hợp với nhu cầu theo dõi, lead sẽ xuất hiện tại đây.'}</p>{records.length ? <button className="btn btn-outline" type="button" onClick={reset}>Xóa bộ lọc</button> : <Link className="btn btn-primary" href="/app/bo-loc">Thiết lập nhu cầu theo dõi</Link>}</div>
+      ? records.length === 0 && selected
+        ? <div className="panel empty-state"><GoatMascot size="sm"/><h2>Nhu cầu này chưa có lead</h2><p>Khi QLead tìm thấy bài phù hợp với “{selected.name}”, lead sẽ xuất hiện tại đây.</p><Link className="btn btn-outline" href={leadListHref('all')} scroll={false}>Xem mọi nhu cầu</Link></div>
+      : <div className="panel empty-state"><GoatMascot size="sm"/><h2>{records.length ? 'Không có lead khớp bộ lọc' : 'Chưa có lead nào'}</h2><p>{records.length ? 'Thử bỏ bớt điều kiện lọc.' : 'Khi QLead tìm thấy bài phù hợp với nhu cầu theo dõi, lead sẽ xuất hiện tại đây.'}</p>{records.length ? <button className="btn btn-outline" type="button" onClick={reset}>Xóa bộ lọc</button> : <Link className="btn btn-primary" href="/app/bo-loc">Thiết lập nhu cầu theo dõi</Link>}</div>
       : <>
         <div className="lead-table-wrap panel">
           <table className="lead-table">
@@ -322,7 +347,7 @@ export function LeadResultsPage({ records, workflow: initialWorkflow, profiles, 
               return <tr key={lead.id} data-id={lead.id} className={`${state.status === 'new' ? 'is-new' : ''} ${openId === lead.id ? 'is-open' : ''} ${text ? '' : 'is-no-text'}`} tabIndex={0} aria-label={`Mở lead: ${leadName(lead)}`}
                 onClick={() => openLead(lead.id)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openLead(lead.id); } }}>
                 <td><StatusPill status={state.status}/></td>
-                <td className="lead-cell"><b className={lead.author ? '' : 'is-fallback'}>{leadName(lead)}</b><LeadPreviewLine lead={lead} className="lead-cell-text"/>{text ? <ReadingTags reading={reading} limit={2}/> : <p className="lead-cell-missing"><ContentStatus lead={lead}/></p>}<SourceLine lead={lead}/></td>
+                <td className="lead-cell"><b className={lead.author ? '' : 'is-fallback'}>{leadName(lead)}</b><LeadPreviewLine lead={lead} className="lead-cell-text"/>{text ? <ReadingTags reading={reading} limit={2}/> : <p className="lead-cell-missing"><ContentStatus lead={lead}/></p>}<SourceLine lead={lead} prefer={source}/></td>
                 <td className={area ? '' : 'muted-text'}>{area ?? '—'}</td>
                 <td>{lead.contact ? <span className="has-contact">{lead.contact.number}</span> : <span className="muted-text">—</span>}</td>
                 <td className="time-cell"><PostedOrFound lead={lead} now={now}/></td>
@@ -332,9 +357,10 @@ export function LeadResultsPage({ records, workflow: initialWorkflow, profiles, 
             })}</tbody>
           </table>
         </div>
-        <ul className="lead-list lead-cards panel">{visible.map(lead => <LeadListItem key={lead.id} lead={lead} now={now} workflow={workflow}/>)}</ul>
+        <ul className="lead-list lead-cards panel">{visible.map(lead => <LeadListItem key={lead.id} lead={lead} now={now} workflow={workflow} source={source}/>)}</ul>
         {visible.length < filtered.length && <div className="lead-load-more"><p>Đang hiển thị {visible.length}/{filtered.length} lead phù hợp</p><button className="btn btn-outline" type="button" onClick={() => setVisibleCount(count => Math.min(count + PAGE_SIZE, filtered.length))}>Tải thêm {Math.min(PAGE_SIZE, filtered.length - visible.length)} lead</button></div>}
       </>}
+    </div>
 
     {open && <>
       <div className="drawer-backdrop" onClick={() => setOpenId(null)}/>
