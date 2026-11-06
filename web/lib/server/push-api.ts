@@ -95,14 +95,20 @@ export async function getPushConfig(request: Request): Promise<Response> {
   return json(200, vapidPublicKey ? { enabled: true, vapidPublicKey } : { enabled: false });
 }
 
+/** One line per refused registration, so a failure on a real phone can be traced. No endpoint, key or user data. */
+function logRefused(reason: string, request: Request) {
+  console.warn(JSON.stringify({ level: 'warn', path: '/api/push/subscription', msg: 'Push subscription refused', reason,
+    origin: normalizeOrigin(request.headers.get('origin')) ?? (request.headers.get('origin') ? 'invalid' : 'missing') }));
+}
+
 export async function putPushSubscription(request: Request): Promise<Response> {
   const session = await authenticated();
   if (!session) return json(401, { error: 'unauthorized' });
-  if (!originAllowed(request)) return json(403, { error: 'forbidden' });
+  if (!originAllowed(request)) { logRefused('origin', request); return json(403, { error: 'forbidden' }); }
   if (!isPushConfigured()) return json(503, { error: 'push_not_configured' });
   const parsed = await readBody(request, registerSchema);
-  if ('error' in parsed) return parsed.error;
-  if (normalizeOrigin(parsed.data.origin) !== normalizeOrigin(request.headers.get('origin'))) return json(403, { error: 'forbidden' });
+  if ('error' in parsed) { logRefused('invalid_body', request); return parsed.error; }
+  if (normalizeOrigin(parsed.data.origin) !== normalizeOrigin(request.headers.get('origin'))) { logRefused('origin_mismatch', request); return json(403, { error: 'forbidden' }); }
   const registered = await registerPushSubscription({
     userId: session.userId,
     sessionId: session.sessionId,
@@ -163,4 +169,28 @@ export async function putPushPreferences(request: Request): Promise<Response> {
   if ('error' in parsed) return parsed.error;
   await setPushPreference(session.userId, parsed.data.newLeads);
   return json(200, { newLeads: parsed.data.newLeads });
+}
+
+const diagnosticSchema = z.object({
+  stage: z.enum(['permission', 'service_worker', 'subscribe', 'save', 'unknown']),
+  code: z.string().regex(/^[a-z_]{1,20}$/),
+  detail: z.string().regex(/^[A-Za-z0-9]{1,40}$/).nullable(),
+  platform: z.enum(['ios', 'android', 'desktop', 'other']),
+  standalone: z.boolean(),
+  permission: z.enum(['default', 'granted', 'denied', 'unsupported']),
+}).strict();
+
+/**
+ * A browser reports which step of turning notifications on failed. Signed-in, same-origin only; the fields are fixed
+ * enums or short identifiers, so nothing personal or secret can be logged. It only writes one log line.
+ */
+export async function postPushDiagnostic(request: Request): Promise<Response> {
+  const session = await authenticated();
+  if (!session) return json(401, { error: 'unauthorized' });
+  if (!isSameOrigin(request as any)) return json(403, { error: 'forbidden' });
+  const parsed = await readBody(request, diagnosticSchema);
+  if ('error' in parsed) return parsed.error;
+  console.warn(JSON.stringify({ level: 'warn', path: '/api/push/diagnostic', msg: 'Push enable failed on device', ...parsed.data,
+    origin: normalizeOrigin(request.headers.get('origin')) }));
+  return new Response(null, { status: 204, headers: NO_STORE });
 }

@@ -6,7 +6,7 @@ import { Icon } from './visuals';
 import { PwaIcon } from './pwa-icons';
 import { promptInstall, useInstallPrompt } from '@/lib/install-prompt';
 import { detectPlatform, isIosSafari, isStandalone, pushBlocker, type Platform } from '@/lib/pwa';
-import { disablePush, enablePush, fetchPushConfig, PushError, sendTestPush, syncSubscription } from '@/lib/push-client';
+import { disablePush, enablePush, fetchPushConfig, PushError, reportPushFailure, sendTestPush, syncSubscription } from '@/lib/push-client';
 import { usePushOwner } from './app-shell';
 
 type Env = { platform: Platform; standalone: boolean; iosSafari: boolean };
@@ -97,6 +97,23 @@ function IosOpenInSafari() {
 
 /* ───────────────────────────── Push ───────────────────────────── */
 
+/**
+ * What went wrong while turning notifications on, in words the person can act on, plus a short code (step and error
+ * name or HTTP status) they can send to support. Only for failures not handled as their own state.
+ */
+export function pushFailureText(error: unknown): string {
+  const failure = error instanceof PushError ? error : null;
+  const code = failure?.stage ? ` (mã: ${failure.stage}${failure.detail ? `/${failure.detail}` : ''})` : '';
+  if (!failure || failure.code === 'network') return `Không kết nối được với QLead. Kiểm tra mạng rồi thử lại.${code}`;
+  if (failure.code === 'device' && failure.stage === 'service_worker') return `Thiết bị chưa cài được phần nhận thông báo của QLead. Đóng hẳn QLead, mở lại từ biểu tượng trên màn hình chính rồi thử lại.${code}`;
+  if (failure.code === 'device' && failure.stage === 'subscribe') return failure.detail === 'NotAllowedError'
+    ? `Thiết bị đang chặn thông báo của QLead. Vào Cài đặt › Thông báo › QLead để cho phép, rồi thử lại.${code}`
+    : `Dịch vụ thông báo của thiết bị chưa phản hồi. Thử lại sau ít phút.${code}`;
+  if (failure.code === 'device') return `Thiết bị chưa bật được thông báo. Thử lại sau ít phút.${code}`;
+  if (failure.code === 'forbidden') return `QLead chưa xác minh được trang đang mở. Mở QLead từ địa chỉ qlead.vn rồi thử lại.${code}`;
+  return `QLead chưa lưu được thiết bị này. Thử lại sau ít phút.${code}`;
+}
+
 type PushState =
   | { kind: 'loading' }
   | { kind: 'blocked-env'; reason: 'ios-needs-install' | 'ios-too-old' | 'unsupported' }
@@ -143,7 +160,7 @@ function PushCard({ env }: { env: Env | null }) {
       if (error.code === 'rate_limited') { setMessage({ tone: 'warn', text: `Vừa gửi thử rồi. Đợi ${error.retryAfterSeconds ?? 30} giây rồi thử lại.` }); return; }
       if (error.code === 'not_subscribed') { void load(); setMessage({ tone: 'warn', text: 'Thiết bị này chưa được đăng ký. Hãy bật lại thông báo.' }); return; }
     }
-    setMessage({ tone: 'warn', text: 'Không kết nối được với QLead. Thử lại sau ít phút.' });
+    setMessage({ tone: 'warn', text: pushFailureText(error) });
   };
 
   const enable = async (key: string) => {
@@ -153,7 +170,7 @@ function PushCard({ env }: { env: Env | null }) {
       if (result === 'granted') { setState({ kind: 'on', key }); setMessage({ tone: 'ok', text: 'Đã bật. QLead sẽ báo khi tìm thấy khách hàng tiềm năng mới.' }); }
       else if (result === 'denied') setState({ kind: 'denied' });
       else setState({ kind: 'off', key, dismissed: true });
-    } catch (error) { fail(error); } finally { setBusy(null); }
+    } catch (error) { reportPushFailure(error); fail(error); } finally { setBusy(null); }
   };
 
   const disable = async (key: string) => {

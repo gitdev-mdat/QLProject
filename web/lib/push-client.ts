@@ -36,10 +36,44 @@ export async function syncSubscription(owner: string | null): Promise<boolean> {
   return false;
 }
 
-export type PushApiError = 'unauthorized' | 'not_configured' | 'rate_limited' | 'not_subscribed' | 'network' | 'server';
+export type PushApiError = 'unauthorized' | 'not_configured' | 'rate_limited' | 'not_subscribed' | 'network' | 'server' | 'forbidden' | 'invalid' | 'device';
+
+/** Where enabling failed. Shown to the person as a short code and reported to the server so a failure can be traced. */
+export type PushStage = 'permission' | 'service_worker' | 'subscribe' | 'save';
 
 export class PushError extends Error {
-  constructor(public readonly code: PushApiError, public readonly retryAfterSeconds?: number) { super(code); }
+  constructor(
+    public readonly code: PushApiError,
+    public readonly retryAfterSeconds?: number,
+    public readonly stage?: PushStage,
+    /** DOMException name or HTTP status: never a message, endpoint or key. */
+    public readonly detail?: string,
+  ) { super(code); }
+}
+
+const errorName = (error: unknown) => (error instanceof Error && /^[A-Za-z]{1,40}$/.test(error.name) ? error.name : 'Error');
+
+/** Runs one browser step of enabling; a browser error becomes a PushError that says which step failed and how. */
+async function step<T>(stage: PushStage, work: () => Promise<T>): Promise<T> {
+  try { return await work(); }
+  catch (error) {
+    if (error instanceof PushError) throw error.stage ? error : new PushError(error.code, error.retryAfterSeconds, stage, error.detail);
+    throw new PushError('device', undefined, stage, errorName(error));
+  }
+}
+
+/**
+ * Tells the server which step of enabling failed (stage, error name or HTTP status, platform), so a failure on a real
+ * phone shows up in the server logs. Best effort and fire-and-forget; carries no endpoint, key or message text.
+ */
+export function reportPushFailure(error: unknown): void {
+  const failure = error instanceof PushError ? error : new PushError('device', undefined, undefined, errorName(error));
+  try {
+    void fetch('/api/push/diagnostic', {
+      method: 'POST', credentials: 'same-origin', keepalive: true, headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ stage: failure.stage ?? 'unknown', code: failure.code, detail: failure.detail ?? null, platform: detectPlatform(), standalone: isStandalone(), permission: typeof Notification === 'undefined' ? 'unsupported' : Notification.permission }),
+    }).catch(() => undefined);
+  } catch { /* ignore */ }
 }
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
@@ -52,10 +86,12 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const data = await response.json().catch(() => ({})) as Record<string, unknown>;
   if (response.ok) return data as T;
   if (response.status === 401) throw new PushError('unauthorized');
+  if (response.status === 403) throw new PushError('forbidden', undefined, undefined, '403');
+  if (response.status === 400) throw new PushError('invalid', undefined, undefined, '400');
   if (response.status === 404 && data.error === 'not_subscribed') throw new PushError('not_subscribed');
   if (response.status === 404 || response.status === 503) throw new PushError('not_configured');
   if (response.status === 429) throw new PushError('rate_limited', typeof data.retryAfterSeconds === 'number' ? data.retryAfterSeconds : undefined);
-  throw new PushError('server');
+  throw new PushError('server', undefined, undefined, String(response.status));
 }
 
 export async function fetchPushConfig(): Promise<{ enabled: boolean; vapidPublicKey?: string }> {
@@ -77,7 +113,7 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
 
 async function readyRegistration(): Promise<ServiceWorkerRegistration> {
   const registration = await registerServiceWorker();
-  if (!registration) throw new PushError('server');
+  if (!registration) throw new PushError('device', undefined, 'service_worker', 'RegisterFailed');
   return navigator.serviceWorker.ready;
 }
 
@@ -107,16 +143,18 @@ export async function serverHasSubscription(subscription: PushSubscription): Pro
  */
 export async function enablePush(vapidPublicKey: string, owner: string | null): Promise<'granted' | 'denied' | 'default'> {
   // The key is fetched before the click (see the settings card), so nothing slow sits between the tap and the prompts.
-  const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+  const permission = await step('permission', async () => Notification.permission === 'granted' ? 'granted' : Notification.requestPermission());
   if (permission !== 'granted') return permission;
-  const registration = await readyRegistration();
-  const key = urlBase64ToUint8Array(vapidPublicKey);
-  let subscription = await registration.pushManager.getSubscription();
-  // A subscription made with another server key (key rotation, domain move) cannot receive our pushes.
-  if (subscription && !sameKey(subscription, key)) { await subscription.unsubscribe().catch(() => false); subscription = null; }
-  subscription ??= await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+  const registration = await step('service_worker', readyRegistration);
+  const subscription = await step('subscribe', async () => {
+    const key = urlBase64ToUint8Array(vapidPublicKey);
+    let current = await registration.pushManager.getSubscription();
+    // A subscription made with another server key (key rotation, domain move) cannot receive our pushes.
+    if (current && !sameKey(current, key)) { await current.unsubscribe().catch(() => false); current = null; }
+    return current ?? registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+  });
   try {
-    await saveSubscription(subscription);
+    await step('save', () => saveSubscription(subscription));
   } catch (error) {
     // Do not leave a browser subscription the server never stored: it would look enabled but never receive anything.
     await subscription.unsubscribe().catch(() => false);
