@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiErrorText, frequencyText, MONITORING_LABEL, profileEffect, USERS_PAGE_SIZE, type AdminUserDetail, type AdminUserPage, type AdminUserRow, type MonitoringChange, type UserDeletionImpact } from '@/lib/admin-users';
+import { deviceText, LOGIN_METHOD_LABEL, SESSION_STATE_LABEL, type LoginHistoryFilter, type LoginHistoryPage } from '@/lib/login-history';
 import { Icon } from './visuals';
 
 const timeFmt = new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
@@ -281,6 +282,7 @@ function UserDetail({ userId, currentAdminId, onClose, onChanged, onDeleted }: {
               <div><dt>Quét gần nhất</dt><dd>{lastScanText(d).text}</dd></div>
             </dl>
           </section>
+          <LoginHistory userId={d.id}/>
           <section className="danger-zone" aria-labelledby="delete-account-title">
             <div>
               <h3 id="delete-account-title">Xóa tài khoản</h3>
@@ -294,6 +296,70 @@ function UserDetail({ userId, currentAdminId, onClose, onChanged, onDeleted }: {
     {confirm && d && <ConfirmChange user={d} target={confirm} profileCount={profiles.length} onCancel={() => setConfirm(null)} onDone={change => void applied(change, d.displayName)}/>}
     {deleting && d && <DeleteAccountDialog user={d} onCancel={() => setDeleting(false)} onDeleted={() => onDeleted(d.displayName, d.id)} onGone={() => { setDeleting(false); onChanged(); void load(); }}/>}
   </div>;
+}
+
+const loginWhen = (value: string) => `${dateFmt.format(new Date(value))} — ${clockFmt.format(new Date(value))}`;
+
+/**
+ * Successful sign-ins of one customer, newest first, loaded only when the Admin opens that customer (never on the list).
+ * Each row is a real session row: when it was created, how, and whether it is still active. Device facts exist only for
+ * sign-ins recorded after this feature shipped; older rows say "Không rõ" instead of guessing.
+ */
+function LoginHistory({ userId }: { userId: string }) {
+  const [filter, setFilter] = useState<LoginHistoryFilter>('all');
+  const [page, setPage] = useState(1);
+  const [data, setData] = useState<LoginHistoryPage | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const request = useRef(0);
+  const load = useCallback(async () => {
+    const id = ++request.current;
+    setLoading(true);
+    const result = await call<LoginHistoryPage>(`/api/admin/users/${userId}/logins?${new URLSearchParams({ page: String(page), filter })}`, 'detail');
+    if (id !== request.current) return;
+    setLoading(false);
+    if (!result.ok) { setError(result.error); return; }
+    setError(''); setData(result.data);
+  }, [userId, page, filter]);
+  useEffect(() => { void load(); }, [load]);
+
+  const shown = data ? (data.filter === 'active' ? data.activeCount : data.total) : 0;
+  const pages = data ? Math.max(1, Math.ceil(shown / data.pageSize)) : 1;
+  return <section className="login-history" aria-labelledby="logins-title" aria-busy={loading}>
+    <div className="login-history-head">
+      <h3 className="sub-h" id="logins-title">Lịch sử đăng nhập</h3>
+      {data && data.total > 0 && <div className="login-filter" role="group" aria-label="Lọc phiên đăng nhập">
+        <button type="button" aria-pressed={filter === 'all'} onClick={() => { setFilter('all'); setPage(1); }}>Tất cả <span>{num.format(data.total)}</span></button>
+        <button type="button" aria-pressed={filter === 'active'} onClick={() => { setFilter('active'); setPage(1); }}>Đang hoạt động <span>{num.format(data.activeCount)}</span></button>
+      </div>}
+    </div>
+    <p className="login-history-note">Mỗi dòng là một lần đăng nhập thành công. Không gồm lần nhập sai mật khẩu và không phải thời gian khách đang dùng QLead.</p>
+    {error && <div className="admin-alert admin-alert-error" role="alert"><Icon name="info" size={18}/><span>{error}</span><button type="button" className="btn btn-outline btn-sm" onClick={() => void load()} disabled={loading}>Thử lại</button></div>}
+    {!data && !error && <p className="muted-text small" role="status">Đang tải lịch sử đăng nhập…</p>}
+    {data && (data.entries.length === 0
+      ? <p className="muted-text small">{data.filter === 'active' ? 'Không có phiên nào đang hoạt động.' : 'Khách chưa đăng nhập lần nào.'}</p>
+      : <ol className={`login-list${loading ? ' is-loading' : ''}`}>{data.entries.map(entry => {
+        const device = deviceText(entry);
+        return <li key={entry.id}>
+          <div className="login-top">
+            <time dateTime={entry.signedInAt}>{loginWhen(entry.signedInAt)}</time>
+            <span className={`pill login-pill is-${entry.session}`}>{SESSION_STATE_LABEL[entry.session]}</span>
+          </div>
+          <p className="login-meta">
+            <span className={entry.method === 'dev_quick_login' ? 'login-dev' : undefined}>{LOGIN_METHOD_LABEL[entry.method]}</span>
+            <span>{device ?? <span className="muted-text" title={entry.recorded ? 'Trình duyệt không cho biết thiết bị.' : 'Lần đăng nhập này diễn ra trước khi QLead ghi nhận thiết bị.'}>Thiết bị không rõ</span>}</span>
+          </p>
+          <p className="login-end">{entry.session === 'active' ? `Hết hạn lúc ${at(entry.expiresAt)}`
+            : entry.session === 'revoked' ? `Kết thúc lúc ${at(entry.revokedAt)} (đăng xuất, đăng nhập lại hoặc bị thu hồi)`
+            : `Hết hạn lúc ${at(entry.expiresAt)}`}</p>
+        </li>;
+      })}</ol>)}
+    {data && shown > data.pageSize && <nav className="users-pager login-pager" aria-label="Phân trang lịch sử đăng nhập">
+      <button type="button" className="btn btn-outline btn-sm" disabled={loading || data.page <= 1} onClick={() => setPage(data.page - 1)}><Icon name="back" size={16}/>Mới hơn</button>
+      <span>Trang {data.page} / {pages}</span>
+      <button type="button" className="btn btn-outline btn-sm" disabled={loading || data.page >= pages} onClick={() => setPage(data.page + 1)}>Cũ hơn<Icon name="arrow" size={16}/></button>
+    </nav>}
+  </section>;
 }
 
 type ImpactItem = { label: string; count: number };

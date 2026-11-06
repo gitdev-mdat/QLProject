@@ -318,3 +318,25 @@
 @media (prefers-reduced-motion: reduce) { .users-toast { animation: none; } }
 .mon-facts dd.pre-line { white-space: pre-line; overflow-wrap: anywhere; }
 .confirm-modal .field small { font-weight: 400; }
+
+/* Customer detail → login history: compact list of real sign-ins, newest first. */
+.login-history-head { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
+.login-filter { display: inline-flex; gap: 4px; padding: 3px; border-radius: 999px; background: var(--surface-2); }
+.login-filter button { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 12px; border: 0; border-radius: 999px; background: transparent; color: var(--ink-2); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.login-filter button span { color: var(--muted); font-weight: 500; }
+.login-filter button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+.login-history-note { margin: 0 0 10px; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.login-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+.login-list.is-loading { opacity: .55; }
+.login-list li { padding: 10px 14px; border-top: 1px solid var(--line); }
+.login-list li:first-child { border-top: 0; }
+.login-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.login-top time { font-weight: 600; font-variant-numeric: tabular-nums; }
+.login-meta { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 4px 0 0; color: var(--ink-2); font-size: 14px; }
+.login-meta .login-dev { color: var(--gold-ink); }
+.login-end { margin: 2px 0 0; color: var(--muted); font-size: 12.5px; }
+.login-pill { font-size: 12px; padding: 2px 9px; }
+.login-pill.is-active { background: var(--green-100); color: var(--green-800); }
+.login-pill.is-expired { background: var(--surface-2); color: var(--muted); }
+.login-pill.is-revoked { background: var(--surface-2); color: var(--ink-2); }
+.login-pager { margin-top: 10px; }

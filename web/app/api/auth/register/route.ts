@@ -14,6 +14,6 @@ export async function POST(request: NextRequest) {
   }
   const result = await registerAccount(parsed.data);
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 409 });
-  await createSession(result.userId, 'password');
+  await createSession(result.userId, 'password', 'register');
   return NextResponse.json({ redirect: '/bat-dau' }, { status: 201 });
 }

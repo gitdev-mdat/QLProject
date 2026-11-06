@@ -694,6 +694,12 @@ html.reveal-ready [data-reveal].is-visible { opacity: 1; transform: none; }
 .lead-table-wrap { overflow: hidden; }
 .lead-load-more { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; margin: 18px 0 8px; color: var(--muted); }
 .lead-load-more p { margin: 0; font-size: 13px; }
+/* Which need the list is scoped to (from ?nhu-cau=), with a one-click way back to every need. */
+.page-head p.lead-scope { margin-top: 6px; color: var(--ink-2); overflow-wrap: anywhere; }
+.lead-scope svg { display: inline-block; color: var(--green-700); vertical-align: -2px; margin-right: 6px; }
+.lead-scope .text-link { white-space: nowrap; }
+.page-head p.lead-limit-note { font-size: 13px; }
+.lead-results-body.is-switching { opacity: .55; pointer-events: none; transition: opacity .15s var(--ease); }
 .lead-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .lead-table th { padding: 12px 16px; text-align: left; color: var(--muted); font-size: 13px; font-weight: 600; background: var(--surface-2); border-bottom: 1px solid var(--line); white-space: nowrap; }
 .lead-table td { padding: 14px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }

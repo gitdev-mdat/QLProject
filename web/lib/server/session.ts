@@ -1,9 +1,10 @@
 import 'server-only';
 import { createHash, randomBytes } from 'node:crypto';
 import { cache } from 'react';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { db } from './db';
+import { loginDevice } from '../login-device';
 
 export const SESSION_COOKIE = 'qlead_session';
 const SESSION_DAYS = 7;
@@ -12,18 +13,36 @@ export type SessionUser = { sessionId: string; userId: string; displayName: stri
 
 const hash = (token: string) => createHash('sha256').update(token).digest('hex');
 
+/** How a successful sign-in happened, for the Admin's login history. 'register' = the session created by signing up. */
+export type LoginMethod = 'password' | 'register' | 'dev_quick_login';
+
+/** New login-history rows are kept this long; older ones are deleted by later sign-ins. Sessions are not affected. */
+export const LOGIN_EVENT_RETENTION_DAYS = 180;
+
 /**
  * Creates a server-side session row and sets the HttpOnly cookie. Only the token hash is stored. Any session the
  * browser already carries is revoked first, so signing in as someone else never leaves the old identity usable.
+ *
+ * Callers invoke this only after authentication succeeded. The same statement records the sign-in in
+ * web_login_events (method + coarse device facts parsed from the User-Agent, never the raw header, IP or token) and
+ * prunes history rows past the retention window, so a sign-in costs one extra index write, not another round trip.
  */
-export async function createSession(userId: string, createdVia: 'dev_quick_login' | 'password'): Promise<void> {
+export async function createSession(userId: string, createdVia: 'dev_quick_login' | 'password', method: LoginMethod = createdVia): Promise<void> {
   const previous = (await cookies()).get(SESSION_COOKIE)?.value;
   if (previous) await db().query(`WITH revoked AS (
       UPDATE web_sessions SET revoked_at = now() WHERE token_hash = $1 AND revoked_at IS NULL RETURNING id
     ) DELETE FROM push_subscriptions WHERE session_id IN (SELECT id FROM revoked)`, [hash(previous)]);
   const token = randomBytes(32).toString('base64url');
   const expires = new Date(Date.now() + SESSION_DAYS * 24 * 3600_000);
-  await db().query('INSERT INTO web_sessions(user_id, token_hash, created_via, expires_at) VALUES ($1, $2, $3, $4)', [userId, hash(token), createdVia, expires]);
+  const device = loginDevice((await headers()).get('user-agent'));
+  await db().query(`WITH session AS (
+      INSERT INTO web_sessions(user_id, token_hash, created_via, expires_at) VALUES ($1, $2, $3, $4) RETURNING id, user_id, created_at
+    ), pruned AS (
+      DELETE FROM web_login_events WHERE created_at < now() - make_interval(days => $9)
+    )
+    INSERT INTO web_login_events(user_id, session_id, method, device, os, browser, created_at)
+    SELECT user_id, id, $5, $6, $7, $8, created_at FROM session`,
+    [userId, hash(token), createdVia, expires, method, device.device, device.os, device.browser, LOGIN_EVENT_RETENTION_DAYS]);
   (await cookies()).set(SESSION_COOKIE, token, { httpOnly: true, secure: true, sameSite: 'lax', path: '/', expires });
 }
 
