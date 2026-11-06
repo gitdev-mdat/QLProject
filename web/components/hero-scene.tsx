@@ -4,25 +4,28 @@ import { useEffect, useState } from 'react';
 import { Icon } from './visuals';
 
 /**
- * Hero animation: a Facebook-style feed scrolls past a scan line; posts with a business signal light up and
- * drop into a "new leads" list. All posts are fictional and the scene is labelled as an illustration.
+ * Hero animation: a Facebook feed scrolls past a scan line; posts and Reels that carry a business signal for the
+ * tracked description light up and drop into a "new opportunities" list. Several matches never contain the word
+ * "khai trương", which is the point: QLead searches by signal, not one keyword. Every post is fictional and the
+ * scene is labelled as an illustration. Only formats social.search is verified to return (posts, Reels) appear.
  */
-type Post = { author: string; text: string; lead?: { signal: string; area: string } };
+type Kind = 'Bài đăng' | 'Reel';
+type Post = { author: string; kind: Kind; text: string; lead?: { signal: string; area: string } };
 const posts: Post[] = [
-  { author: 'Minh Thư', text: 'Quán cafe của mình sắp khai trương ở Thủ Đức, cần tìm phần mềm tính tiền.', lead: { signal: 'Sắp khai trương', area: 'TP.HCM' } },
-  { author: 'Gia Huy', text: 'Cuối tuần này cả nhóm đi Đà Lạt, ai đi chung không?' },
-  { author: 'Hoàng Yến', text: 'Chuỗi trà sữa Lá chuẩn bị mở chi nhánh thứ ba tại Bình Dương.', lead: { signal: 'Mở chi nhánh', area: 'Bình Dương' } },
-  { author: 'Tuấn Anh', text: 'Pass lại xe máy cũ, giá mềm cho bạn nào cần.' },
-  { author: 'Thu Hằng', text: 'Khách sạn mới ở Quảng Ninh sắp hoạt động, tuyển lễ tân và buồng phòng.', lead: { signal: 'Đang tuyển người', area: 'Quảng Ninh' } },
-  { author: 'Bảo Ngọc', text: 'Review quán bún bò ngon ở quận 3, ai thích thì ghé nha.' },
-  { author: 'Ngọc Trâm', text: 'Shop mỹ phẩm Hạ sắp khai trương tại Hải Phòng, đang tuyển nhân viên.', lead: { signal: 'Sắp khai trương', area: 'Hải Phòng' } },
-  { author: 'Khánh Linh', text: 'Có ai có kinh nghiệm nuôi mèo con chỉ mình với.' },
+  { author: 'Minh Thư', kind: 'Bài đăng', text: 'Quán cafe của mình sắp khai trương ở Thủ Đức, cần tìm phần mềm tính tiền.', lead: { signal: 'Sắp khai trương', area: 'Thủ Đức' } },
+  { author: 'Gia Huy', kind: 'Bài đăng', text: 'Cuối tuần này cả nhóm đi Đà Lạt, ai đi chung không?' },
+  { author: 'Hoàng Yến', kind: 'Reel', text: 'Mới nhận mặt bằng, đang sửa sang tiệm trà sữa, tháng sau gặp mọi người nha.', lead: { signal: 'Thuê mặt bằng', area: 'Quận 7' } },
+  { author: 'Tuấn Anh', kind: 'Bài đăng', text: 'Pass lại xe máy cũ, giá mềm cho bạn nào cần.' },
+  { author: 'Thu Hằng', kind: 'Bài đăng', text: 'Tuyển 6 bạn phục vụ cho quán nướng sắp mở ở Gò Vấp.', lead: { signal: 'Tuyển người', area: 'Gò Vấp' } },
+  { author: 'Bảo Ngọc', kind: 'Reel', text: 'Review quán bún bò ngon ở quận 3, ai thích thì ghé nha.' },
+  { author: 'Ngọc Trâm', kind: 'Bài đăng', text: 'Chuỗi chè Hạ mở thêm cơ sở thứ ba ở Bình Thạnh.', lead: { signal: 'Mở chi nhánh', area: 'Bình Thạnh' } },
+  { author: 'Khánh Linh', kind: 'Bài đăng', text: 'Có ai có kinh nghiệm nuôi mèo con chỉ mình với.' },
 ];
 const VISIBLE = 5;
 const SCAN_ROW = 2;
 const STEP_MS = 1500;
 
-type Found = { key: number; author: string; signal: string; area: string };
+type Found = { key: number; author: string; kind: Kind; signal: string; area: string };
 
 export function HeroScene() {
   const [step, setStep] = useState(0);
@@ -31,7 +34,7 @@ export function HeroScene() {
 
   useEffect(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      setFound(posts.filter(post => post.lead).slice(0, 3).map((post, index) => ({ key: index, author: post.author, ...post.lead! })));
+      setFound(posts.filter(post => post.lead).slice(0, 3).map((post, index) => ({ key: index, author: post.author, kind: post.kind, ...post.lead! })));
       setTotal(3);
       return;
     }
@@ -43,7 +46,7 @@ export function HeroScene() {
   useEffect(() => {
     const post = posts[(step + SCAN_ROW) % posts.length];
     if (!post.lead || step === 0) return;
-    setFound(current => [{ key: step, author: post.author, ...post.lead! }, ...current].slice(0, 3));
+    setFound(current => [{ key: step, author: post.author, kind: post.kind, ...post.lead! }, ...current].slice(0, 3));
     setTotal(value => value + 1);
   }, [step]);
 
@@ -53,7 +56,7 @@ export function HeroScene() {
     <div className="scan-window">
       <div className="scan-window-bar">
         <span className="scan-dots"><i/><i/><i/></span>
-        <span className="scan-window-title">Bảng tin Facebook</span>
+        <span className="scan-window-title">Theo dõi: quán F&amp;B sắp mở</span>
         <span className="scan-live"><span className="scan-live-dot"/>Đang quét</span>
       </div>
       <div className="scan-feed">
@@ -64,8 +67,8 @@ export function HeroScene() {
           const matched = scanning && Boolean(post.lead) && step > 0;
           return <div key={absolute} className={`scan-post ${scanning ? 'is-scanning' : ''} ${matched ? 'is-match' : ''}`} style={{ transform: `translateY(${index * 100}%)` }}>
             <span className="scan-avatar">{post.author[0]}</span>
-            <div><b>{post.author}</b><p>{post.text}</p></div>
-            {matched && <span className="scan-tag">Lead phù hợp</span>}
+            <div><b>{post.author}<span className={`kind-badge ${post.kind === 'Reel' ? 'is-reel' : ''}`}>{post.kind}</span></b><p>{post.text}</p></div>
+            {matched && <span className="scan-tag">Có dấu hiệu</span>}
           </div>;
         })}
         <div className="scan-beam" style={{ top: `${SCAN_ROW * 20}%` }}/>
@@ -73,10 +76,10 @@ export function HeroScene() {
     </div>
 
     <div className="scan-found">
-      <div className="scan-found-head"><Icon name="spark" size={16}/>Lead mới tìm thấy<span>{total}</span></div>
+      <div className="scan-found-head"><Icon name="spark" size={16}/>Cơ hội mới<span>{total}</span></div>
       <ul>
-        {found.length === 0 && <li className="scan-found-empty">Đang chờ bài phù hợp…</li>}
-        {found.map(item => <li key={item.key}><b>{item.author}</b><span>{item.signal} · {item.area}</span></li>)}
+        {found.length === 0 && <li className="scan-found-empty">Đang chờ bài có dấu hiệu…</li>}
+        {found.map(item => <li key={item.key}><b>{item.author} <small>· {item.kind}</small></b><span>{item.signal} · {item.area}</span></li>)}
       </ul>
     </div>
 
