@@ -189,17 +189,28 @@ export function testPushPayload(): PushPayload {
   return { v: 1, kind: 'test', title: 'QLead', body: 'Thông báo đã bật trên thiết bị này.', url: '/app', tag: 'push-test' };
 }
 
+/**
+ * Request options for one push. Apple's push service (web.push.apple.com) refuses our Topic header with
+ * 400 BadWebPushTopic (seen in Production, 2026-11-06), so it is not sent there; the notification `tag` already makes
+ * a newer QLead notification replace the older one on the device. Other services keep the Topic.
+ */
+export function pushRequestOptions(endpoint: string, topic: PushTopic) {
+  let apple = false;
+  try { const host = new URL(endpoint).hostname.toLowerCase(); apple = host === 'web.push.apple.com' || host.endsWith('.push.apple.com'); } catch { apple = false; }
+  return {
+    TTL: 43_200,
+    urgency: 'normal' as const,
+    ...(apple ? {} : { topic }),
+    contentEncoding: 'aes128gcm' as const,
+    timeout: 8_000,
+  };
+}
+
 function sendPush(subscription: PushSubscriptionInput, payload: PushPayload, topic: PushTopic) {
   const config = getVapidConfig();
   if (!config) throw new Error('Web Push is not configured.');
   webpush.setVapidDetails(config.subject, config.publicKey, config.privateKey);
-  return webpush.sendNotification(subscription as WebPushSubscription, JSON.stringify(payload), {
-    TTL: 43_200,
-    urgency: 'normal',
-    topic,
-    contentEncoding: 'aes128gcm',
-    timeout: 8_000,
-  });
+  return webpush.sendNotification(subscription as WebPushSubscription, JSON.stringify(payload), pushRequestOptions(subscription.endpoint, topic));
 }
 
 export async function enqueueNewLeadNotification(client: PoolClient, input: { scanRunId: string; profileId: string; leadCount: number; leadId?: string | null }): Promise<string | null> {
@@ -389,7 +400,9 @@ export async function drainPushNotifications(options: { outboxId?: string; limit
         await pool.query(`UPDATE push_subscriptions SET last_success_at=now(), last_failure_at=NULL, failure_count=0, updated_at=now() WHERE id=$1`, [rows[0]!.subscription_id]);
         totals.sent++;
       } catch (error) {
-        const failure = describePushFailure(error);
+        let endpoint: string | undefined;
+        try { endpoint = decryptPushSubscription(rows[0]!.subscription_ciphertext!).endpoint; } catch { endpoint = undefined; }
+        const failure = describePushFailure(error, endpoint);
         console.warn(JSON.stringify({ level: 'warn', msg: 'Push delivery refused by push service', ...failure }));
         const statusCode = failure.statusCode;
         if (statusCode === 404 || statusCode === 410) {
