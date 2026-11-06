@@ -7,6 +7,7 @@ const paths = {
   share: 'M12 3v12M8 7l4-4 4 4M7 10H5.5v10.5h13V10H17',
   plusSquare: 'M4 4h16v16H4zM12 8v8M8 12h8',
   download: 'M12 4v11M7 10l5 5 5-5M5 20h14',
+  close: 'M6 6l12 12M18 6 6 18',
 } as const;
 
 export type PwaIconName = keyof typeof paths;

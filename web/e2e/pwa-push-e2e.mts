@@ -44,7 +44,13 @@ async function stubBackend(context: BackendContext, backend: Backend) {
     backend.calls.push(`${request.method()} ${path}`);
     if (backend.failNext) { backend.failNext -= 1; return route.fulfill({ status: 502, json: { error: 'push_failed' } }); }
     if (path === '/api/push/config') return route.fulfill({ json: backend.enabled ? { enabled: true, vapidPublicKey: 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U' } : { enabled: false } });
-    if (path === '/api/push/subscription' && request.method() === 'PUT') { backend.endpoints.add(body?.subscription?.endpoint ?? ''); return route.fulfill({ json: { subscribed: true } }); }
+    if (path === '/api/push/subscription' && request.method() === 'PUT') {
+      // Same rules as the real route: expirationTime present (null), base64url keys without padding, 65/16 bytes.
+      const sub = (body as { subscription?: { expirationTime?: unknown; keys?: { p256dh?: string; auth?: string } } } | null)?.subscription;
+      const okKey = (value: unknown, size: number) => typeof value === 'string' && /^[A-Za-z0-9_-]+$/.test(value) && Buffer.from(value, 'base64url').length === size;
+      if (!sub || sub.expirationTime !== null || !okKey(sub.keys?.p256dh, 65) || !okKey(sub.keys?.auth, 16)) return route.fulfill({ status: 400, json: { error: 'invalid_request' } });
+      backend.endpoints.add(body?.subscription?.endpoint ?? ''); return route.fulfill({ json: { subscribed: true } });
+    }
     if (path === '/api/push/subscription' && request.method() === 'DELETE') { backend.endpoints.delete(body?.endpoint ?? ''); return route.fulfill({ json: { subscribed: false } }); }
     if (path === '/api/push/subscription/status') return route.fulfill({ json: { subscribed: backend.endpoints.has(body?.endpoint ?? '') } });
     if (path === '/api/push/test') return backend.endpoints.has(body?.endpoint ?? '') ? route.fulfill({ status: 202, json: { sent: true } }) : route.fulfill({ status: 404, json: { error: 'not_subscribed' } });
@@ -57,7 +63,9 @@ type BackendContext = BrowserContext;
 const FAKE_PUSH = `(() => {
   if (!('PushManager' in self)) return;
   const read = () => JSON.parse(localStorage.getItem('__fakeSub') || 'null');
-  const make = data => data && ({ endpoint: data.endpoint, options: { applicationServerKey: null }, toJSON: () => ({ endpoint: data.endpoint, expirationTime: null, keys: { p256dh: 'p', auth: 'a' } }), unsubscribe: async () => { localStorage.removeItem('__fakeSub'); return true; } });
+  // Safari-shaped: toJSON() leaves out expirationTime and pads the keys; the app must send the canonical form instead.
+  const bytes = n => { const b = new Uint8Array(n); for (let i = 0; i < n; i++) b[i] = (i * 37 + 11) & 255; b[0] = n === 65 ? 4 : b[0]; return b.buffer; };
+  const make = data => data && ({ endpoint: data.endpoint, expirationTime: null, options: { applicationServerKey: null }, getKey: name => name === 'p256dh' ? bytes(65) : name === 'auth' ? bytes(16) : null, toJSON: () => ({ endpoint: data.endpoint, keys: { p256dh: 'BPadded==', auth: 'pad=' } }), unsubscribe: async () => { localStorage.removeItem('__fakeSub'); return true; } });
   PushManager.prototype.getSubscription = async function () { return make(read()); };
   PushManager.prototype.subscribe = async function () { const next = { endpoint: 'https://push.example/ep-' + Math.random().toString(36).slice(2) }; localStorage.setItem('__fakeSub', JSON.stringify(next)); return make(next); };
 })()`;
@@ -215,6 +223,8 @@ for (const width of [390, 1440]) {
 
 await check('backend not deployed yet (404) → calm "đang được chuẩn bị", no errors', async () => {
   const { context, page } = await ctx({ width: 390, permission: 'granted' });
+  // Deterministic whatever this server's VAPID setup is: /api/push/* answers 404 as before the backend existed.
+  await context.route('**/api/push/**', route => route.fulfill({ status: 404, json: { error: 'not_found' } }));
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto('/app/thong-bao', { waitUntil: 'networkidle' });
   await card(page).getByText('đang được chuẩn bị').waitFor();
@@ -228,7 +238,9 @@ await check('transient API error → message, state not faked', async () => {
   await page.goto('/app/thong-bao', { waitUntil: 'networkidle' });
   backend.failNext = 1;
   await page.getByRole('button', { name: 'Bật thông báo' }).click();
-  await card(page).getByText('Không kết nối được').waitFor();
+  // A 5xx while saving is the server's side, not the network: the message says the device was not saved, with its code.
+  await card(page).getByText('QLead chưa lưu được thiết bị này').waitFor();
+  await card(page).getByText('mã: save/502').waitFor();
   assert(!(await card(page).locator('.pwa-status.is-on').count()), 'claimed enabled after a failed save');
   assert(await page.evaluate(async () => !(await (await navigator.serviceWorker.ready).pushManager.getSubscription())), 'browser subscription left behind');
   await context.close();
@@ -253,39 +265,90 @@ await check('expired session on the settings page → sign-in link back to it', 
   await context.close();
 });
 
+const fireInstallPrompt = `setTimeout(() => { const e = new Event('beforeinstallprompt', { cancelable: true }); e.prompt = async () => { window.__prompted = (window.__prompted || 0) + 1; }; e.userChoice = Promise.resolve({ outcome: 'accepted' }); window.dispatchEvent(e); }, 300);`;
+
 // ── iPhone ───────────────────────────────────────────────────────────────────────────────────────────────────────────
-await check('iPhone Safari (tab): Add to Home Screen steps, push explains install-first', async () => {
+await check('iPhone Safari (tab): "Cài QLead" opens a short guide sheet, push explains install-first', async () => {
   const { context, page } = await ctx({ width: 390, ua: UA.iphoneSafari });
   await page.goto('/app/thong-bao', { waitUntil: 'networkidle' });
-  await page.getByText('Thêm vào MH chính').waitFor();
-  await card(page).getByText('thêm QLead vào màn hình chính').waitFor();
+  await card(page).getByText('iPhone chỉ cho bật thông báo trong QLead đã cài').waitFor();
   assert(!(await page.getByRole('button', { name: 'Bật thông báo' }).count()), 'enable shown in a Safari tab');
-  assert(!(await page.getByRole('button', { name: 'Cài QLead' }).count()), 'fake install button on iOS');
+  assert(!(await page.getByText('Thêm vào MH chính').count()), 'steps shown before the tap');
+  // Install comes before notifications on an iPhone tab.
+  const order = await page.evaluate(() => [...document.querySelectorAll('.pwa-grid > section')].map(el => el.id));
+  assert(order[0] === 'cai-dat', `order ${order}`);
   await page.screenshot({ path: resolve(SHOTS, 'ios-safari-settings-390.png'), fullPage: true });
+  await page.locator('#cai-dat').getByRole('button', { name: 'Cài QLead' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Thêm QLead vào màn hình chính' });
+  await sheet.waitFor();
+  await sheet.getByText('Thêm vào MH chính').waitFor();
+  assert(!(await sheet.getByText('•••').count()), 'Safari 26 step on Safari 18');
+  await page.screenshot({ path: resolve(SHOTS, 'ios-safari-guide-390.png') });
+  await sheet.getByRole('button', { name: 'Đóng' }).click();
+  await sheet.waitFor({ state: 'hidden' });
   await context.close();
 });
 
-await check('iPhone Chrome: told to open in Safari (no impossible steps)', async () => {
+await check('iPhone Safari 26: guide starts with the ••• button', async () => {
+  const { context, page } = await ctx({ width: 390, ua: UA.iphoneSafari.replace('Version/18.5', 'Version/26.0') });
+  await page.goto('/app/thong-bao', { waitUntil: 'networkidle' });
+  await page.locator('#cai-dat').getByRole('button', { name: 'Cài QLead' }).click();
+  const sheet = page.getByRole('dialog');
+  await sheet.getByLabel('nút ba chấm').waitFor();
+  await page.keyboard.press('Escape');
+  await sheet.waitFor({ state: 'hidden' });
+  await context.close();
+});
+
+await check('iPhone Chrome: its own Share sheet steps; Facebook in-app browser: open in browser + copy link', async () => {
   const { context, page } = await ctx({ width: 390, ua: UA.iphoneChrome });
   await page.goto('/app/thong-bao', { waitUntil: 'networkidle' });
-  await page.getByText('bằng Safari').waitFor();
-  assert(!(await page.getByText('Thêm vào MH chính').count()), 'Safari steps in Chrome');
+  await page.locator('#cai-dat').getByRole('button', { name: 'Cài QLead' }).click();
+  await page.getByRole('dialog').getByText('của trình duyệt').waitFor();
   await context.close();
+  const fb = await ctx({ width: 390, ua: UA.iphoneSafari.replace('Safari/604.1', '[FBAN/FBIOS;FBAV/500.0]') });
+  await fb.page.goto('/app/thong-bao', { waitUntil: 'networkidle' });
+  await fb.page.locator('#cai-dat').getByRole('button', { name: 'Cài QLead' }).click();
+  await fb.page.getByRole('dialog', { name: 'Mở QLead bằng trình duyệt' }).getByRole('button', { name: 'Sao chép liên kết' }).waitFor();
+  await fb.context.close();
 });
 
-await check('iPhone Home Screen app (standalone): no install guide, enable available', async () => {
+await check('iPhone Home Screen app (standalone): no install card or guide at all, only notifications', async () => {
   const { context, page } = await ctx({ width: 390, ua: UA.iphoneSafari, permission: 'granted', fakePush: true, backend: { enabled: true, endpoints: new Set(), calls: [] } });
   await context.addInitScript(`Object.defineProperty(navigator, 'standalone', { get: () => true });`);
   await page.goto('/app/thong-bao', { waitUntil: 'networkidle' });
-  await page.getByText('QLead đã được cài').waitFor();
   await page.getByRole('button', { name: 'Bật thông báo' }).waitFor();
-  assert(!(await page.getByText('Thêm vào MH chính').count()), 'install steps while installed');
+  await page.getByRole('heading', { name: 'Thông báo trên thiết bị này' }).waitFor();
+  assert(!(await page.locator('#cai-dat').count()), 'install card while installed');
+  assert(!(await page.getByRole('button', { name: 'Cài QLead' }).count()), 'install button while installed');
+  await page.getByRole('button', { name: 'Bật thông báo' }).click();
+  await card(page).locator('.pwa-status.is-on').waitFor();
+  assert(await card(page).locator('.pwa-status').innerText() === 'Đã bật', 'status label');
   await page.screenshot({ path: resolve(SHOTS, 'ios-standalone-settings-390.png'), fullPage: true });
   await context.close();
 });
 
+await check('Android without an install prompt (Samsung Internet): "Cài QLead" opens its menu steps', async () => {
+  const { context, page } = await ctx({ width: 390, ua: UA.android.replace('Chrome/141.0.0.0 Mobile', 'SamsungBrowser/28.0 Chrome/141.0.0.0 Mobile') });
+  await page.goto('/app/thong-bao', { waitUntil: 'networkidle' });
+  await page.locator('#cai-dat').getByRole('button', { name: 'Cài QLead' }).click();
+  await page.getByRole('dialog').getByText('Thêm trang vào').waitFor();
+  await context.close();
+});
+
+await check('Android with the install prompt: settings "Cài QLead" opens the native dialog, cancel keeps the button', async () => {
+  const { context, page } = await ctx({ width: 390, ua: UA.android });
+  await context.addInitScript(fireInstallPrompt.replace("outcome: 'accepted'", "outcome: 'dismissed'"));
+  await page.goto('/app/thong-bao', { waitUntil: 'networkidle' });
+  await page.waitForTimeout(500);
+  await page.locator('#cai-dat').getByRole('button', { name: 'Cài QLead' }).click();
+  await page.waitForFunction(() => (window as unknown as { __prompted?: number }).__prompted === 1);
+  await page.getByText('Chưa cài.').waitFor();
+  assert(!(await page.getByRole('dialog').count()), 'guide sheet shown on top of the native prompt');
+  await context.close();
+});
+
 // ── Install hint on Hôm nay ─────────────────────────────────────────────────────────────────────────────────────────
-const fireInstallPrompt = `setTimeout(() => { const e = new Event('beforeinstallprompt', { cancelable: true }); e.prompt = async () => { window.__prompted = (window.__prompted || 0) + 1; }; e.userChoice = Promise.resolve({ outcome: 'accepted' }); window.dispatchEvent(e); }, 300);`;
 
 await check('Android: hint hidden on first visit, shown on a later visit, native prompt only after tapping "Cài QLead"', async () => {
   const { context, page } = await ctx({ width: 390, ua: UA.android });
@@ -329,14 +392,15 @@ await check('No hint on desktop, in standalone, or on other pages', async () => 
   }
 });
 
-await check('iPhone Safari: hint links to the short guide (no fake install button)', async () => {
+await check('iPhone Safari: hint "Cài QLead" opens the guide sheet in place', async () => {
   const { context, page } = await ctx({ width: 390, ua: UA.iphoneSafari });
   await context.addInitScript(`localStorage.setItem('qlead.visits', '3');`);
   await page.goto('/app', { waitUntil: 'networkidle' });
-  const link = page.locator('.install-hint').getByRole('link', { name: 'Cài QLead' });
-  await link.waitFor({ timeout: 5000 });
-  assert(await link.getAttribute('href') === '/app/thong-bao#cai-dat', 'link');
+  const button = page.locator('.install-hint').getByRole('button', { name: 'Cài QLead' });
+  await button.waitFor({ timeout: 5000 });
   await page.screenshot({ path: resolve(SHOTS, 'today-install-hint-ios-390.png') });
+  await button.click();
+  await page.getByRole('dialog').getByText('Thêm vào MH chính').waitFor();
   await context.close();
 });
 
@@ -471,7 +535,7 @@ for (const width of [390, 768, 1440]) {
   await check(`${width}px: shell entry point, main navigation unchanged, no horizontal scroll`, async () => {
     const { context, page } = await ctx({ width });
     await page.goto('/app', { waitUntil: 'networkidle' });
-    const entry = width < 1080 ? page.locator('.topbar-bell') : page.locator('.side-settings');
+    const entry = width < 1080 ? page.locator('.topbar-bell') : page.locator('a.side-settings');
     await entry.click();
     await page.waitForURL(url => new URL(url).pathname === '/app/thong-bao');
     await page.locator('#app-content h1', { hasText: 'Thông báo' }).waitFor();

@@ -4,18 +4,19 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Icon } from './visuals';
 import { PwaIcon } from './pwa-icons';
-import { promptInstall, useInstallPrompt } from '@/lib/install-prompt';
-import { detectPlatform, isIosSafari, isStandalone, pushBlocker, type Platform } from '@/lib/pwa';
+import { useInstallPrompt } from '@/lib/install-prompt';
+import { InstallButton } from './install-guide';
+import { detectPlatform, isStandalone, pushBlocker, type Platform } from '@/lib/pwa';
 import { disablePush, enablePush, fetchPushConfig, PushError, reportPushFailure, sendTestPush, syncSubscription } from '@/lib/push-client';
 import { usePushOwner } from './app-shell';
 
-type Env = { platform: Platform; standalone: boolean; iosSafari: boolean };
+type Env = { platform: Platform; standalone: boolean };
 
 /** Browser facts are read after mount; the server render shows a neutral loading state instead of guessing. */
 function useEnv(): Env | null {
   const [env, setEnv] = useState<Env | null>(null);
   useEffect(() => {
-    const read = () => setEnv({ platform: detectPlatform(), standalone: isStandalone(), iosSafari: isIosSafari() });
+    const read = () => setEnv({ platform: detectPlatform(), standalone: isStandalone() });
     read();
     const media = window.matchMedia('(display-mode: standalone)');
     media.addEventListener?.('change', read);
@@ -26,73 +27,49 @@ function useEnv(): Env | null {
 
 export function AppSettingsPage({ embedded = false }: { embedded?: boolean }) {
   const env = useEnv();
-  const intro = 'Mở QLead nhanh như một ứng dụng và biết ngay khi có khách hàng tiềm năng mới.';
+  const { installed } = useInstallPrompt();
+  // Running as the installed app: nothing about installing is shown, only this device's notifications.
+  const appMode = env?.standalone === true;
+  const title = appMode ? 'Thông báo trên thiết bị này' : 'Ứng dụng và thông báo trên thiết bị này';
+  const intro = appMode
+    ? 'Bật để biết ngay khi QLead tìm thấy khách hàng tiềm năng mới.'
+    : 'Cài QLead để mở nhanh như một ứng dụng và nhận thông báo khi có khách hàng tiềm năng mới.';
+  // iPhone only offers notifications to the Home Screen app, so installing comes first there.
+  const installFirst = env?.platform === 'ios' && !appMode;
+  const install = env && !appMode ? <InstallCard env={env} installed={installed}/> : null;
   return <div className="pwa-page">
     {embedded
-      ? <header className="pwa-section-head"><h2>Ứng dụng và thông báo trên thiết bị này</h2><p>{intro}</p></header>
-      : <header className="page-head"><div><h1>Ứng dụng và thông báo</h1><p>{intro}</p></div></header>}
-    {/* On an iPhone tab, installing comes first: iOS only offers notifications to the Home Screen app. */}
-    <div className={`pwa-grid${env?.platform === 'ios' && !env.standalone ? ' install-first' : ''}`}>
+      ? <header className="pwa-section-head"><h2>{title}</h2><p>{intro}</p></header>
+      : <header className="page-head"><div><h1>{title}</h1><p>{intro}</p></div></header>}
+    <div className="pwa-grid">
+      {installFirst && install}
       <PushCard env={env}/>
-      <InstallCard env={env}/>
+      {!installFirst && install}
     </div>
   </div>;
 }
 
 /* ───────────────────────────── Install ───────────────────────────── */
 
-function InstallCard({ env }: { env: Env | null }) {
-  const { deferred, installed } = useInstallPrompt();
+function InstallCard({ env, installed }: { env: Env; installed: boolean }) {
   const [note, setNote] = useState('');
-  if (!env) return <section className="panel pwa-card" aria-busy="true"><div className="pwa-skeleton"/></section>;
-
-  const isInstalled = installed || env.standalone;
-  if (isInstalled) {
+  // The browser said QLead was just installed, but this page is still the browser tab.
+  if (installed) {
     return <section className="panel pwa-card" id="cai-dat" aria-labelledby="install-title">
-      <div className="pwa-card-head"><span className="pwa-card-icon is-done"><Icon name="check" size={20}/></span><div><h2 id="install-title">QLead đã được cài</h2><p>{env.standalone ? 'Bạn đang mở QLead từ màn hình chính.' : 'Mở QLead từ biểu tượng con dê trên màn hình chính hoặc danh sách ứng dụng.'}</p></div></div>
+      <div className="pwa-card-head"><span className="pwa-card-icon is-done"><Icon name="check" size={20}/></span><div><h2 id="install-title">Đã cài QLead</h2><p>Mở QLead từ biểu tượng con dê trên màn hình chính.</p></div></div>
     </section>;
   }
-
-  const install = async () => {
-    setNote('');
-    const outcome = await promptInstall();
-    if (outcome === 'dismissed') setNote('Bạn có thể cài sau từ menu trình duyệt.');
-  };
-
-  const mobile = env.platform === 'ios' || env.platform === 'android';
+  const phone = env.platform === 'ios' || env.platform === 'android';
   return <section className="panel pwa-card" id="cai-dat" aria-labelledby="install-title">
     <div className="pwa-card-head">
       <span className="pwa-card-icon"><PwaIcon name="phone" size={20}/></span>
-      <div><h2 id="install-title">{mobile || !deferred ? 'Cài QLead trên điện thoại' : 'Cài QLead trên máy tính'}</h2><p>Mở nhanh QLead và nhận thông báo khi có khách hàng tiềm năng mới.</p></div>
+      <div><h2 id="install-title">Cài QLead</h2><p>{phone ? 'Mở QLead bằng một chạm từ màn hình chính.' : 'Mở QLead trong cửa sổ riêng, không cần tìm tab.'}</p></div>
     </div>
-    {deferred
-      ? <div className="pwa-actions"><button type="button" className="btn btn-primary" onClick={install}><PwaIcon name="download" size={18}/>Cài QLead</button></div>
-      : env.platform === 'ios' && env.iosSafari ? <IosSteps/>
-      : env.platform === 'ios' ? <IosOpenInSafari/>
-      : env.platform === 'android' ? <p className="pwa-hint"><span>Mở menu <b aria-label="ba chấm">⋮</b> của trình duyệt, chọn <b>Thêm vào màn hình chính</b> hoặc <b>Cài đặt ứng dụng</b>.</span></p>
-      : <p className="pwa-hint"><span>Mở <b>{typeof window !== 'undefined' ? window.location.host : 'QLead'}</b> trên điện thoại để thêm QLead vào màn hình chính.</span></p>}
+    <div className="pwa-actions">
+      <InstallButton onOutcome={outcome => setNote(outcome === 'dismissed' ? 'Chưa cài. Nhấn Cài QLead khi bạn sẵn sàng.' : '')}/>
+    </div>
     {note && <p className="pwa-hint" role="status"><span>{note}</span></p>}
   </section>;
-}
-
-/** Safari's real Add to Home Screen path. iOS 26 moved Share behind the "•••" button, so both entries are named. */
-function IosSteps() {
-  return <ol className="pwa-steps" aria-label="Cách thêm QLead vào màn hình chính">
-    <li><span className="pwa-step-num">1</span><span>Nhấn nút <b>Chia sẻ</b> <span className="pwa-inline-icon" aria-hidden="true"><PwaIcon name="share" size={16}/></span> trên thanh Safari <small>(iOS 26: nhấn <b>•••</b> rồi chọn <b>Chia sẻ</b>)</small></span></li>
-    <li><span className="pwa-step-num">2</span><span>Chọn <b>Thêm vào MH chính</b> <span className="pwa-inline-icon" aria-hidden="true"><PwaIcon name="plusSquare" size={16}/></span> <small>(kéo xuống nếu chưa thấy)</small></span></li>
-    <li><span className="pwa-step-num">3</span><span>Nhấn <b>Thêm</b>, rồi mở QLead từ biểu tượng con dê.</span></li>
-  </ol>;
-}
-
-function IosOpenInSafari() {
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    try { await navigator.clipboard.writeText(`${window.location.origin}/app`); setCopied(true); } catch { setCopied(false); }
-  };
-  return <div className="pwa-actions pwa-actions-stack">
-    <p className="pwa-hint"><span>Trên iPhone, mở QLead bằng <b>Safari</b> để thêm vào màn hình chính.</span></p>
-    <button type="button" className="btn btn-outline btn-sm" onClick={copy}><Icon name="copy" size={16}/>{copied ? 'Đã sao chép liên kết' : 'Sao chép liên kết'}</button>
-  </div>;
 }
 
 /* ───────────────────────────── Push ───────────────────────────── */
@@ -188,7 +165,7 @@ function PushCard({ env }: { env: Env | null }) {
     <div className="pwa-card-head">
       <span className={`pwa-card-icon${on ? ' is-done' : ''}`}><PwaIcon name={on ? 'bell' : 'bellOff'} size={20}/></span>
       <div><h2 id="push-title">Thông báo lead mới</h2><p>Nhận thông báo khi QLead tìm thấy khách hàng tiềm năng mới.</p></div>
-      {(state.kind === 'on' || state.kind === 'off') && <span className={`pwa-status${on ? ' is-on' : ''}`}>{on ? 'Đang bật' : 'Đang tắt'}</span>}
+      {(state.kind === 'on' || state.kind === 'off') && <span className={`pwa-status${on ? ' is-on' : ''}`}>{on ? 'Đã bật' : 'Chưa bật'}</span>}
     </div>
 
     {state.kind === 'loading' && <div className="pwa-skeleton"/>}
@@ -206,7 +183,7 @@ function PushCard({ env }: { env: Env | null }) {
     {state.kind === 'denied' && <DeniedHelp platform={env?.platform ?? 'other'} standalone={env?.standalone ?? false}/>}
 
     {state.kind === 'blocked-env' && (state.reason === 'ios-needs-install'
-      ? <p className="pwa-hint"><Icon name="info" size={16}/><span>Trên iPhone, hãy <a className="text-link" href="#cai-dat">thêm QLead vào màn hình chính</a> trước, rồi mở QLead từ biểu tượng đó để bật thông báo.</span></p>
+      ? <p className="pwa-hint"><Icon name="info" size={16}/><span>iPhone chỉ cho bật thông báo trong QLead đã cài. Nhấn <b>Cài QLead</b> ở trên, rồi mở QLead từ màn hình chính.</span></p>
       : state.reason === 'ios-too-old'
         ? <p className="pwa-hint"><Icon name="info" size={16}/><span>Thông báo trên iPhone cần iOS 16.4 trở lên. Hãy cập nhật iOS rồi thử lại.</span></p>
         : <p className="pwa-hint"><Icon name="info" size={16}/><span>Trình duyệt này chưa hỗ trợ thông báo đẩy. Hãy dùng Chrome hoặc Edge, hoặc Safari trên iPhone sau khi thêm QLead vào màn hình chính.</span></p>)}

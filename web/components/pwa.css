@@ -18,7 +18,6 @@
 /* Settings page */
 .pwa-page { max-width: 760px; }
 .pwa-grid { display: grid; gap: 16px; }
-.pwa-grid.install-first > #cai-dat { order: -1; }
 .pwa-card { display: grid; gap: 16px; padding: 20px; }
 .pwa-card-head { display: flex; align-items: flex-start; gap: 14px; }
 .pwa-card-head > div { flex: 1; min-width: 0; }
@@ -87,3 +86,21 @@
 .notif-reason-toggle, .notif-link { min-height: 32px; padding: 0; border: 0; background: none; color: var(--green-700); font: inherit; font-weight: 600; cursor: pointer; }
 .notif-reason-toggle:hover, .notif-link:hover { text-decoration: underline; text-underline-offset: 3px; }
 .notif-reason { margin-top: 4px; padding: 10px 14px; border-left: 3px solid var(--line-strong); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; background: var(--surface-2); color: var(--ink); font-size: 15px; white-space: pre-line; overflow-wrap: anywhere; }
+
+/* ───────────── Install guide sheet (iPhone, Samsung Internet, in-app browsers) ───────────── */
+.install-sheet { width: min(440px, 100%); max-width: 100%; max-height: 100%; margin: auto auto 0; padding: 0; border: 0; border-radius: 20px 20px 0 0; background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.install-sheet::backdrop { background: rgba(17, 37, 30, .4); }
+.install-sheet-body { display: grid; gap: 16px; padding: 18px 16px calc(16px + env(safe-area-inset-bottom)); }
+.install-sheet-head { display: flex; align-items: center; gap: 12px; }
+.install-sheet-head img { flex: none; border-radius: 10px; }
+.install-sheet-head h2 { flex: 1; min-width: 0; font-size: 18px; line-height: 1.3; }
+.install-sheet-close { display: grid; place-items: center; flex: none; width: 44px; height: 44px; margin: -6px -6px -6px 0; border: 0; border-radius: var(--radius-sm); background: none; color: var(--ink-2); cursor: pointer; }
+.install-sheet-close:hover { background: var(--surface-2); }
+.install-sheet-done { justify-self: stretch; }
+.install-sheet[open] { animation: install-sheet-in .22s var(--ease); }
+@keyframes install-sheet-in { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (min-width: 640px) {
+  .install-sheet { margin: auto; border-radius: var(--radius); }
+  .install-sheet-body { padding: 20px; }
+}
+@media (prefers-reduced-motion: reduce) { .install-sheet[open] { animation: none; } }
