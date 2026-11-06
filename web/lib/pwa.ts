@@ -49,6 +49,7 @@ export function isIosSafari(): boolean {
 export function iosVersion(): number | null {
   if (!hasWindow()) return null;
   const match = navigator.userAgent.match(/OS (\d+)_(\d+)/i) ?? navigator.userAgent.match(/Version\/(\d+)\.(\d+)/i);
+  // Compared as major + minor/100: "16_4" is 16.04, so callers compare against 16.04 (not 16.4, which reads as 16.40).
   return match ? Number(match[1]) + Number(match[2]) / 100 : null;
 }
 
@@ -66,7 +67,7 @@ export function pushBlocker(): 'ios-needs-install' | 'ios-too-old' | 'unsupporte
   const platform = detectPlatform();
   if (platform === 'ios') {
     const version = iosVersion();
-    if (version !== null && version < 16.4) return 'ios-too-old';
+    if (version !== null && version < 16.04) return 'ios-too-old';
     if (!isStandalone()) return 'ios-needs-install';
   }
   return pushSupported() ? null : 'unsupported';
