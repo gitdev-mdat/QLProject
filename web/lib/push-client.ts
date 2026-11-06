@@ -123,8 +123,28 @@ export async function currentSubscription(): Promise<PushSubscription | null> {
   return registration ? registration.pushManager.getSubscription() : null;
 }
 
+function base64Url(buffer: ArrayBuffer | null): string {
+  if (!buffer) return '';
+  let binary = '';
+  for (const byte of new Uint8Array(buffer)) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/**
+ * Builds the subscription from its parts instead of toJSON(): browsers disagree on toJSON() (Safari leaves out
+ * expirationTime, some encode keys with padding), and the server only accepts the exact shape.
+ */
+export function subscriptionPayload(subscription: PushSubscription) {
+  const expirationTime = typeof subscription.expirationTime === 'number' && subscription.expirationTime > 0 ? subscription.expirationTime : null;
+  return {
+    endpoint: subscription.endpoint,
+    expirationTime,
+    keys: { p256dh: base64Url(subscription.getKey('p256dh')), auth: base64Url(subscription.getKey('auth')) },
+  };
+}
+
 function describe(subscription: PushSubscription) {
-  return { subscription: subscription.toJSON(), platform: detectPlatform(), standalone: isStandalone(), origin: window.location.origin };
+  return { subscription: subscriptionPayload(subscription), platform: detectPlatform(), standalone: isStandalone(), origin: window.location.origin };
 }
 
 export async function saveSubscription(subscription: PushSubscription): Promise<void> {
