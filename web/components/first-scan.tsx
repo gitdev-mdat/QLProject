@@ -6,13 +6,15 @@ import { useRouter } from 'next/navigation';
 import type { FirstScan } from '@/lib/first-scan';
 import { discoveryOpen, discoveryView, MORE_SLOW_MS, type DiscoveryView, type MoreState } from '@/lib/first-discovery';
 import { exactTime } from '@/lib/lead-format';
+import { deliveryClock, heldBackLine, type DeliverySummary } from '@/lib/lead-delivery';
 import { frequencyLabel, locationLabel } from '@/lib/profile-state';
 import { AppShell } from './app-shell';
 import { GoatMascot } from './goat-mascot';
 import { Icon } from './visuals';
+import './first-search-ux.css';
 
 /** What the first-scan view says while the first search is open, derived from the stored state plus elapsed time. */
-type Phase = 'saved' | 'queued' | 'waiting_worker' | 'not_ready' | 'running' | 'running_long' | 'delayed' | 'failed' | 'paused';
+type Phase = 'saved' | 'queued' | 'waiting_worker' | 'not_ready' | 'retrying' | 'running' | 'running_long' | 'delayed' | 'failed' | 'paused';
 
 /**
  * What the whole view shows. `open`/`failed`/`paused`: the first search itself. `found`: leads exist and can be opened
@@ -21,33 +23,60 @@ type Phase = 'saved' | 'queued' | 'waiting_worker' | 'not_ready' | 'running' | '
  */
 type Mode = 'open' | 'failed' | 'paused' | 'found' | 'looking' | 'empty';
 
-/** The usual first-scan duration once a search has actually started. An expectation, never a promise. */
-const EXPECTED_MS = 3 * 60_000;
-/** A queued scan not picked up after this long is described as waiting for the search system (still not "delayed"). */
+/*
+ * No fixed ETA: QLead cannot wake the search system and has a single measured run, so any "2–3 phút" would be a
+ * guess (and read as "from signup"). The page shows real elapsed time from stored timestamps instead, and only
+ * changes its wording at these thresholds. They choose words, never progress.
+ */
+/** A queued search not picked up after this long is described as "not started yet" instead of "preparing". */
 const QUEUED_FRESH_MS = 2 * 60_000;
+/** Waiting this long without a start is called "longer than usual" (still not an error). */
+const QUEUED_SLOW_MS = 10 * 60_000;
+/** A running search past this is called "longer than usual" (the one measured run took under a minute). */
+const RUNNING_LONG_MS = 5 * 60_000;
 
 const COPY: Record<Phase, { eyebrow: string; title: string; text: string }> = {
-  saved: { eyebrow: 'Đã lưu nhu cầu tìm kiếm', title: 'Đang chuẩn bị lượt tìm đầu tiên', text: 'Nhu cầu của bạn đã được lưu. QLead sẽ xếp lượt tìm đầu tiên vào hàng chờ ngay.' },
-  queued: { eyebrow: 'Đã lưu nhu cầu tìm kiếm', title: 'Đang chờ bắt đầu lượt tìm đầu tiên', text: 'Lượt tìm đầu tiên đã được xếp lên đầu hàng chờ và sẽ bắt đầu ngay khi hệ thống tìm kiếm nhận lượt.' },
-  not_ready: { eyebrow: 'Đã lưu nhu cầu tìm kiếm', title: 'Lượt tìm đầu tiên chưa thể bắt đầu', text: 'Nhu cầu của bạn đã được lưu. Hệ thống tìm kiếm của QLead đang được hoàn tất thiết lập nên lượt tìm chưa bắt đầu. Lượt tìm sẽ chạy khi hệ thống sẵn sàng; bạn không cần làm gì thêm.' },
-  waiting_worker: { eyebrow: 'Đã lưu nhu cầu tìm kiếm', title: 'Đang chờ bắt đầu lượt tìm đầu tiên', text: 'Lượt tìm vẫn ở đầu hàng chờ, hệ thống tìm kiếm chưa nhận lượt này. Yêu cầu được giữ nguyên; bạn không cần làm gì thêm.' },
-  running: { eyebrow: 'QLead đang tìm những cơ hội đầu tiên cho bạn', title: 'QLead đang tìm bài đăng phù hợp', text: 'Lượt tìm đầu tiên đang chạy với nhu cầu bạn vừa lưu.' },
-  running_long: { eyebrow: 'QLead đang tìm những cơ hội đầu tiên cho bạn', title: 'QLead đang tìm bài đăng phù hợp', text: 'Lượt tìm đầu tiên vẫn đang chạy.' },
-  delayed: { eyebrow: 'Đã lưu nhu cầu tìm kiếm', title: 'Việc tìm kiếm đang chậm hơn dự kiến', text: 'Lượt tìm đầu tiên chưa hoàn tất đúng dự kiến. Yêu cầu của bạn vẫn được giữ và sẽ được xử lý tiếp; bạn không cần làm gì thêm.' },
+  saved: { eyebrow: 'Đã lưu nhu cầu', title: 'QLead đang chuẩn bị lượt tìm kiếm của bạn', text: 'Nhu cầu đã được lưu. QLead đang xếp lượt tìm đầu tiên.' },
+  queued: { eyebrow: 'Đã lưu nhu cầu', title: 'QLead đang chuẩn bị lượt tìm kiếm của bạn', text: 'Lượt tìm đầu tiên sẽ bắt đầu ngay khi hệ thống tìm kiếm nhận việc. Trang này tự cập nhật, bạn không cần tải lại.' },
+  waiting_worker: { eyebrow: 'Đã lưu nhu cầu', title: 'Lượt tìm đầu tiên chưa bắt đầu', text: 'Hệ thống tìm kiếm chưa nhận lượt này. Yêu cầu của bạn được giữ ở đầu hàng và sẽ bắt đầu ngay khi được nhận.' },
+  not_ready: { eyebrow: 'Đã lưu nhu cầu', title: 'Lượt tìm đầu tiên chưa thể bắt đầu', text: 'Nhu cầu của bạn đã được lưu. Hệ thống tìm kiếm của QLead đang được hoàn tất thiết lập nên lượt tìm chưa bắt đầu. Lượt tìm sẽ chạy khi hệ thống sẵn sàng; bạn không cần làm gì thêm.' },
+  retrying: { eyebrow: 'Đã lưu nhu cầu', title: 'QLead đang thử lại lượt tìm', text: 'Lần tìm trước chưa hoàn tất. QLead sẽ tự thử lại; nhu cầu của bạn vẫn được giữ và bạn không cần làm gì thêm.' },
+  running: { eyebrow: 'Đang tìm', title: 'QLead đang tìm khách hàng phù hợp', text: 'Lượt tìm đầu tiên đang chạy với nhu cầu bạn vừa lưu. Kết quả sẽ hiện ngay khi lượt tìm xong.' },
+  running_long: { eyebrow: 'Đang tìm', title: 'QLead đang tìm khách hàng phù hợp', text: 'Lượt tìm đang lâu hơn thường lệ, có thể do nhiều bài cần xem. QLead vẫn đang tìm và sẽ hiện kết quả ngay khi xong.' },
+  delayed: { eyebrow: 'Đã lưu nhu cầu', title: 'Lượt tìm đang chờ lâu hơn bình thường', text: 'Đây không phải lỗi của bạn và bạn không cần tạo lại nhu cầu. QLead vẫn giữ yêu cầu và sẽ tìm ngay khi hệ thống tìm kiếm sẵn sàng.' },
   failed: { eyebrow: 'Lượt tìm đầu tiên', title: 'Lượt tìm đầu tiên chưa hoàn tất', text: 'Lượt tìm này gặp sự cố và chưa có kết quả. QLead sẽ thử lại ở lượt theo dõi kế tiếp theo lịch của bạn; nhu cầu đã lưu vẫn được giữ.' },
-  paused: { eyebrow: 'Đã lưu nhu cầu tìm kiếm', title: 'Đã tạm dừng theo dõi', text: 'Nhu cầu đã lưu nhưng đang tạm dừng, nên QLead chưa tìm bài mới. Bật lại khi bạn sẵn sàng.' },
+  paused: { eyebrow: 'Đã lưu nhu cầu', title: 'Đã tạm dừng theo dõi', text: 'Nhu cầu đã lưu nhưng đang tạm dừng, nên QLead chưa tìm bài mới. Bật lại khi bạn sẵn sàng.' },
 };
 
-/** Expectation shown next to the progress stages while the first scan is open. */
-const ESTIMATE: Partial<Record<Phase, { lead: string; text: string; tone?: 'slow' }>> = {
-  saved: { lead: 'Thường mất khoảng 2–3 phút sau khi bắt đầu', text: 'QLead sẽ tự động cập nhật kết quả ngay khi hoàn tất.' },
-  queued: { lead: 'Thường mất khoảng 2–3 phút sau khi bắt đầu', text: '' },
-  waiting_worker: { lead: 'Thường mất khoảng 2–3 phút sau khi bắt đầu', text: '' },
-  not_ready: { lead: 'Chưa thể ước tính thời gian bắt đầu.', text: 'QLead sẽ tự cập nhật trang này khi lượt tìm bắt đầu.', tone: 'slow' },
-  running: { lead: 'Lượt tìm đầu tiên có thể mất khoảng 2–3 phút.', text: 'QLead sẽ tự động cập nhật kết quả ngay khi hoàn tất.' },
-  running_long: { lead: 'Lượt tìm đang lâu hơn khoảng 2–3 phút thường lệ.', text: 'Việc này có thể xảy ra khi có nhiều bài cần xem. QLead vẫn đang xử lý và sẽ tự cập nhật khi xong.', tone: 'slow' },
-  delayed: { lead: 'Lâu hơn khoảng 2–3 phút thường lệ', text: 'Đây không phải lỗi của bạn. QLead sẽ tự cập nhật kết quả khi lượt tìm hoàn tất.', tone: 'slow' },
-};
+/** "chưa đến 1 phút", "3 phút", "1 giờ 5 phút": elapsed time from a stored timestamp, never a forecast. */
+export function elapsedLabel(ms: number): string {
+  const minutes = Math.floor(Math.max(0, ms) / 60_000);
+  if (minutes < 1) return 'dưới 1 phút';
+  if (minutes < 60) return `${minutes} phút`;
+  const rest = minutes % 60;
+  return `${Math.floor(minutes / 60)} giờ${rest ? ` ${rest} phút` : ''}`;
+}
+
+/**
+ * The timing box while the first search is open: what really happened and when (stored times plus elapsed time),
+ * then what the customer can do. No estimate of when it will finish.
+ */
+function timingOf(scan: FirstScan, phase: Phase, now: number): { lead: string; text: string; tone?: 'slow' } | undefined {
+  const at = (iso: string | null) => (iso ? shortClock(iso) : null);
+  const since = (iso: string | null) => (now && iso ? ` · ${elapsedLabel(now - new Date(iso).getTime())}` : '');
+  const leave = 'Bạn có thể rời trang: tiến trình được lưu và kết quả sẽ tự vào danh sách lead.';
+  switch (phase) {
+    case 'saved': return { lead: 'Đã lưu nhu cầu', text: leave };
+    case 'queued': return { lead: `Đã lưu lúc ${at(scan.queuedAt)}${since(scan.queuedAt).replace(' · ', ' · đã chờ ')}`, text: leave };
+    case 'waiting_worker': return { lead: `Đã chờ ${now && scan.queuedAt ? elapsedLabel(now - new Date(scan.queuedAt).getTime()) : ''} (từ ${at(scan.queuedAt)})`, text: leave };
+    case 'delayed': return { lead: scan.queuedAt ? `Đã chờ ${now ? elapsedLabel(now - new Date(scan.queuedAt).getTime()) : ''} (từ ${at(scan.queuedAt)})` : 'Đang chờ', text: leave, tone: 'slow' };
+    case 'retrying': return { lead: scan.queuedAt ? `Đã lưu lúc ${at(scan.queuedAt)}` : 'Đang thử lại', text: leave, tone: 'slow' };
+    case 'not_ready': return { lead: 'Chưa thể biết khi nào bắt đầu.', text: 'QLead sẽ tự cập nhật trang này khi lượt tìm bắt đầu.', tone: 'slow' };
+    case 'running': return { lead: `Bắt đầu lúc ${at(scan.startedAt) ?? '—'}${since(scan.startedAt).replace(' · ', ' · đang tìm ')}`, text: leave };
+    case 'running_long': return { lead: `Bắt đầu lúc ${at(scan.startedAt) ?? '—'}${since(scan.startedAt).replace(' · ', ' · đã tìm ')}`, text: leave, tone: 'slow' };
+    default: return undefined;
+  }
+}
 
 /** The one extra search after the first one, in customer words. No timing promise: it starts when a search is free. */
 // "sẽ" until a search has really started, "đang" only while it runs.
@@ -59,20 +88,21 @@ const LOOKING_TITLE: Record<MoreState, string> = {
 };
 const MORE_STEP_NOTE: Record<MoreState, string> = { planned: 'Sắp tìm', waiting: 'Sắp tìm', running: 'Đang tìm', retrying: 'Sắp thử lại' };
 
-/** Keeps "2–3 phút" on one line so the estimate never reads as "2–" / "3 phút" on narrow screens. */
-function keepTogether(text: string) {
-  const [before, after] = text.split('2–3 phút');
-  return after === undefined ? text : <>{before}<span className="nowrap">2–3 phút</span>{after}</>;
-}
-
-function phaseOf(scan: FirstScan, now: number): Phase {
+export function phaseOf(scan: FirstScan, now: number): Phase {
   // `now` is 0 until mounted: render the server's view first, then refine by elapsed time on the client.
   const since = (value: string | null) => (now && value ? now - new Date(value).getTime() : 0);
   // Without a verified, active search service a queued search cannot start: say so instead of "sắp bắt đầu".
+  // `searchReady: null` means "cannot be observed" and is never shown as a problem.
   if ((scan.state === 'waiting' || scan.state === 'delayed') && scan.searchReady === false) return 'not_ready';
+  // A search that was claimed before and is waiting again is a retry, not a first wait.
+  if ((scan.state === 'waiting' || scan.state === 'delayed') && scan.discovery?.initialStatus === 'retrying') return 'retrying';
   switch (scan.state) {
-    case 'waiting': return !scan.queuedAt ? 'saved' : since(scan.queuedAt) > QUEUED_FRESH_MS ? 'waiting_worker' : 'queued';
-    case 'running': return since(scan.startedAt) > EXPECTED_MS ? 'running_long' : 'running';
+    case 'waiting': {
+      if (!scan.queuedAt) return 'saved';
+      const waited = since(scan.queuedAt);
+      return waited > QUEUED_SLOW_MS ? 'delayed' : waited > QUEUED_FRESH_MS ? 'waiting_worker' : 'queued';
+    }
+    case 'running': return since(scan.startedAt) > RUNNING_LONG_MS ? 'running_long' : 'running';
     case 'results': case 'no_results': return 'running';
     default: return scan.state;
   }
@@ -107,6 +137,43 @@ export function useFirstScan(initial: FirstScan): FirstScan {
     return () => window.clearInterval(timer);
   }, [open, extra]);
   return scan;
+}
+
+type Delivered = { status: 'idle' | 'loading' | 'error' } | { status: 'ready'; total: number; delivery: DeliverySummary };
+
+/**
+ * How many leads of this need QLead has actually given the customer (the bounded delivery, at most 10 per cycle),
+ * read from GET /api/leads once the first search has finished. Reading it is also what hands over the batch (the
+ * contract delivers on read), so the number shown is exactly what the list will show. `key` refetches when the
+ * discovery reports more results.
+ */
+function useDelivered(profileId: string, enabled: boolean, key: string): Delivered {
+  const [state, setState] = useState<Delivered>({ status: 'idle' });
+  const [round, setRound] = useState(0);
+  // Nothing handed over yet: read again just after the next delivery boundary the backend reported, so the page
+  // updates itself instead of asking for a manual reload.
+  const waitUntil = state.status === 'ready' && state.total === 0 ? state.delivery.nextCycleAt : null;
+  useEffect(() => {
+    if (!enabled || !waitUntil) return;
+    const delay = Math.max(5_000, new Date(waitUntil).getTime() - Date.now() + 5_000);
+    const timer = window.setTimeout(() => setRound(value => value + 1), Math.min(delay, 2 ** 31 - 1));
+    return () => window.clearTimeout(timer);
+  }, [enabled, waitUntil]);
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    setState(previous => (previous.status === 'ready' ? previous : { status: 'loading' }));
+    (async () => {
+      try {
+        const response = await fetch(`/api/leads?profile_id=${encodeURIComponent(profileId)}&limit=1`, { cache: 'no-store' });
+        if (!response.ok) { await response.body?.cancel(); throw new Error(String(response.status)); }
+        const data = await response.json() as { total: number; delivery: DeliverySummary };
+        if (!cancelled) setState({ status: 'ready', total: data.total, delivery: data.delivery });
+      } catch { if (!cancelled) setState(previous => (previous.status === 'ready' ? previous : { status: 'error' })); }
+    })();
+    return () => { cancelled = true; };
+  }, [profileId, enabled, key, round]);
+  return state;
 }
 
 /** A clock that ticks only while something is open, so elapsed-time copy can change without a new response. */
@@ -259,23 +326,22 @@ const shortClock = (iso: string) => exactTime(iso).split(' ')[0];
  * counted once by the backend). It pops in with the celebration, and pops again with a "+N" when the extra search
  * adds leads while the page is open. Reduced motion: it simply appears.
  */
-function FoundCount({ view, reveal }: { view: DiscoveryView; reveal: boolean }) {
-  const total = view.totalLeads ?? 0;
+function FoundCount({ total, reveal }: { total: number | null; reveal: boolean }) {
   const seen = useRef(total);
   const [added, setAdded] = useState(0);
   useEffect(() => {
-    if (total > seen.current) setAdded(total - seen.current);
+    if (total !== null && seen.current !== null && total > seen.current) setAdded(total - seen.current);
     seen.current = total;
   }, [total]);
-  const split = Boolean(view.initialLeads && view.moreLeads);
-  return <div className="found-count" role="group" aria-label={`${total} cơ hội mới`}>
+  // While the delivered count loads, the same box holds its place so nothing below it jumps.
+  if (total === null) return <div className="found-count is-loading" aria-hidden="true"><p className="found-count-main"><b>&nbsp;</b><span>khách hàng tiềm năng</span></p></div>;
+  return <div className="found-count" role="group" aria-label={`${total} khách hàng tiềm năng`}>
     <p className="found-count-main">
       <b key={total} className={reveal || added ? 'is-reveal' : undefined}>{total}</b>
-      <span>cơ hội mới</span>
+      <span>khách hàng tiềm năng</span>
       {added > 0 && <em className="found-count-added" key={`+${total}`} aria-hidden="true">+{added}</em>}
     </p>
-    {/* Where they came from, only when both searches contributed; nothing is counted twice. */}
-    {split && <p className="found-count-split">{view.initialLeads} từ lượt đầu · {view.moreLeads} tìm thêm</p>}  </div>;
+  </div>;
 }
 
 /**
@@ -311,9 +377,10 @@ function FinishedStamp({ view }: { view: DiscoveryView }) {
  * The success sentence. It says what QLead actually has: Facebook posts related to the customer's need, with the
  * original post to open. It never claims the poster asked for the customer's product or that anyone reviewed them.
  */
-function foundText(view: DiscoveryView): string {
-  const total = view.totalLeads ?? 0;
-  return `Đã phát hiện ${total} bài đăng có liên quan đến nhu cầu của bạn. Mở bài Facebook gốc để xem thông tin chi tiết và đánh giá cơ hội.`;
+function foundText(delivered: Delivered): string {
+  if (delivered.status !== 'ready') return 'Mở danh sách lead để xem từng bài Facebook gốc và đánh giá cơ hội.';
+  // The headline and the big number already say how many; this line says where they are and what to do.
+  return `Đã có trong danh sách lead của bạn. Mở từng bài Facebook gốc để đánh giá và bắt đầu liên hệ.`;
 }
 
 function emptyText(view: DiscoveryView): string {
@@ -354,7 +421,12 @@ export function FirstScanView({ initial, compact = false }: { initial: FirstScan
   const now = useTicking(open);
   const phase = phaseOf(scan, now);
   const finished = mode === 'found' || mode === 'empty';
-  const celebrate = useCelebration(scan, view, mode);
+  // The success number is what the customer was actually given (at most one bounded batch), never what the search saw.
+  const delivered = useDelivered(scan.profile.id, mode === 'found', `${view.totalLeads ?? ''}:${view.moreFinishedAt ?? ''}`);
+  const deliveredTotal = delivered.status === 'ready' ? delivered.total : null;
+  // Found by the search but not handed over yet (the current delivery cycle is already used): say when, no confetti.
+  const notYetGiven = mode === 'found' && deliveredTotal === 0;
+  const celebrate = useCelebration(scan, view, deliveredTotal ? mode : 'open');
   const scene = useRef<HTMLDivElement>(null);
   // On Today the discovery only leads until leads exist; from then on the page's own lead list takes over.
   const router = useRouter();
@@ -369,7 +441,11 @@ export function FirstScanView({ initial, compact = false }: { initial: FirstScan
   let title: string;
   let text: string;
   let estimate: { lead: string; text: string; tone?: 'slow' } | undefined;
-  if (mode === 'found') { sceneState = 'results'; title = 'QLead đã tìm thấy cơ hội cho bạn!'; text = foundText(view); }
+  if (notYetGiven && delivered.status === 'ready') {
+    sceneState = 'results'; title = 'QLead đã tìm thấy bài đăng phù hợp';
+    text = `Khách hàng sẽ được gửi vào danh sách lead ${delivered.delivery.nextCycleAt ? `từ ${deliveryClock(delivered.delivery.nextCycleAt)}` : 'ở lượt gửi tiếp theo'}. Bạn có thể rời trang, QLead tự cập nhật danh sách.`;
+  }
+  else if (mode === 'found') { sceneState = 'results'; title = 'QLead đã tìm thấy khách hàng cho bạn!'; text = foundText(delivered); }
   else if (mode === 'empty') { sceneState = 'no_results'; title = 'Đã hoàn tất lượt tìm đầu tiên'; text = emptyText(view); }
   else if (mode === 'looking') {
     const more = view.more!;
@@ -384,9 +460,10 @@ export function FirstScanView({ initial, compact = false }: { initial: FirstScan
   } else {
     const copy = COPY[phase];
     sceneState = mode === 'open' ? (scan.state === 'running' ? 'running' : scan.state === 'delayed' ? 'delayed' : 'waiting') : mode;
-    eyebrow = copy.eyebrow; title = copy.title; text = copy.text; estimate = ESTIMATE[phase];
+    eyebrow = copy.eyebrow; title = copy.title; text = copy.text; estimate = timingOf(scan, phase, now);
   }
-  const searching = (mode === 'open' && phase !== 'not_ready') || (mode === 'looking' && view.more === 'running');
+  // The moving bar means "a search is running right now" (a live claim), never "waiting".
+  const searching = (mode === 'open' && scan.state === 'running') || (mode === 'looking' && view.more === 'running');
 
   return <section className={`panel first-scan is-${mode === 'open' ? scan.state : mode} ${finished ? 'is-finished' : ''} ${compact ? 'is-compact' : ''}`} aria-labelledby="first-scan-title" aria-live="polite" data-phase={mode === 'open' ? phase : mode} data-discovery={view.stage}>
     {celebrate && <Confetti origin={scene}/>}
@@ -395,13 +472,14 @@ export function FirstScanView({ initial, compact = false }: { initial: FirstScan
       <div className="first-scan-copy">
         {!compact && !finished && eyebrow && <p className="first-scan-eyebrow">{eyebrow}</p>}
         <h1 id="first-scan-title" className={`first-scan-title is-${mode === 'open' ? scan.state : mode}`}>{title}</h1>
-        {mode === 'found' && <FoundCount view={view} reveal={celebrate}/>}
+        {mode === 'found' && !notYetGiven && delivered.status !== 'error' && <FoundCount total={deliveredTotal} reveal={celebrate}/>}
         <p className="first-scan-lead">{text}</p>
+        {mode === 'found' && delivered.status === 'ready' && heldBackLine(delivered.delivery) && <p className="first-scan-held"><Icon name="clock" size={15}/><span>{heldBackLine(delivered.delivery)}</span></p>}
         {/* Only the stored finish time of the search the numbers come from; nothing is shown when it is missing. */}
         {finished && <FinishedStamp view={view}/>}
         {estimate && <div className={`first-scan-estimate ${estimate.tone === 'slow' ? 'is-slow' : ''}`}>
           <Icon name="clock" size={20}/>
-          <p><b>{keepTogether(estimate.lead)}</b> {estimate.text} {mode === 'open' && <span>Bạn có thể rời trang và quay lại sau, tiến trình vẫn được lưu.</span>}</p>
+          <p><b>{estimate.lead}</b> {estimate.text}</p>
         </div>}
         {searching && <span className="first-scan-indeterminate" role="status" aria-label={title}><i/></span>}
         {mode === 'open' && <InitialSteps scan={scan}/>}
@@ -414,7 +492,7 @@ export function FirstScanView({ initial, compact = false }: { initial: FirstScan
     {mode === 'empty' && <dl className="first-scan-facts"><div><dt><Icon name="target" size={16}/>Nhu cầu</dt><dd>{scan.profile.name}</dd></div></dl>}
 
     <div className={`first-scan-actions ${finished ? 'is-finished' : ''}`}>
-      {mode === 'found' && <Link className="btn btn-primary btn-lg" href={`/app/bai-viet?nhu-cau=${scan.profile.id}`}>Xem cơ hội ngay <Icon name="arrow" size={18}/></Link>}
+      {mode === 'found' && <Link className="btn btn-primary btn-lg" href={notYetGiven ? '/app/bai-viet' : `/app/bai-viet?nhu-cau=${scan.profile.id}&luot=moi`}>{notYetGiven ? 'Xem danh sách lead' : 'Xem khách hàng'} <Icon name="arrow" size={18}/></Link>}
       {mode === 'empty' && <><Link className="btn btn-primary btn-lg" href="/app/bo-loc">Chỉnh nhu cầu</Link><Link className="btn btn-outline btn-lg" href="/app">Về trang Hôm nay</Link></>}
       {mode === 'paused' && <Link className="btn btn-primary" href="/app/bo-loc">Bật lại theo dõi</Link>}
       {(mode === 'open' || mode === 'looking' || mode === 'failed') && <>{!compact && <Link className="btn btn-outline" href="/app">Vào trang Hôm nay</Link>}<Link className="btn btn-ghost" href="/app/bo-loc">Chỉnh nhu cầu</Link></>}

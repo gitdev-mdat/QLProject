@@ -1,0 +1,45 @@
+/* First-search UX (2026-11-08): delivered-count placeholder, held-back line, latest-delivery band on the lead list.
+   Uses the existing QLead tokens only; globals.css is untouched. */
+
+.found-count.is-loading .found-count-main b { min-width: 1.2ch; border-radius: 14px; background: var(--surface-2); color: transparent; }
+.found-count.is-loading .found-count-main b::before { display: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .found-count.is-loading .found-count-main b { animation: delivered-wait 1.4s ease-in-out infinite; }
+}
+@keyframes delivered-wait { 50% { opacity: .55; } }
+
+.first-scan-copy > .first-scan-held { max-width: 520px; margin-top: -4px; color: var(--muted); font-size: 14px; line-height: 1.45; text-wrap: balance; }
+.first-scan-held > svg { display: inline; margin: 0 6px -2px 0; color: var(--green-600); }
+.first-scan:not(.is-finished) .first-scan-copy > .first-scan-held { text-align: left; }
+
+/* Latest delivery: the newest batch QLead handed over, so the customer starts there instead of facing the whole list. */
+.latest-delivery { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px 16px; margin: 0 0 16px; padding: 14px 18px; border-radius: 16px; background: var(--green-50); box-shadow: inset 0 0 0 1px var(--green-100); }
+.latest-delivery-mark { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--surface); color: var(--green-600); box-shadow: var(--shadow-sm); }
+.latest-delivery-copy { display: grid; gap: 2px; min-width: 0; }
+.latest-delivery-copy h2 { margin: 0; color: var(--green-800); font-size: 16.5px; line-height: 1.35; }
+.latest-delivery-copy p { margin: 0; color: var(--ink-2); font-size: 14px; line-height: 1.45; }
+.latest-delivery-copy .latest-delivery-held { color: var(--muted); font-size: 13.5px; }
+.latest-delivery-progress { display: flex; align-items: center; gap: 8px; margin-top: 6px; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.latest-delivery-progress meter { width: 120px; height: 6px; }
+.latest-delivery-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.latest-delivery.is-done { background: var(--surface-2); box-shadow: none; }
+.latest-delivery.is-done .latest-delivery-copy h2 { color: var(--ink); }
+.latest-delivery.is-compact { margin: 0 0 18px; }
+@media (max-width: 720px) {
+  .latest-delivery { grid-template-columns: auto minmax(0, 1fr); padding: 14px; }
+  .latest-delivery-actions { grid-column: 1 / -1; justify-content: stretch; }
+  .latest-delivery-actions > * { flex: 1 1 auto; justify-content: center; min-height: 44px; }
+}
+
+/* Rows of the latest delivery carry a quiet marker (text, not only colour). */
+.latest-tag { display: inline-flex; align-items: center; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--green-100); color: var(--green-800); font-size: 11.5px; font-weight: 700; vertical-align: 2px; white-space: nowrap; }
+.lead-table tr.is-latest > td:first-child { box-shadow: inset 3px 0 0 var(--green-600); }
+.lead-item.is-latest { box-shadow: inset 3px 0 0 var(--green-600); }
+
+/* Next-lead control in the desktop drawer, for working through the latest delivery one by one. */
+.drawer-next { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; padding: 12px 0 4px; border-top: 1px solid var(--line); background: var(--surface); }
+.drawer-next span { color: var(--muted); font-size: 13.5px; font-variant-numeric: tabular-nums; }
+
+/* Missing extracted text: one quiet line, never a placeholder that reads like the post's own words. */
+.lead-preview-fallback { color: var(--muted); font-style: italic; }
+.contact-hint { display: block; margin-top: 2px; color: var(--muted); font-size: 12.5px; font-weight: 400; }

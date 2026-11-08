@@ -9,7 +9,8 @@ import { frequencyLabel, PROFILE_STATE_LABEL, type LegacySummary, type SearchPro
 import { AppShell, useMonitoringSuspended } from './app-shell';
 import { Icon } from './visuals';
 import { GoatMascot } from './goat-mascot';
-import { LeadListItem } from './lead-results';
+import { LatestDeliveryBand, LeadListItem } from './lead-results';
+import { latestDelivery } from '@/lib/lead-delivery';
 import { FirstScanView } from './first-scan';
 import { DiscoveryNotice } from './discovery-notice';
 import type { FirstScan } from '@/lib/first-scan';
@@ -26,6 +27,8 @@ export function Dashboard({ records, profiles, legacy, scans, scanTotals, firstR
   const contacted = records.filter(lead => workflow.get(lead.id).status === "contacted").length;
   const interested = records.filter(lead => workflow.get(lead.id).status === "interested").length;
   const suspended = useMonitoringSuspended();
+  // The newest bounded delivery leads Today with one "start here" line; the full list keeps every older lead.
+  const latest = latestDelivery(records);
   const today = now ? new Intl.DateTimeFormat('vi-VN', { weekday: 'long', day: 'numeric', month: 'numeric', timeZone: 'Asia/Ho_Chi_Minh' }).format(now) : '';
 
   return <AppShell active="Hôm nay">
@@ -40,6 +43,7 @@ export function Dashboard({ records, profiles, legacy, scans, scanTotals, firstR
     {/* Until the first scan finishes, its real status leads the page instead of zero counts and an empty list. */}
     {firstRun ? <FirstScanView initial={firstRun} compact/> : <>
     {discovery && <DiscoveryNotice initial={discovery} place="today"/>}
+    {latest && <LatestDeliveryBand latest={latest} workflow={workflow} now={now} compact/>}
     <dl className="summary-row" aria-label="Tóm tắt">
       <div><dt>Chưa xem</dt><dd>{unseen.length}</dd></div>
       <div><dt>Đã liên hệ</dt><dd>{contacted}</dd></div>
