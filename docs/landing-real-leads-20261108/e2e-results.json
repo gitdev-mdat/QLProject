@@ -1,29 +1,29 @@
 {
-  "run": "d513fd",
+  "run": "915e69",
   "base": "http://127.0.0.1:3052",
   "passed": 27,
   "failed": 0,
   "timings_ms": {
     "auto": [
-      133
+      90
     ],
     "user": [
-      973
+      967
     ],
     "cached": [
-      318
+      301
     ]
   },
   "median_ms": {
-    "auto": 133,
-    "user": 973,
-    "cached": 318
+    "auto": 90,
+    "user": 967,
+    "cached": 301
   },
   "server": {
     "p50": 0,
-    "p95": 11.699999999999932,
-    "db_loads": 13,
-    "n": 284
+    "p95": 10.299999999999955,
+    "db_loads": 15,
+    "n": 338
   },
   "results": [
     {
@@ -34,17 +34,17 @@
     {
       "name": "A2 Scrolling to the section runs the example search and shows real leads (≤2)",
       "pass": true,
-      "detail": "2 lead thật phù hợp, 143 ms after scroll"
+      "detail": "2 lead thật phù hợp, 101 ms after scroll"
     },
     {
       "name": "A3 User search returns real stored posts that match (category, signal, place)",
       "pass": true,
-      "detail": "973 ms click→leads; posts df742867, 57567e86"
+      "detail": "967 ms click→leads; posts df742867, 57567e86"
     },
     {
       "name": "A4 Same search again is served from the answer cache",
       "pass": true,
-      "detail": "318 ms"
+      "detail": "301 ms"
     },
     {
       "name": "A5 Public payload: the real Facebook link, but no author, contact or internal ids; no phone on screen",
@@ -59,7 +59,7 @@
     {
       "name": "A7 Unrecognised or uncovered request → honest empty state, no padding",
       "pass": true,
-      "detail": "77 ms"
+      "detail": "74 ms"
     },
     {
       "name": "A8 Too-short request is caught in the browser without a request",
@@ -79,7 +79,7 @@
     {
       "name": "A10 Slow server (>8 s) → \"Tìm lâu hơn bình thường\" with retry, no endless spinner",
       "pass": true,
-      "detail": "gave up after 8173 ms"
+      "detail": "gave up after 8219 ms"
     },
     {
       "name": "A11 Loading state is honest (no %); skeleton only on a slow answer",
@@ -117,7 +117,7 @@
       "detail": ""
     },
     {
-      "name": "C1 Existing account: \"Đã có tài khoản? Đăng nhập\" → sign in → /app/thu-tim shows the leads in full",
+      "name": "C1 Existing account: Xem thêm → register page → \"Đăng nhập\" → sign in → /app/thu-tim shows the leads in full",
       "pass": true,
       "detail": "2 lead(s); expired state explained"
     },
@@ -139,7 +139,7 @@
     {
       "name": "D2 Layout shift: the results column does not jump when real leads replace the loading state",
       "pass": true,
-      "detail": "CLS 0.002"
+      "detail": "CLS 0.001"
     },
     {
       "name": "E1 Rate limit: the 13th search in a minute from one address is refused (429)",
@@ -154,12 +154,12 @@
     {
       "name": "E3 Tenant isolation: every post any landing preview ever showed belongs to a catalog account",
       "pass": true,
-      "detail": "283 previews checked"
+      "detail": "337 previews checked"
     },
     {
       "name": "E4 Funnel events recorded without query text",
       "pass": true,
-      "detail": "landing_full_results_viewed=19, landing_preview_opened=25, landing_search_empty=26, landing_search_failed=37, landing_search_results_shown=156, landing_search_started=219, landing_signup_clicked=5, landing_signup_completed=5"
+      "detail": "landing_full_results_viewed=22, landing_preview_opened=26, landing_search_empty=31, landing_search_failed=40, landing_search_results_shown=192, landing_search_started=263, landing_signup_clicked=7, landing_signup_completed=6"
     }
   ]
 }

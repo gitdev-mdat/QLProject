@@ -238,8 +238,6 @@ img, svg { display: block; }
 .demo-full details summary { cursor: pointer; color: var(--muted); font-size: 14px; }
 .demo-hint { color: var(--gold-ink); font-size: 14px; }
 .demo-results-foot .demo-cta { flex: none; }
-.demo-login { display: inline-flex; align-items: center; min-height: 44px; color: var(--muted); font-size: 14px; text-decoration: underline; text-underline-offset: 3px; }
-.demo-login:hover { color: var(--green-700); }
 /* Landing search results after sign-up (onboarding) or sign-in (/app/thu-tim). */
 .handoff { display: grid; gap: 10px; padding: 16px 18px; border: 1px solid var(--green-100); border-radius: 14px; background: var(--green-50); }
 .handoff h2 { display: flex; align-items: center; gap: 8px; font-size: 17px; }

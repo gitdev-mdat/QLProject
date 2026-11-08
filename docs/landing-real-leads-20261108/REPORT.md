@@ -138,3 +138,4 @@ E2E đã chạy qua: tìm lead thật và đối chiếu với DB (đúng bài, 
 - Phụ đề trang đăng ký đổi thành: "Miễn phí. Xem thêm lead cho nhu cầu bạn vừa tìm, không cần nhập lại."
 - Mọi bước sau khi đăng ký **giữ nguyên**: onboarding hiện 2 lead đầy đủ + mô tả điền sẵn + job `initial`, cùng `/app/thu-tim`. Khi đã đăng nhập, landing có thêm nút "Chi tiết" để xem tác giả/SĐT.
 - Kiểm thử lại trên bản build production: unit **9/9**, E2E **27/27**. A5 kiểm tra `url` khớp đúng `original_url` trong DB, và payload vẫn không có tác giả/SĐT. A6 kiểm tra link mở tab mới với `noopener` và nút "Xem thêm" trỏ tới trang đăng ký. Responsive **39/39**: 2 kiểm tra về khung khóa cũ không còn áp dụng nên số kiểm tra giảm từ 41. Ảnh mới: `found-1440/768/390.png`.
+- Bỏ dòng "Đã có tài khoản? Đăng nhập" khỏi section; người đã có tài khoản đăng nhập từ trang đăng ký (link vẫn mang `?tiep=/app/thu-tim`). Test lại: E2E 27/27 (C1 đi qua trang đăng ký → Đăng nhập), responsive 39/39.

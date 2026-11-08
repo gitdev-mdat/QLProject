@@ -272,13 +272,15 @@ try {
   await ctx.close();
 
   // ---------------------------------------------------------------- existing account: sign in from the landing page
-  await check('C1 Existing account: "Đã có tài khoản? Đăng nhập" → sign in → /app/thu-tim shows the leads in full', async () => {
+  await check('C1 Existing account: Xem thêm → register page → "Đăng nhập" → sign in → /app/thu-tim shows the leads in full', async () => {
     const c2 = await browser.newContext({ viewport: { width: 1440, height: 900 }, extraHTTPHeaders: visitor() });
     const p2 = await c2.newPage();
     await p2.goto(`${BASE}/#demo`, { waitUntil: 'networkidle' });
     await p2.locator('#demo').scrollIntoViewIfNeeded();
     await p2.waitForSelector('.demo-lead', { timeout: 15_000 });
-    await p2.locator('.demo-login').click();
+    await p2.locator('.demo-results-foot a.demo-cta').click();
+    await p2.waitForURL(/\/dang-ky\?tu=thu-tim/);
+    await p2.locator('.auth-switch a', { hasText: 'Đăng nhập' }).click();
     await p2.waitForURL(/\/dang-nhap\?tiep=/);
     await p2.getByPlaceholder('ban@congty.vn').fill(email);
     await p2.getByPlaceholder('Mật khẩu của bạn').fill(password);

@@ -20,7 +20,6 @@ const CLIENT_TIMEOUT_MS = 8000;
 /** A fast answer replaces the old one directly; the skeleton only appears when the wait is noticeable. */
 const SKELETON_DELAY_MS = 180;
 const SIGNUP_HREF = '/dang-ky?tu=thu-tim';
-const LOGIN_HREF = '/dang-nhap?tiep=/app/thu-tim';
 
 type Phase = 'idle' | 'searching' | 'found' | 'empty' | 'error';
 type Full = { key: string; text: string; summarized: boolean; original: string | null; author: string | null; url: string | null; publishedAt: string | null; area: string | null; contact: string | null };
@@ -265,7 +264,6 @@ export function HeroDemo() {
             : phase === 'empty'
               ? <><p>Miễn phí, không cần thanh toán.</p><Link href={SIGNUP_HREF} className="btn btn-primary demo-cta" onClick={rememberForSignup}>Đăng ký để QLead tìm cho bạn <Icon name="arrow" size={16}/></Link></>
               : <><p>Lead thật từ bài đăng Facebook.</p><Link href={SIGNUP_HREF} className="text-link">Tạo tài khoản miễn phí <Icon name="arrow" size={16}/></Link></>}
-        {!member && (phase === 'found' || phase === 'empty') && result && <Link href={LOGIN_HREF} className="demo-login" onClick={() => saveLandingHandoff({ query: result.query, previewId: result.previewId, resultCount: result.leads.length, expiresAt: result.expiresAt })}>Đã có tài khoản? Đăng nhập</Link>}
       </div>
     </div>
   </div>;
