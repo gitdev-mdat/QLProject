@@ -73,9 +73,9 @@ Lý do chọn: đây là cách duy nhất vừa trả kết quả **dưới 1 gi
 - `GET /api/landing/previews/:id`: **bắt buộc đăng nhập**. Chỉ trả đúng các bài preview đó đã hiện, và kiểm tra lại rằng bài vẫn thuộc catalog. Preview hết hạn sau 24 giờ thì trả 410. Lần mở đầu tiên ghi `claimed_by_user_id`.
 - `POST /api/landing/events`: ghi sự kiện funnel (danh sách cố định), rate limit 90/phút.
 
-**Không đổi worker/Muse/queue.** `src/cli.ts` chỉ thêm 021 vào danh sách migrate local. `ops/production-db.ts` tự đọc thư mục migrations.
+**Không đổi worker/Muse/queue.** `src/cli.ts` chỉ thêm 022 vào danh sách migrate local. `ops/production-db.ts` tự đọc thư mục migrations.
 
-**Database: migration `021_landing_preview.sql`** (chỉ thêm 2 bảng, bật RLS):
+**Database: migration `022_landing_preview.sql`** (chỉ thêm 2 bảng, bật RLS):
 - `landing_previews`: id ngẫu nhiên, `query_hash` (SHA-256, **không lưu câu khách gõ**), `post_ids` (≤2), kết quả, `served_from` (`cache|pool|database`), `server_ms`, người xem/người mở khóa, `expires_at`.
 - `landing_events`: 8 sự kiện theo yêu cầu, gồm `visitor_id` ngẫu nhiên (localStorage), `preview_id`, `trigger` (auto/user/suggestion), `result_count`, `client_ms`, `reason`. Không lưu IP, User-Agent hay nội dung tìm kiếm. Tự xóa bản ghi sau 180 ngày.
 
@@ -96,7 +96,7 @@ SELECT count(*) FILTER (WHERE claimed_by_user_id IS NOT NULL) FROM landing_previ
 
 ## E. Bằng chứng kiểm thử
 
-Môi trường: bản build **production** (`next build` + `next start`) chạy ở cổng 3052 trên máy Thi. DB là **bản sao cô lập** `muse_bridge_landing` (pg_dump từ `muse_bridge` local, áp thêm migration 016–021). Dữ liệu là **664 bài Facebook thật** do Muse thu thập. Catalog thử nghiệm gồm 4 tài khoản của Thi; tài khoản "Quoc Hiep" và các tài khoản khác cố ý để ngoài catalog, dùng để kiểm tra cách ly.
+Môi trường: bản build **production** (`next build` + `next start`) chạy ở cổng 3052 trên máy Thi. DB là **bản sao cô lập** `muse_bridge_landing` (pg_dump từ `muse_bridge` local, áp thêm migration 016–022). Dữ liệu là **664 bài Facebook thật** do Muse thu thập. Catalog thử nghiệm gồm 4 tài khoản của Thi; tài khoản "Quoc Hiep" và các tài khoản khác cố ý để ngoài catalog, dùng để kiểm tra cách ly.
 
 | Bộ test | Kết quả |
 |---|---|
@@ -126,7 +126,7 @@ E2E đã chạy qua: tìm lead thật và đối chiếu với DB (đúng bài, 
 - Trước khi merge, Thi cần:
   1. **Quyết định nguồn dữ liệu.** Mình đề xuất chỉ dùng tài khoản trưng bày. Dùng lead của khách hàng cho landing cần có điều khoản/đồng ý rõ ràng, nên mình không bật.
   2. Tạo 1 tài khoản trưng bày (đăng ký bình thường, hoặc dùng tài khoản Admin) với khoảng 4–6 nhu cầu phổ biến, ví dụ: quán F&B sắp khai trương, khách sạn/homestay sắp hoạt động, shop thời trang/mỹ phẩm mở chi nhánh, spa/salon mới mở, nhà hàng tuyển người. Tần suất 6 giờ (có sẵn: 30 phút, 1 giờ, 6 giờ, 24 giờ) để không chiếm năng lực Muse của khách. Chờ ít nhất một lượt quét.
-  3. Chạy migration 021 trên Supabase: `npx tsx ops/production-db.ts migrate` rồi `verify`.
+  3. Chạy migration 022 trên Supabase: `npx tsx ops/production-db.ts migrate` rồi `verify`.
   4. Thêm `QLEAD_LANDING_CATALOG_USER_IDS=<user id trưng bày>` vào Vercel **Production**.
   5. Merge PR → Vercel deploy → kiểm tra `/` và chạy `web/e2e/responsive-landing.mjs https://qlead.vn`.
 
