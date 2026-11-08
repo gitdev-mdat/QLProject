@@ -13,6 +13,8 @@ import { AppShell } from './app-shell';
 import { Icon } from './visuals';
 import { GoatMascot } from './goat-mascot';
 import { reportSourceOpen } from '@/lib/feedback-client';
+import { deliveryClock, heldBackLine, latestDelivery, type DeliverySummary, type LatestDelivery } from '@/lib/lead-delivery';
+import './first-search-ux.css';
 
 const DESKTOP_QUERY = '(min-width: 1080px)';
 const PAGE_SIZE = 50;
@@ -96,23 +98,67 @@ function PostedOrFound({ lead, now }: { lead: Lead; now: number }) {
   return <span className="muted-text">Chưa rõ giờ đăng</span>;
 }
 
+/**
+ * The newest batch QLead handed over (at most one bounded delivery), so the customer starts there and works through
+ * it one by one instead of facing the whole list. Older leads stay in the list below; nothing is hidden by default.
+ * `compact` (Today) only links to the list.
+ */
+export function LatestDeliveryBand({ latest, workflow, delivery, now, onlyLatest = false, onToggle, onStart, compact = false }: {
+  latest: LatestDelivery; workflow: LeadWorkflowApi; delivery?: DeliverySummary | null; now: number;
+  onlyLatest?: boolean; onToggle?: () => void; onStart?: () => void; compact?: boolean;
+}) {
+  const total = latest.ids.length;
+  const unseen = latest.ids.filter(id => workflow.get(id).status === 'new').length;
+  const handled = total - unseen;
+  const held = heldBackLine(delivery, now || undefined);
+  const when = now ? deliveryClock(latest.at, now) : '';
+  if (unseen === 0) {
+    if (compact) return null;
+    return <section className="latest-delivery is-done" aria-labelledby="latest-delivery-title">
+      <span className="latest-delivery-mark" aria-hidden="true"><Icon name="check" size={22}/></span>
+      <div className="latest-delivery-copy">
+        <h2 id="latest-delivery-title">Bạn đã xem hết {total} khách hàng của lượt gửi gần nhất</h2>
+        <p className={held ? 'latest-delivery-held' : undefined}>{held ?? 'Khách hàng mới sẽ được gửi vào đây ở các lượt sau.'}</p>
+      </div>
+      {onlyLatest && onToggle && <div className="latest-delivery-actions"><button type="button" className="btn btn-outline btn-sm" onClick={onToggle}>Hiện tất cả lead</button></div>}
+    </section>;
+  }
+  return <section className={`latest-delivery ${compact ? 'is-compact' : ''}`} aria-labelledby="latest-delivery-title">
+    <span className="latest-delivery-mark" aria-hidden="true"><Icon name="radar" size={22}/></span>
+    <div className="latest-delivery-copy">
+      <h2 id="latest-delivery-title">{total} khách hàng mới trong lượt gửi gần nhất</h2>
+      <p>{when && <>Gửi {when} · </>}còn <b>{unseen} chưa xem</b>. Xem lần lượt từng khách để không bỏ sót cơ hội.</p>
+      {handled > 0 && <p className="latest-delivery-progress"><meter min={0} max={total} value={handled} aria-label="Đã xem trong lượt gửi gần nhất"/>Đã xem {handled}/{total}</p>}
+      {held && <p className="latest-delivery-held">{held}</p>}
+    </div>
+    <div className="latest-delivery-actions">
+      {compact
+        ? <Link className="btn btn-primary btn-sm" href="/app/bai-viet?luot=moi">{handled ? 'Xem khách tiếp theo' : 'Bắt đầu xem'} <Icon name="arrow" size={16}/></Link>
+        : <>
+          {onStart && <button type="button" className="btn btn-primary btn-sm" onClick={onStart}>{handled ? 'Xem khách tiếp theo' : 'Bắt đầu xem'} <Icon name="arrow" size={16}/></button>}
+          {onToggle && <button type="button" className="btn btn-outline btn-sm" aria-pressed={onlyLatest} onClick={onToggle}>{onlyLatest ? 'Hiện tất cả lead' : 'Chỉ hiện lượt này'}</button>}
+        </>}
+    </div>
+  </section>;
+}
+
 /** Compact lead row used on the Today page and on mobile. The card opens the lead; the Facebook link opens the post. */
-export function LeadListItem({ lead, now, workflow, source }: { lead: Lead; now: number; workflow: LeadWorkflowApi; source?: string }) {
+export function LeadListItem({ lead, now, workflow, source, latest = false }: { lead: Lead; now: number; workflow: LeadWorkflowApi; source?: string; latest?: boolean }) {
   const state = workflow.get(lead.id);
   const area = displayArea(lead);
   const text = leadText(lead).kind !== 'fallback';
-  return <li className={`lead-item ${state.status === 'new' ? 'is-unseen' : ''} ${text ? '' : 'is-no-text'}`}>
+  return <li className={`lead-item ${state.status === 'new' ? 'is-unseen' : ''} ${text ? '' : 'is-no-text'} ${latest ? 'is-latest' : ''}`}>
     <Link className="lead-item-main" href={leadHref(lead.id)}>
       <div className="lead-item-top">
         <StatusPill status={state.status}/>
-        <span className={`lead-item-author ${lead.author ? '' : 'is-fallback'}`}>{leadName(lead)}</span>
+        <span className={`lead-item-author ${lead.author ? '' : 'is-fallback'}`}>{leadName(lead)}{latest && <span className="latest-tag">Lượt mới</span>}</span>
         <PostedOrFound lead={lead} now={now}/>
       </div>
       <LeadPreviewLine lead={lead} className="lead-item-need"/>
       <div className="lead-item-meta">
         {(text || area) && <span className={area ? '' : 'muted-text'}><Icon name="pin" size={15}/>{area ?? 'Chưa rõ khu vực'}</span>}
-        {lead.contact && <span className="has-contact"><Icon name="phone" size={15}/>{lead.contact.number}</span>}
-        <ContentStatus lead={lead}/>
+        {lead.contact && <span className="has-contact" title="Số lấy từ nội dung bài, chưa xác minh chủ số"><Icon name="phone" size={15}/>{lead.contact.number}</span>}
+        {text && <ContentStatus lead={lead}/>}
         {state.notes.length > 0 && <span className="note-count"><Icon name="list" size={14}/>{state.notes.length} ghi chú</span>}
       </div>
     </Link>
@@ -196,7 +242,7 @@ export function LeadDetail({ lead, now, workflow, headingLevel = 2 }: { lead: Le
       </details>}
 
       <dl className="lead-facts">
-        <div><dt><Icon name="phone" size={16}/>Số liên hệ</dt><dd>{lead.contact ? <span className="contact-line"><a href={`tel:${lead.contact.normalized}`}>{lead.contact.number}</a><button type="button" className="icon-btn" onClick={() => copy(lead.contact!.number, 'số liên hệ')} aria-label="Sao chép số liên hệ"><Icon name="copy" size={16}/></button></span> : text ? <span className="muted-text">Bài không ghi số</span> : inPost}</dd></div>
+        <div><dt><Icon name="phone" size={16}/>SĐT trong bài</dt><dd>{lead.contact ? <><span className="contact-line"><a href={`tel:${lead.contact.normalized}`}>{lead.contact.number}</a><button type="button" className="icon-btn" onClick={() => copy(lead.contact!.number, 'số điện thoại')} aria-label="Sao chép số điện thoại"><Icon name="copy" size={16}/></button></span><small className="contact-hint">Lấy từ nội dung bài, chưa xác minh chủ số.</small></> : text ? <span className="muted-text">Bài không ghi số</span> : inPost}</dd></div>
         <div><dt><Icon name="pin" size={16}/>Khu vực</dt><dd>{area ?? (text ? <span className="muted-text">Bài không nêu</span> : inPost)}</dd></div>
         <div><dt><Icon name="clock" size={16}/>Đăng lúc</dt><dd>{lead.published_at ? exactTime(lead.published_at) : <span className="muted-text">Chưa rõ giờ đăng</span>}</dd></div>
         <div><dt><Icon name="radar" size={16}/>QLead tìm thấy lúc</dt><dd>{lead.discovered_at ? exactTime(lead.discovered_at) : '—'}</dd></div>
@@ -240,10 +286,15 @@ export function leadListHref(source: string) { return source === 'all' ? '/app/b
  * always describe the same need, and Back/Forward/refresh restore it. The page is keyed by source, so no client state
  * from the previous need survives the switch.
  */
-export function LeadResultsPage({ records, total = records.length, workflow: initialWorkflow, profiles, hasLegacy = false, source = 'all', notice }: { records: Lead[]; total?: number; workflow: WorkflowMap; profiles: ProfileOption[]; hasLegacy?: boolean; source?: string; notice?: ReactNode }) {
+export function LeadResultsPage({ records, total = records.length, workflow: initialWorkflow, profiles, hasLegacy = false, source = 'all', notice, delivery = null, latestOnly = false }: { records: Lead[]; total?: number; workflow: WorkflowMap; profiles: ProfileOption[]; hasLegacy?: boolean; source?: string; notice?: ReactNode; delivery?: DeliverySummary | null; latestOnly?: boolean }) {
   const now = useNow();
   const router = useRouter();
   const workflow = useLeadWorkflow(initialWorkflow);
+  // The newest delivery (?luot=moi opens the list on it). It only narrows the view; history is one click away.
+  const latest = useMemo(() => latestDelivery(records), [records]);
+  const latestIds = useMemo(() => new Set(latest?.ids ?? []), [latest]);
+  const [onlyLatest, setOnlyLatest] = useState(latestOnly && Boolean(latest));
+  const latestOpen = Boolean(latest && latest.ids.some(id => workflow.get(id).status === 'new'));
   const [query, setQuery] = useState('');
   const [range, setRange] = useState<DateRange>('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -278,12 +329,20 @@ export function LeadResultsPage({ records, total = records.length, workflow: ini
         && (statusFilter === 'all' || state.status === statusFilter)
         && (!onlyContact || Boolean(lead.contact))
         && (!onlyNotes || state.notes.length > 0)
+        && (!onlyLatest || latestIds.has(lead.id))
         && matchesSourceFilter(lead, source); // already scoped on the server; kept as a guard
     }).sort((a, b) => compareLeadByPostedAt(a, b, dateOrder));
-  }, [records, now, query, range, statusFilter, onlyContact, onlyNotes, source, workflow, dateOrder]);
+  }, [records, now, query, range, statusFilter, onlyContact, onlyNotes, onlyLatest, latestIds, source, workflow, dateOrder]);
   const visible = filtered.slice(0, visibleCount);
 
-  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [query, range, statusFilter, onlyContact, onlyNotes, source, dateOrder]);
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [query, range, statusFilter, onlyContact, onlyNotes, onlyLatest, source, dateOrder]);
+
+  /** The next unseen lead of the latest delivery in the order the list shows, skipping `after`. */
+  function nextLatest(after?: string): Lead | null {
+    if (!latest) return null;
+    const ordered = [...records].filter(lead => latestIds.has(lead.id)).sort((a, b) => compareLeadByPostedAt(a, b, dateOrder));
+    return ordered.find(lead => lead.id !== after && workflow.get(lead.id).status === 'new') ?? null;
+  }
 
   const open = records.find(lead => lead.id === openId) ?? null;
   useEffect(() => {
@@ -297,8 +356,10 @@ export function LeadResultsPage({ records, total = records.length, workflow: ini
     workflow.markSeen(id);
     if (window.matchMedia(DESKTOP_QUERY).matches) setOpenId(id); else router.push(leadHref(id));
   }
-  const activeFilters = Number(Boolean(query)) + Number(range !== 'all') + Number(statusFilter !== 'all') + Number(onlyContact) + Number(onlyNotes) + Number(source !== 'all');
-  function reset() { setQuery(''); setRange('all'); setStatusFilter('all'); setOnlyContact(false); setOnlyNotes(false); chooseSource('all'); }
+  const activeFilters = Number(Boolean(query)) + Number(range !== 'all') + Number(statusFilter !== 'all') + Number(onlyContact) + Number(onlyNotes) + Number(onlyLatest) + Number(source !== 'all');
+  function reset() { setQuery(''); setRange('all'); setStatusFilter('all'); setOnlyContact(false); setOnlyNotes(false); setOnlyLatest(false); chooseSource('all'); }
+  const latestSeen = latest ? latest.ids.filter(id => workflow.get(id).status !== 'new').length : 0;
+  const upNext = open && latestIds.has(open.id) ? nextLatest(open.id) : null;
 
   return <AppShell active="Danh sách lead">
     <div className="page-head">
@@ -309,6 +370,8 @@ export function LeadResultsPage({ records, total = records.length, workflow: ini
       <Link href="/app/bo-loc" className="btn btn-outline hide-mobile"><Icon name="target" size={16}/>Sửa nhu cầu theo dõi</Link>
     </div>
     {notice}
+    {latest && <LatestDeliveryBand latest={latest} workflow={workflow} delivery={delivery} now={now} onlyLatest={onlyLatest}
+      onToggle={() => setOnlyLatest(value => !value)} onStart={() => { const next = nextLatest(); if (next) openLead(next.id); }}/>}
 
     <div className="status-tabs" role="tablist" aria-label="Lọc theo trạng thái">
       {(['all', ...LEAD_STATUSES] as StatusFilter[]).map(status => <button key={status} type="button" role="tab" aria-selected={statusFilter === status} onClick={() => setStatusFilter(status)}>
@@ -337,17 +400,19 @@ export function LeadResultsPage({ records, total = records.length, workflow: ini
       : <>
         <div className="lead-table-wrap panel">
           <table className="lead-table">
-            <thead><tr><th>Trạng thái</th><th>Lead</th><th>Khu vực</th><th>Số liên hệ</th><th>Thời gian</th><th>Ghi chú</th><th><span className="sr-only">Bài Facebook gốc</span></th></tr></thead>
+            <thead><tr><th>Trạng thái</th><th>Lead</th><th>Khu vực</th><th>SĐT trong bài</th><th>Thời gian</th><th>Ghi chú</th><th><span className="sr-only">Bài Facebook gốc</span></th></tr></thead>
             <tbody>{visible.map(lead => {
               const state = workflow.get(lead.id);
               const shown = leadText(lead);
               const reading = readLead(shown.kind === 'original' ? shown.text : '', shown.kind === 'original' ? lead.need : null);
               const area = displayArea(lead);
               const text = shown.kind !== 'fallback';
-              return <tr key={lead.id} data-id={lead.id} className={`${state.status === 'new' ? 'is-new' : ''} ${openId === lead.id ? 'is-open' : ''} ${text ? '' : 'is-no-text'}`} tabIndex={0} aria-label={`Mở lead: ${leadName(lead)}`}
+              const isLatest = latestOpen && latestIds.has(lead.id);
+              return <tr key={lead.id} data-id={lead.id} className={`${state.status === 'new' ? 'is-new' : ''} ${openId === lead.id ? 'is-open' : ''} ${text ? '' : 'is-no-text'} ${isLatest ? 'is-latest' : ''}`} tabIndex={0} aria-label={`Mở lead: ${leadName(lead)}${isLatest ? ' (lượt gửi gần nhất)' : ''}`}
                 onClick={() => openLead(lead.id)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openLead(lead.id); } }}>
                 <td><StatusPill status={state.status}/></td>
-                <td className="lead-cell"><b className={lead.author ? '' : 'is-fallback'}>{leadName(lead)}</b><LeadPreviewLine lead={lead} className="lead-cell-text"/>{text ? <ReadingTags reading={reading} limit={2}/> : <p className="lead-cell-missing"><ContentStatus lead={lead}/></p>}<SourceLine lead={lead} prefer={source}/></td>
+                {/* With no extracted text the preview line already says what is missing; no second chip repeats it. */}
+                <td className="lead-cell"><b className={lead.author ? '' : 'is-fallback'}>{leadName(lead)}{isLatest && <span className="latest-tag">Lượt mới</span>}</b><LeadPreviewLine lead={lead} className="lead-cell-text"/>{text && <ReadingTags reading={reading} limit={2}/>}<SourceLine lead={lead} prefer={source}/></td>
                 <td className={area ? '' : 'muted-text'}>{area ?? '—'}</td>
                 <td>{lead.contact ? <span className="has-contact">{lead.contact.number}</span> : <span className="muted-text">—</span>}</td>
                 <td className="time-cell"><PostedOrFound lead={lead} now={now}/></td>
@@ -357,7 +422,7 @@ export function LeadResultsPage({ records, total = records.length, workflow: ini
             })}</tbody>
           </table>
         </div>
-        <ul className="lead-list lead-cards panel">{visible.map(lead => <LeadListItem key={lead.id} lead={lead} now={now} workflow={workflow} source={source}/>)}</ul>
+        <ul className="lead-list lead-cards panel">{visible.map(lead => <LeadListItem key={lead.id} lead={lead} now={now} workflow={workflow} source={source} latest={latestOpen && latestIds.has(lead.id)}/>)}</ul>
         {visible.length < filtered.length && <div className="lead-load-more"><p>Đang hiển thị {visible.length}/{filtered.length} lead phù hợp</p><button className="btn btn-outline" type="button" onClick={() => setVisibleCount(count => Math.min(count + PAGE_SIZE, filtered.length))}>Tải thêm {Math.min(PAGE_SIZE, filtered.length - visible.length)} lead</button></div>}
       </>}
     </div>
@@ -367,6 +432,12 @@ export function LeadResultsPage({ records, total = records.length, workflow: ini
       <aside className="lead-drawer" role="dialog" aria-modal="true" aria-label="Chi tiết lead">
         <button type="button" className="drawer-close icon-btn" onClick={() => setOpenId(null)} aria-label="Đóng"><Icon name="back" size={16}/></button>
         <LeadDetail key={open.id} lead={open} now={now} workflow={workflow}/>
+        {latest && latestIds.has(open.id) && <div className="drawer-next">
+          <span>Lượt gửi gần nhất · đã xem {latestSeen}/{latest.ids.length}</span>
+          {upNext
+            ? <button type="button" className="btn btn-primary btn-sm" onClick={() => openLead(upNext.id)}>Khách tiếp theo <Icon name="arrow" size={16}/></button>
+            : <button type="button" className="btn btn-outline btn-sm" onClick={() => setOpenId(null)}>Đã xem hết lượt này</button>}
+        </div>}
       </aside>
     </>}
   </AppShell>;

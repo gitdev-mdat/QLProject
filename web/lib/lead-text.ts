@@ -63,8 +63,8 @@ export function leadText(lead: Pick<LeadRecord, 'content' | 'title'> & Presentat
 
   if (summary) return { kind: 'summary', text: summary, listText: summary, stored: stored ? { text: stored, label: storedLabel } : null, status: null };
   if (vietnameseOriginal) return { kind: 'original', text: stored, listText: stored, stored: null, status: null };
-  if (!stored) return { kind: 'fallback', text: NO_CONTENT_TEXT, listText: 'Mở bài Facebook gốc để xem nội dung.', stored: null, status: NO_CONTENT_STATUS };
-  return { kind: 'fallback', text: RECORDED_TEXT, listText: RECORDED_TEXT, stored: { text: stored, label: storedLabel }, status: NO_SUMMARY_STATUS };
+  if (!stored) return { kind: 'fallback', text: NO_CONTENT_TEXT, listText: 'Chưa trích xuất được nội dung bài này.', stored: null, status: NO_CONTENT_STATUS };
+  return { kind: 'fallback', text: RECORDED_TEXT, listText: 'Chưa có tóm tắt tiếng Việt cho bài này.', stored: { text: stored, label: storedLabel }, status: NO_SUMMARY_STATUS };
 }
 
 /** Text the lead search looks in: the shown summary/original plus any stored text, so both languages match. */

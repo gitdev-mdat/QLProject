@@ -30,11 +30,11 @@ export default async function PostsPage({ searchParams }: { searchParams: Promis
     source = value;
   }
   const scope: LeadScope = source === 'all' ? { kind: 'all' } : source === LEGACY_FILTER ? { kind: 'legacy' } : { kind: 'profile', profileId: source };
-  const { leads: records, total } = await listLeadPageForUser(session.userId, scope, scope.kind === 'all' ? ALL_LEADS_LIMIT : SCOPED_LEAD_LIMIT);
+  const { leads: records, total, delivery } = await listLeadPageForUser(session.userId, scope, scope.kind === 'all' ? ALL_LEADS_LIMIT : SCOPED_LEAD_LIMIT);
   const workflow = await getWorkflowForUser(session.userId, records.map(record => record.id));
   // While QLead is still looking further for the first need (or just finished doing so), the list says so in one line.
   const view = firstScan ? discoveryView(firstScan) : null;
   const relevant = source === 'all' || source === firstScan?.profile.id;
   const notice = firstScan && view && relevant && (view.stage === 'more' || view.moreFinishedAt) ? <DiscoveryNotice initial={firstScan} place="list"/> : null;
-  return <LeadResultsPage key={source} records={records} total={total} workflow={workflow} profiles={profiles.map(({ id, name }) => ({ id, name }))} hasLegacy={Boolean(legacy?.leadCount)} source={source} notice={notice}/>;
+  return <LeadResultsPage key={source} records={records} total={total} workflow={workflow} profiles={profiles.map(({ id, name }) => ({ id, name }))} hasLegacy={Boolean(legacy?.leadCount)} source={source} notice={notice} delivery={delivery} latestOnly={params['luot'] === 'moi'}/>;
 }
