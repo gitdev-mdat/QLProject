@@ -19,6 +19,7 @@ export interface StoredFacebookPost {
   original_url?: string | null;
   normalized_url?: string | null;
   discovered_at?: string | Date | null;
+  delivered_at?: string | Date | null;
   first_seen_at?: string | Date | null;
   source_type?: string | null;
   collected_via?: string | null;
