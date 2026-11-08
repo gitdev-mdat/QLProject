@@ -34,7 +34,7 @@ type Answer = { at: number; matches: Array<{ postId: string; preview: LandingPre
 const state = globalThis as unknown as { qleadLandingPool?: Pool; qleadLandingLoad?: Promise<Pool>; qleadLandingAnswers?: Map<string, Answer> };
 
 async function loadPool(catalog: string[]): Promise<Pool> {
-  const { rows } = await db().query<LandingCandidate>(`SELECT DISTINCT ON (fp.normalized_url) fp.id, fp.normalized_url, fp.title, fp.content, fp.summary_vi,
+  const { rows } = await db().query<LandingCandidate>(`SELECT DISTINCT ON (fp.normalized_url) fp.id, fp.normalized_url, fp.original_url, fp.title, fp.content, fp.summary_vi,
       fp.published_at, fp.first_seen_at AS discovered_at
     FROM facebook_posts fp
     JOIN agent_connections ac ON ac.id = fp.agent_connection_id

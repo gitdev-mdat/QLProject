@@ -10,10 +10,11 @@
  * - Only posts with Vietnamese text QLead can show qualify (a Vietnamese summary or Vietnamese post text), only
  *   recent ones (30 days), and near-duplicates of the same business are collapsed. Fewer than two good matches
  *   means fewer than two results: nothing is padded.
- * - The public preview never carries the post URL, the poster's name or contact details: phone numbers, emails
- *   and links in the excerpt are masked on the server before anything leaves it.
+ * - The public preview carries the Facebook post link (the owner chose to let visitors open it) but never the
+ *   poster's name or contact details: phone numbers, emails and other links in the excerpt are masked on the server.
  */
 import { planFromDescription } from '../../src/search-plan';
+import { isSupportedFacebookPostUrl } from '../../src/lead-eligibility';
 import { looksEnglish } from './lead-text';
 
 export const LANDING_MAX_RESULTS = 2;
@@ -27,6 +28,8 @@ const EXCERPT_MAX = 180;
 export type LandingCandidate = {
   id: string;
   normalized_url: string;
+  /** The Facebook permalink as collected; shown publicly only when it is a recognised post URL. */
+  original_url?: string | null;
   title: string | null;
   content: string | null;
   summary_vi: string | null;
@@ -47,6 +50,8 @@ export type LandingPreviewLead = {
   publishedAt: string | null;
   source: string;
   hasContact: boolean;
+  /** Link to the Facebook post (open to everyone); null when QLead has no valid post URL. */
+  url: string | null;
   /** Why this post was picked, in the visitor's terms ("Quán cà phê · sắp khai trương · TP.HCM"). */
   match: string;
 };
@@ -413,6 +418,7 @@ export function rankLandingCandidates(query: string, pool: AnalyzedCandidate[] |
         excerpt: clip(maskContacts(item.shown.text)), summarized: item.shown.summarized, area: place.label ?? item.places.places[0] ?? null,
         publishedAt: candidate.published_at && Number.isFinite(Date.parse(candidate.published_at)) ? new Date(candidate.published_at).toISOString() : null,
         source: item.source, hasContact: item.hasContact,
+        url: isSupportedFacebookPostUrl(candidate.original_url) ? candidate.original_url! : null,
         match: matchParts.length ? matchParts.join(' · ') : 'Có cụm từ trong mô tả của bạn',
       },
     });

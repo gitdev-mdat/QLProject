@@ -50,7 +50,9 @@
     ".next-prod-20261102-glace/types/**/*.ts",
     ".next-prod-20261102-glace/dev/types/**/*.ts",
     ".next-qlead-prod-20261103-fresh/types/**/*.ts",
-    ".next-qlead-prod-20261103-fresh/dev/types/**/*.ts"
+    ".next-qlead-prod-20261103-fresh/dev/types/**/*.ts",
+    ".next-landing-prod/types/**/*.ts",
+    ".next-landing-prod/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

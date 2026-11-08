@@ -23,7 +23,6 @@ PASS [interaction 360px] Every in-page link points to an existing section
 PASS [interaction 360px] "QLead giúp bạn" shows the three steps in order
 PASS [interaction 360px] Nav "Bắt đầu ngay" visible and reachable
 PASS [interaction 360px] Search suggestion returns real leads or an honest empty answer — 1 lead thật phù hợp
-PASS [interaction 360px] Demo "Xem bài đầy đủ" expands the post
 PASS [interaction 360px] No layout problems after interacting with the demo
 PASS [interaction 1280px] Hero primary CTA "Bắt đầu ngay" links to /dang-ky
 PASS [interaction 1280px] Hero CTA "Thử ngay" scrolls to the demo — demo top 68
@@ -36,8 +35,7 @@ PASS [interaction 1280px] Every in-page link points to an existing section
 PASS [interaction 1280px] "QLead giúp bạn" shows the three steps in order
 PASS [interaction 1280px] Nav "Bắt đầu ngay" visible and reachable
 PASS [interaction 1280px] Search suggestion returns real leads or an honest empty answer — 1 lead thật phù hợp
-PASS [interaction 1280px] Demo "Xem bài đầy đủ" expands the post
 PASS [interaction 1280px] No layout problems after interacting with the demo
 PASS [console] No page errors
 
-41/41 checks passed
+39/39 checks passed

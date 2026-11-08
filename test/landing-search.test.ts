@@ -79,14 +79,14 @@ test('near-duplicate posts about the same opening are collapsed', () => {
   assert.ok(result.some(match => /Sóc/.test(match.preview.excerpt)));
 });
 
-test('the public preview carries no phone, email, link, author or post URL', () => {
-  const pool = [post('Quán cà phê Mây sắp khai trương ở TP.HCM. Liên hệ 0901 234 567 hoặc zalo 0912345678, email chu.quan@gmail.com, web www.caphemay.vn')];
+test('the public preview carries the Facebook post link but no phone, email, other link or author', () => {
+  const pool = [post('Quán cà phê Mây sắp khai trương ở TP.HCM. Liên hệ 0901 234 567 hoặc zalo 0912345678, email chu.quan@gmail.com, web www.caphemay.vn', { original_url: 'https://www.facebook.com/groups/g/posts/123', author: 'Chủ quán' } as Partial<LandingCandidate>)];
   const [match] = rankLandingCandidates(CAFE_HCM, pool, NOW);
   assert.ok(match);
-  const json = JSON.stringify(match.preview);
-  assert.doesNotMatch(json, /0901|0912|gmail|caphemay|facebook\.com/);
+  assert.doesNotMatch(JSON.stringify({ ...match.preview, url: null }), /0901|0912|gmail|caphemay|Chủ quán|facebook\.com/);
+  assert.equal(match.preview.url, 'https://www.facebook.com/groups/g/posts/123');
   assert.equal(match.preview.hasContact, true);
-  assert.deepEqual(Object.keys(match.preview).sort(), ['area', 'excerpt', 'hasContact', 'key', 'match', 'publishedAt', 'signals', 'source', 'summarized']);
+  assert.deepEqual(Object.keys(match.preview).sort(), ['area', 'excerpt', 'hasContact', 'key', 'match', 'publishedAt', 'signals', 'source', 'summarized', 'url']);
   assert.equal(maskContacts('Gọi 0901.234.567 nhé'), 'Gọi SĐT ẩn nhé');
 });
 

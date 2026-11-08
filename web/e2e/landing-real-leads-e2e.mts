@@ -120,26 +120,28 @@ try {
     return `${ms} ms`;
   });
 
-  await check('A5 Public payload has no URL, author, contact or internal ids; page shows no phone number', async () => {
+  await check('A5 Public payload: the real Facebook link, but no author, contact or internal ids; no phone on screen', async () => {
     const last = apiResponses.at(-1);
-    const json = JSON.stringify(last.leads);
-    assert(!/facebook\.com|fb\.watch|https?:/.test(json), 'no links');
+    const json = JSON.stringify(last.leads.map((lead: Record<string, unknown>) => ({ ...lead, url: null })));
+    assert(!/https?:/.test(json), 'no other links');
     assert(!PHONE_IN_TEXT.test(json), 'no phone');
-    assert(last.leads.every((lead: Record<string, unknown>) => !('author' in lead) && !('url' in lead) && !('id' in lead)), 'no author/url/id keys');
+    assert(last.leads.every((lead: Record<string, unknown>) => !('author' in lead) && !('id' in lead)), 'no author/id keys');
+    const real = await q<{ original_url: string }>(`SELECT fp.original_url FROM landing_previews lp CROSS JOIN unnest(lp.post_ids) WITH ORDINALITY AS t(pid, n)
+      JOIN facebook_posts fp ON fp.id = t.pid WHERE lp.id = $1 ORDER BY t.n`, [last.previewId]);
+    assert(last.leads.every((lead: { url: string }, index: number) => lead.url === real[index]!.original_url), 'url is the stored Facebook permalink');
     const text = await page.locator('.demo-results').innerText();
     assert(!PHONE_IN_TEXT.test(text), 'no phone on screen');
-    assert(await page.locator('.demo-results a[href*="facebook.com"]').count() === 0, 'no Facebook link');
     return `keys: ${Object.keys(last.leads[0]).join(',')}`;
   });
 
-  await check('A6 "Xem bài đầy đủ" (anonymous) opens a lock panel with a free sign-up CTA, not the post', async () => {
-    await page.locator('.demo-lead-actions button').first().click();
-    const panel = page.locator('.demo-lead-post').first();
-    await panel.waitFor();
-    const text = await panel.innerText();
-    assert(/Miễn phí, không cần thanh toán/.test(text) && await panel.locator('a', { hasText: 'Đăng ký miễn phí để xem' }).isVisible(), text);
-    await page.locator('#demo').screenshot({ path: resolve(SHOTS, 'found-locked-1440.png') });
-    return text.split('\n')[0];
+  await check('A6 Anonymous visitor opens each post on Facebook (new tab); "Xem thêm" under the leads goes to sign-up', async () => {
+    const links = await page.locator('.demo-lead-actions a', { hasText: 'Xem bài trên Facebook' })
+      .evaluateAll(nodes => nodes.map(node => [(node as HTMLAnchorElement).href, (node as HTMLAnchorElement).target, (node as HTMLAnchorElement).rel]));
+    assert(links.length === apiResponses.at(-1).leads.length && links.every(([href, target, rel]) => /facebook\.com|fb\.watch/.test(href!) && target === '_blank' && /noopener/.test(rel!)), JSON.stringify(links));
+    const more = page.locator('.demo-results-foot a.demo-cta');
+    assert((await more.innerText()).includes('Xem thêm lead phù hợp') && (await more.getAttribute('href')) === '/dang-ky?tu=thu-tim', 'Xem thêm CTA');
+    await page.locator('#demo').screenshot({ path: resolve(SHOTS, 'found-1440.png') });
+    return `${links.length} Facebook link(s)`;
   });
 
   await check('A7 Unrecognised or uncovered request → honest empty state, no padding', async () => {
@@ -206,15 +208,14 @@ try {
 
   // ---------------------------------------------------------------- sign-up carries the search through
   let signupPreview = '';
-  await check('B1 Sign-up CTA saves the search and opens the existing register form with landing copy', async () => {
-    await page.locator('.demo-lead-actions button').first().click();
-    await page.locator('.demo-lock a').first().click();
+  await check('B1 "Xem thêm lead phù hợp" saves the search and opens the existing register form with landing copy', async () => {
+    await page.locator('.demo-results-foot a.demo-cta').click();
     await page.waitForURL(/\/dang-ky\?tu=thu-tim/);
     const sub = await page.locator('.auth-card-head p').innerText();
     const handoff = await page.evaluate(() => JSON.parse(localStorage.getItem('qlead:landing-handoff') ?? 'null'));
     assert(handoff?.query === CAFE && /^[0-9a-f-]{36}$/.test(handoff.previewId), JSON.stringify(handoff));
     signupPreview = handoff.previewId;
-    assert(/không cần nhập lại nhu cầu/.test(sub), sub);
+    assert(/không cần nhập lại/.test(sub), sub);
     await page.screenshot({ path: resolve(SHOTS, 'register-from-landing-1440.png') });
     return sub;
   });
@@ -265,8 +266,7 @@ try {
     assert(/đang đăng nhập/.test(await page.locator('.demo-results-foot').innerText()), 'member footer');
     await page.locator('.demo-lead-actions button').first().click();
     await page.waitForSelector('.demo-full', { timeout: 10_000 });
-    const hasLink = await page.locator('.demo-full a[href*="facebook.com"]').count();
-    assert(hasLink === 1, `link ${hasLink}`);
+    assert((await page.locator('.demo-full').innerText()).trim().length > 20, 'full text shown');
     await page.locator('#demo').screenshot({ path: resolve(SHOTS, 'member-unlocked-1440.png') });
   });
   await ctx.close();
@@ -306,16 +306,15 @@ try {
 
   // ---------------------------------------------------------------- responsive
   for (const [width, height] of [[768, 1024], [390, 844]] as const) {
-    await check(`D1 ${width}px: results, lock panel and CTA fit without horizontal scroll`, async () => {
+    await check(`D1 ${width}px: results, Facebook links and "Xem thêm" fit without horizontal scroll`, async () => {
       const c = await browser.newContext({ viewport: { width, height }, isMobile: width < 500, hasTouch: width < 500, extraHTTPHeaders: visitor() });
       const p = await c.newPage();
       await p.goto(`${BASE}/#demo`, { waitUntil: 'networkidle' });
       await p.locator('#demo').scrollIntoViewIfNeeded();
       await p.waitForSelector('.demo-lead', { timeout: 15_000 });
-      await p.locator('.demo-lead-actions button').first().click();
-      await p.locator('.demo-lock').first().waitFor();
+      assert(await p.locator('.demo-lead-actions a', { hasText: 'Xem bài trên Facebook' }).first().isVisible(), 'Facebook link');
       assert(await noOverflow(p), 'horizontal overflow');
-      await p.locator('#demo').screenshot({ path: resolve(SHOTS, `found-locked-${width}.png`) });
+      await p.locator('#demo').screenshot({ path: resolve(SHOTS, `found-${width}.png`) });
       await runSearch(p, NOTHING, false);
       assert(await noOverflow(p), 'overflow in empty state');
       await p.locator('.demo-results').screenshot({ path: resolve(SHOTS, `empty-${width}.png`) });

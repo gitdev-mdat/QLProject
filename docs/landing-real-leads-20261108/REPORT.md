@@ -129,3 +129,12 @@ E2E đã chạy qua: tìm lead thật và đối chiếu với DB (đúng bài, 
   3. Chạy migration 021 trên Supabase: `npx tsx ops/production-db.ts migrate` rồi `verify`.
   4. Thêm `QLEAD_LANDING_CATALOG_USER_IDS=<user id trưng bày>` vào Vercel **Production**.
   5. Merge PR → Vercel deploy → kiểm tra `/` và chạy `web/e2e/responsive-landing.mjs https://qlead.vn`.
+
+---
+
+## Cập nhật 08/11 (theo góp ý của Thi)
+- **Khách chưa đăng ký mở được bài Facebook gốc.** Mỗi lead có nút "Xem bài trên Facebook" (mở tab mới). API trả thêm trường `url`, chỉ khi đó là permalink Facebook hợp lệ (`isSupportedFacebookPostUrl`). Tên người đăng và SĐT trong trích đoạn vẫn được ẩn trên trang QLead.
+- **Bỏ khung khóa trong từng thẻ.** Ngay dưới 2 lead là nút **"Xem thêm lead phù hợp"** (kèm dòng "Đăng ký miễn phí để xem thêm lead và nhận lead mới cho nhu cầu này."), dẫn thẳng tới `/dang-ky?tu=thu-tim`. Mô tả và kết quả được mang theo như trước. Không dùng popup.
+- Phụ đề trang đăng ký đổi thành: "Miễn phí. Xem thêm lead cho nhu cầu bạn vừa tìm, không cần nhập lại."
+- Mọi bước sau khi đăng ký **giữ nguyên**: onboarding hiện 2 lead đầy đủ + mô tả điền sẵn + job `initial`, cùng `/app/thu-tim`. Khi đã đăng nhập, landing có thêm nút "Chi tiết" để xem tác giả/SĐT.
+- Kiểm thử lại trên bản build production: unit **9/9**, E2E **27/27**. A5 kiểm tra `url` khớp đúng `original_url` trong DB, và payload vẫn không có tác giả/SĐT. A6 kiểm tra link mở tab mới với `noopener` và nút "Xem thêm" trỏ tới trang đăng ký. Responsive **39/39**: 2 kiểm tra về khung khóa cũ không còn áp dụng nên số kiểm tra giảm từ 41. Ảnh mới: `found-1440/768/390.png`.

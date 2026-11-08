@@ -1,29 +1,29 @@
 PASS A1 Landing loads; the demo section no longer says "bài mẫu" — Nhập nhu cầu, xem ngay lead thật QLead đã tìm thấy trên Facebook.
-PASS A2 Scrolling to the section runs the example search and shows real leads (≤2) — 2 lead thật phù hợp, 159 ms after scroll
-PASS A3 User search returns real stored posts that match (category, signal, place) — 1383 ms click→leads; posts df742867, 57567e86
-PASS A4 Same search again is served from the answer cache — 237 ms
-PASS A5 Public payload has no URL, author, contact or internal ids; page shows no phone number — keys: key,signals,excerpt,summarized,area,publishedAt,source,hasContact,match
-PASS A6 "Xem bài đầy đủ" (anonymous) opens a lock panel with a free sign-up CTA, not the post — Bài gốc, link Facebook và số liên hệ mở khi bạn có tài khoản QLead. Miễn phí, không cần thanh toán.
-PASS A7 Unrecognised or uncovered request → honest empty state, no padding — 171 ms
+PASS A2 Scrolling to the section runs the example search and shows real leads (≤2) — 2 lead thật phù hợp, 143 ms after scroll
+PASS A3 User search returns real stored posts that match (category, signal, place) — 973 ms click→leads; posts df742867, 57567e86
+PASS A4 Same search again is served from the answer cache — 318 ms
+PASS A5 Public payload: the real Facebook link, but no author, contact or internal ids; no phone on screen — keys: key,signals,excerpt,summarized,area,publishedAt,source,hasContact,url,match
+PASS A6 Anonymous visitor opens each post on Facebook (new tab); "Xem thêm" under the leads goes to sign-up — 2 Facebook link(s)
+PASS A7 Unrecognised or uncovered request → honest empty state, no padding — 77 ms
 PASS A8 Too-short request is caught in the browser without a request
 PASS A9 Server 503 → "QLead đang bận" (forced via request routing)
 PASS A9 Server 429 → "Bạn vừa tìm nhiều lần liên tiếp" (forced via request routing)
-PASS A10 Slow server (>8 s) → "Tìm lâu hơn bình thường" with retry, no endless spinner — gave up after 8165 ms
+PASS A10 Slow server (>8 s) → "Tìm lâu hơn bình thường" with retry, no endless spinner — gave up after 8173 ms
 PASS A11 Loading state is honest (no %); skeleton only on a slow answer — Đang tìm lead phù hợp…
 PASS A12 No console errors on the landing page
-PASS B1 Sign-up CTA saves the search and opens the existing register form with landing copy — Miễn phí. Xem đầy đủ lead bạn vừa tìm thấy, không cần nhập lại nhu cầu.
+PASS B1 "Xem thêm lead phù hợp" saves the search and opens the existing register form with landing copy — Miễn phí. Xem thêm lead cho nhu cầu bạn vừa tìm, không cần nhập lại.
 PASS B2 Register (no payment, same form) → onboarding shows the same leads in full and the request prefilled — 2 lead(s) with their Facebook links
 PASS B3 Server recorded signup_completed + full_results_viewed for that preview and account — landing_signup_completed, landing_full_results_viewed
 PASS B4 Finishing onboarding saves the same request and queues the real first search (Muse path) — job initial/pending
 PASS B5 Signed-in visitor on the landing page opens full details inline
 PASS C1 Existing account: "Đã có tài khoản? Đăng nhập" → sign in → /app/thu-tim shows the leads in full — 2 lead(s); expired state explained
 PASS C2 Unlock API: another account cannot see anything it was not shown; garbage ids are 404
-PASS D1 768px: results, lock panel and CTA fit without horizontal scroll
-PASS D1 390px: results, lock panel and CTA fit without horizontal scroll
-PASS D2 Layout shift: the results column does not jump when real leads replace the loading state — CLS 0.001
+PASS D1 768px: results, Facebook links and "Xem thêm" fit without horizontal scroll
+PASS D1 390px: results, Facebook links and "Xem thêm" fit without horizontal scroll
+PASS D2 Layout shift: the results column does not jump when real leads replace the loading state — CLS 0.002
 PASS E1 Rate limit: the 13th search in a minute from one address is refused (429) — 200,200,200,200,200,200,200,200,200,200,200,200,429
 PASS E2 Cross-origin and oversized requests are refused; the client cannot ask for more than 2 leads
-PASS E3 Tenant isolation: every post any landing preview ever showed belongs to a catalog account — 191 previews checked
-PASS E4 Funnel events recorded without query text — landing_full_results_viewed=16, landing_preview_opened=20, landing_search_empty=14, landing_search_failed=28, landing_search_results_shown=89, landing_search_started=131, landing_signup_clicked=4, landing_signup_completed=4
+PASS E3 Tenant isolation: every post any landing preview ever showed belongs to a catalog account — 283 previews checked
+PASS E4 Funnel events recorded without query text — landing_full_results_viewed=19, landing_preview_opened=25, landing_search_empty=26, landing_search_failed=37, landing_search_results_shown=156, landing_search_started=219, landing_signup_clicked=5, landing_signup_completed=5
 
-27/27 passed {"auto":145,"user":1383,"cached":237} {"p50":0,"p95":45.29999999999916,"db_loads":9,"n":192}
+27/27 passed {"auto":133,"user":973,"cached":318} {"p50":0,"p95":11.699999999999932,"db_loads":13,"n":284}

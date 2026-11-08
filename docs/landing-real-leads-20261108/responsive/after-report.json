@@ -156,12 +156,6 @@
     },
     {
       "group": "interaction 360px",
-      "name": "Demo \"Xem bài đầy đủ\" expands the post",
-      "pass": true,
-      "detail": ""
-    },
-    {
-      "group": "interaction 360px",
       "name": "No layout problems after interacting with the demo",
       "pass": true,
       "detail": ""
@@ -231,12 +225,6 @@
       "name": "Search suggestion returns real leads or an honest empty answer",
       "pass": true,
       "detail": "1 lead thật phù hợp"
-    },
-    {
-      "group": "interaction 1280px",
-      "name": "Demo \"Xem bài đầy đủ\" expands the post",
-      "pass": true,
-      "detail": ""
     },
     {
       "group": "interaction 1280px",

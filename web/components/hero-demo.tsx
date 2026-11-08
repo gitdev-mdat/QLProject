@@ -39,8 +39,8 @@ function failureOf(status: number): LandingFailure {
   return 'server';
 }
 
-function LeadCard({ lead, index, now, member, previewId, query, resultCount, expiresAt, unlock }: {
-  lead: LandingPreviewLead; index: number; now: number; member: boolean; previewId: string; query: string; resultCount: number; expiresAt: string;
+function LeadCard({ lead, index, now, member, previewId, resultCount, unlock }: {
+  lead: LandingPreviewLead; index: number; now: number; member: boolean; previewId: string; resultCount: number;
   unlock: () => Promise<Full[] | null>;
 }) {
   const [open, setOpen] = useState(false);
@@ -70,25 +70,22 @@ function LeadCard({ lead, index, now, member, previewId, query, resultCount, exp
       {lead.hasContact && <span className="has-contact"><Icon name="phone" size={15}/>Có số liên hệ trong bài</span>}
     </div>
     <p className="demo-lead-match"><Icon name="check" size={14}/>Phù hợp: {lead.match}</p>
-    {open && <div className="demo-lead-post" id={panelId}>
-      {!member && <div className="demo-lock">
-        <p><Icon name="lock" size={16}/><span>Bài gốc, link Facebook{lead.hasContact ? ' và số liên hệ' : ''} mở khi bạn có tài khoản QLead. Miễn phí, không cần thanh toán.</span></p>
-        <Link className="btn btn-sm btn-primary" href={SIGNUP_HREF} onClick={() => { saveLandingHandoff({ query, previewId, resultCount, expiresAt }); trackLanding('landing_signup_clicked', { previewId, resultCount }); }}>Đăng ký miễn phí để xem</Link>
-      </div>}
-      {member && full === null && <p className="muted-text">Đang mở…</p>}
-      {member && full === 'error' && <p className="muted-text">Không mở được bài này. Bấm “Tìm khách hàng” để tìm lại.</p>}
-      {member && full && full !== 'error' && <div className="demo-full">
+    {member && open && <div className="demo-lead-post" id={panelId}>
+      {full === null && <p className="muted-text">Đang mở…</p>}
+      {full === 'error' && <p className="muted-text">Không mở được bài này. Bấm “Tìm khách hàng” để tìm lại.</p>}
+      {full && full !== 'error' && <div className="demo-full">
         <p>{full.text}</p>
         {full.original && <details><summary>Nội dung gốc</summary><p>{full.original}</p></details>}
         <div className="demo-lead-meta">
           {full.author && <span><Icon name="user" size={15}/>{full.author}</span>}
           {full.contact && <span className="has-contact"><Icon name="phone" size={15}/>{full.contact}</span>}
         </div>
-        {full.url && <a className="text-link" href={full.url} target="_blank" rel="noopener noreferrer">Mở bài Facebook <Icon name="external" size={15}/></a>}
       </div>}
     </div>}
     <div className="demo-lead-actions">
-      <button type="button" className="btn btn-sm btn-outline" aria-expanded={open} aria-controls={panelId} onClick={toggle}>{open ? 'Thu gọn' : 'Xem bài đầy đủ'}</button>
+      {/* The Facebook post is open to every visitor; signing up is for seeing more leads, not this one. */}
+      {lead.url && <a className="btn btn-sm btn-outline" href={lead.url} target="_blank" rel="noopener noreferrer" onClick={() => trackLanding('landing_preview_opened', { previewId, resultCount })}>Xem bài trên Facebook <Icon name="external" size={15}/></a>}
+      {member && <button type="button" className="btn btn-sm btn-ghost" aria-expanded={open} aria-controls={panelId} onClick={toggle}>{open ? 'Thu gọn' : 'Chi tiết'}</button>}
     </div>
   </li>;
 }
@@ -248,8 +245,8 @@ export function HeroDemo() {
       {phase === 'searching' && showSkeleton && <div className="demo-progress" aria-hidden="true"><i/></div>}
       {phase === 'searching' && showSkeleton && <ul className="demo-lead-list" aria-hidden="true">{[0, 1].map(index => <li key={index} className="skeleton-item"><span/><span/><span/></li>)}</ul>}
       {(phase === 'found' || (stale && result?.outcome === 'found')) && result && <ul className={`demo-lead-list ${stale ? 'is-stale' : ''}`} key={result.previewId}>
-        {leads.map((lead, index) => <LeadCard key={lead.key} lead={lead} index={index} now={now} member={member} previewId={result.previewId} query={result.query}
-          resultCount={leads.length} expiresAt={result.expiresAt} unlock={() => unlock(result.previewId)}/>)}
+        {leads.map((lead, index) => <LeadCard key={lead.key} lead={lead} index={index} now={now} member={member} previewId={result.previewId}
+          resultCount={leads.length} unlock={() => unlock(result.previewId)}/>)}
       </ul>}
       {phase === 'idle' && <div className="demo-empty"><p>Viết bạn bán gì và muốn tìm khách nào, hoặc bấm một gợi ý. QLead tìm trong các bài đăng Facebook đã thu thập và trả về lead thật, không phải bài mẫu.</p></div>}
       {(phase === 'empty' || (stale && result?.outcome === 'empty')) && <div className={`demo-empty ${stale ? 'is-stale' : ''}`}>
@@ -264,10 +261,10 @@ export function HeroDemo() {
         {member
           ? <><p>Bạn đang đăng nhập: mở từng lead để xem đầy đủ.</p><Link href="/app" className="text-link">Vào QLead <Icon name="arrow" size={16}/></Link></>
           : phase === 'found'
-            ? <><p>Xem bài gốc, link Facebook và nhận lead mới cho nhu cầu này. Miễn phí.</p><Link href={SIGNUP_HREF} className="btn btn-primary demo-cta" onClick={rememberForSignup}>Đăng ký miễn phí để xem đầy đủ <Icon name="arrow" size={16}/></Link></>
+            ? <><p>Đăng ký miễn phí để xem thêm lead và nhận lead mới cho nhu cầu này.</p><Link href={SIGNUP_HREF} className="btn btn-primary demo-cta" onClick={rememberForSignup}>Xem thêm lead phù hợp <Icon name="arrow" size={16}/></Link></>
             : phase === 'empty'
               ? <><p>Miễn phí, không cần thanh toán.</p><Link href={SIGNUP_HREF} className="btn btn-primary demo-cta" onClick={rememberForSignup}>Đăng ký để QLead tìm cho bạn <Icon name="arrow" size={16}/></Link></>
-              : <><p>Lead thật từ Facebook, đã ẩn thông tin liên hệ.</p><Link href={SIGNUP_HREF} className="text-link">Tạo tài khoản miễn phí <Icon name="arrow" size={16}/></Link></>}
+              : <><p>Lead thật từ bài đăng Facebook.</p><Link href={SIGNUP_HREF} className="text-link">Tạo tài khoản miễn phí <Icon name="arrow" size={16}/></Link></>}
         {!member && (phase === 'found' || phase === 'empty') && result && <Link href={LOGIN_HREF} className="demo-login" onClick={() => saveLandingHandoff({ query: result.query, previewId: result.previewId, resultCount: result.leads.length, expiresAt: result.expiresAt })}>Đã có tài khoản? Đăng nhập</Link>}
       </div>
     </div>

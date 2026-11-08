@@ -1,29 +1,29 @@
 {
-  "run": "ad7650",
+  "run": "d513fd",
   "base": "http://127.0.0.1:3052",
   "passed": 27,
   "failed": 0,
   "timings_ms": {
     "auto": [
-      145
+      133
     ],
     "user": [
-      1383
+      973
     ],
     "cached": [
-      237
+      318
     ]
   },
   "median_ms": {
-    "auto": 145,
-    "user": 1383,
-    "cached": 237
+    "auto": 133,
+    "user": 973,
+    "cached": 318
   },
   "server": {
     "p50": 0,
-    "p95": 45.29999999999916,
-    "db_loads": 9,
-    "n": 192
+    "p95": 11.699999999999932,
+    "db_loads": 13,
+    "n": 284
   },
   "results": [
     {
@@ -34,32 +34,32 @@
     {
       "name": "A2 Scrolling to the section runs the example search and shows real leads (≤2)",
       "pass": true,
-      "detail": "2 lead thật phù hợp, 159 ms after scroll"
+      "detail": "2 lead thật phù hợp, 143 ms after scroll"
     },
     {
       "name": "A3 User search returns real stored posts that match (category, signal, place)",
       "pass": true,
-      "detail": "1383 ms click→leads; posts df742867, 57567e86"
+      "detail": "973 ms click→leads; posts df742867, 57567e86"
     },
     {
       "name": "A4 Same search again is served from the answer cache",
       "pass": true,
-      "detail": "237 ms"
+      "detail": "318 ms"
     },
     {
-      "name": "A5 Public payload has no URL, author, contact or internal ids; page shows no phone number",
+      "name": "A5 Public payload: the real Facebook link, but no author, contact or internal ids; no phone on screen",
       "pass": true,
-      "detail": "keys: key,signals,excerpt,summarized,area,publishedAt,source,hasContact,match"
+      "detail": "keys: key,signals,excerpt,summarized,area,publishedAt,source,hasContact,url,match"
     },
     {
-      "name": "A6 \"Xem bài đầy đủ\" (anonymous) opens a lock panel with a free sign-up CTA, not the post",
+      "name": "A6 Anonymous visitor opens each post on Facebook (new tab); \"Xem thêm\" under the leads goes to sign-up",
       "pass": true,
-      "detail": "Bài gốc, link Facebook và số liên hệ mở khi bạn có tài khoản QLead. Miễn phí, không cần thanh toán."
+      "detail": "2 Facebook link(s)"
     },
     {
       "name": "A7 Unrecognised or uncovered request → honest empty state, no padding",
       "pass": true,
-      "detail": "171 ms"
+      "detail": "77 ms"
     },
     {
       "name": "A8 Too-short request is caught in the browser without a request",
@@ -79,7 +79,7 @@
     {
       "name": "A10 Slow server (>8 s) → \"Tìm lâu hơn bình thường\" with retry, no endless spinner",
       "pass": true,
-      "detail": "gave up after 8165 ms"
+      "detail": "gave up after 8173 ms"
     },
     {
       "name": "A11 Loading state is honest (no %); skeleton only on a slow answer",
@@ -92,9 +92,9 @@
       "detail": ""
     },
     {
-      "name": "B1 Sign-up CTA saves the search and opens the existing register form with landing copy",
+      "name": "B1 \"Xem thêm lead phù hợp\" saves the search and opens the existing register form with landing copy",
       "pass": true,
-      "detail": "Miễn phí. Xem đầy đủ lead bạn vừa tìm thấy, không cần nhập lại nhu cầu."
+      "detail": "Miễn phí. Xem thêm lead cho nhu cầu bạn vừa tìm, không cần nhập lại."
     },
     {
       "name": "B2 Register (no payment, same form) → onboarding shows the same leads in full and the request prefilled",
@@ -127,19 +127,19 @@
       "detail": ""
     },
     {
-      "name": "D1 768px: results, lock panel and CTA fit without horizontal scroll",
+      "name": "D1 768px: results, Facebook links and \"Xem thêm\" fit without horizontal scroll",
       "pass": true,
       "detail": ""
     },
     {
-      "name": "D1 390px: results, lock panel and CTA fit without horizontal scroll",
+      "name": "D1 390px: results, Facebook links and \"Xem thêm\" fit without horizontal scroll",
       "pass": true,
       "detail": ""
     },
     {
       "name": "D2 Layout shift: the results column does not jump when real leads replace the loading state",
       "pass": true,
-      "detail": "CLS 0.001"
+      "detail": "CLS 0.002"
     },
     {
       "name": "E1 Rate limit: the 13th search in a minute from one address is refused (429)",
@@ -154,12 +154,12 @@
     {
       "name": "E3 Tenant isolation: every post any landing preview ever showed belongs to a catalog account",
       "pass": true,
-      "detail": "191 previews checked"
+      "detail": "283 previews checked"
     },
     {
       "name": "E4 Funnel events recorded without query text",
       "pass": true,
-      "detail": "landing_full_results_viewed=16, landing_preview_opened=20, landing_search_empty=14, landing_search_failed=28, landing_search_results_shown=89, landing_search_started=131, landing_signup_clicked=4, landing_signup_completed=4"
+      "detail": "landing_full_results_viewed=19, landing_preview_opened=25, landing_search_empty=26, landing_search_failed=37, landing_search_results_shown=156, landing_search_started=219, landing_signup_clicked=5, landing_signup_completed=5"
     }
   ]
 }
