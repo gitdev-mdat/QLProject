@@ -82,8 +82,13 @@ export async function distributeProfileLeads(client: PoolClient, userId: string,
         (SELECT count(*)::int FROM profile_lead_deliveries WHERE delivery_cycle_id = c.id AND state = 'delivered') AS delivered,
         (SELECT count(*)::int FROM profile_lead_deliveries WHERE delivery_cycle_id = c.id AND state = 'expired') AS expired
       FROM lead_distribution_cycles c WHERE c.search_profile_id = $1 AND c.cycle_key = $2`, [profile.id, slot.cycle_key]);
-    return { cycleKey: slot.cycle_key, maxLeads: counts?.max_leads ?? profile.max_leads_per_scan, delivered: counts?.delivered ?? 0,
-      queued: counts?.queued ?? 0, expired: counts?.expired ?? 0, nextCycleAt: new Date(slot.next_cycle_at).toISOString() };
+    // A cycle that delivered nothing (e.g. the customer opened the app while the first search was still waiting) must
+    // not hold back results that arrive later in the same interval: fill it once. A cycle that delivered anything
+    // keeps its original batch, so a refresh still cannot deliver a second batch in one interval.
+    if ((counts?.delivered ?? 0) > 0) {
+      return { cycleKey: slot.cycle_key, maxLeads: counts?.max_leads ?? profile.max_leads_per_scan, delivered: counts?.delivered ?? 0,
+        queued: counts?.queued ?? 0, expired: counts?.expired ?? 0, nextCycleAt: new Date(slot.next_cycle_at).toISOString() };
+    }
   }
   const { rows: [cycle] } = await client.query<{ id: string }>(`SELECT id FROM lead_distribution_cycles WHERE search_profile_id = $1 AND cycle_key = $2`, [profile.id, slot.cycle_key]);
   if (!cycle) throw new Error('lead distribution cycle insert did not persist');

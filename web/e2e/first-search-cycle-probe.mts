@@ -35,7 +35,7 @@ const job = claim.json().jobs[0];
 const submit = await app.inject({ method: 'POST', url: `/api/worker/jobs/${job.job_id}/results`, headers: auth, payload: {
   event: 'facebook_scan_completed', source: 'muse', configuration_version: job.configuration_version, scan_id: job.scan_id, scanned_at: new Date().toISOString(),
   keywords_used: job.search.keywords, sources_used: job.search.sources,
-  posts: Array.from({ length: 12 }, (_, i) => ({ url: `https://www.facebook.com/probe/${RUN}/${i}`, author: `Quán ${i}`, content: `Quán ${i} sắp khai trương, cần máy pha cà phê.`, published_at: new Date(Date.now() - 3600_000).toISOString(), collected_via: 'controlled_fixture' })),
+  posts: Array.from({ length: 12 }, (_, i) => ({ url: `https://www.facebook.com/groups/probe${RUN}/posts/10000${i}`, author: `Quán ${i}`, content: `Quán ${i} sắp khai trương, cần máy pha cà phê.`, published_at: new Date(Date.now() - 3600_000).toISOString(), collected_via: 'controlled_fixture' })),
   stats: { total_found: 30 }, errors: [] } });
 console.log('2. first search submits 12 posts →', submit.statusCode);
 
