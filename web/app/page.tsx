@@ -58,7 +58,7 @@ export default function LandingPage() {
 
       <section className="section demo-section" id="demo" aria-labelledby="demo-title">
         <div className="wrap">
-          <div className="section-head centered" data-reveal><h2 id="demo-title">Thử tìm khách hàng của bạn</h2><p>Bản demo dùng bài mẫu, không phải lead thật.</p></div>
+          <div className="section-head centered" data-reveal><h2 id="demo-title">Thử tìm khách hàng của bạn</h2><p>Nhập nhu cầu, xem ngay lead thật QLead đã tìm thấy trên Facebook.</p></div>
           <div data-reveal><HeroDemo/></div>
         </div>
       </section>

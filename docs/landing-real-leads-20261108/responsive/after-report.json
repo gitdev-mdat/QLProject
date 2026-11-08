@@ -1,0 +1,254 @@
+{
+  "base": "http://127.0.0.1:3052",
+  "sweepWidths": 290,
+  "failingWidths": [],
+  "problems": {},
+  "results": [
+    {
+      "group": "sweep",
+      "name": "290 widths 280–2560px without layout problems",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "landscape",
+      "name": "568×320",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "landscape",
+      "name": "667×375",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "landscape",
+      "name": "740×360",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "landscape",
+      "name": "844×390",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "landscape",
+      "name": "932×430",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "landscape",
+      "name": "1024×768",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "landscape",
+      "name": "1180×820",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "landscape",
+      "name": "1280×600",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "zoom",
+      "name": "200% of a 1280px window (640 CSS px)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "zoom",
+      "name": "400% of a 1280px window (320 CSS px)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "reduced-motion",
+      "name": "360px: content visible, no problems",
+      "pass": true,
+      "detail": "0 hidden; "
+    },
+    {
+      "group": "reduced-motion",
+      "name": "1366px: content visible, no problems",
+      "pass": true,
+      "detail": "0 hidden; "
+    },
+    {
+      "group": "reported",
+      "name": "440×956 mobile (DPR 2, touch)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "interaction 360px",
+      "name": "Hero primary CTA \"Bắt đầu ngay\" links to /dang-ky",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "interaction 360px",
+      "name": "Hero CTA \"Thử ngay\" scrolls to the demo",
+      "pass": true,
+      "detail": "demo top 99"
+    },
+    {
+      "group": "interaction 360px",
+      "name": "No unverified or absolute claims on the landing",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "interaction 360px",
+      "name": "Hero illustration is labelled; the search section promises real leads, not samples",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "interaction 360px",
+      "name": "Hero headline reads \"Tìm lead tự động trên Facebook\"",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "interaction 360px",
+      "name": "Sections in order: hero, demo, cách hoạt động, so sánh, CTA",
+      "pass": true,
+      "detail": "hero,demo,cach-hoat-dong,so-sanh,final-cta"
+    },
+    {
+      "group": "interaction 360px",
+      "name": "\"Mỗi lead có đủ thông tin\" section is gone",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "interaction 360px",
+      "name": "Every in-page link points to an existing section",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "interaction 360px",
+      "name": "\"QLead giúp bạn\" shows the three steps in order",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "interaction 360px",
+      "name": "Nav \"Bắt đầu ngay\" visible and reachable",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "interaction 360px",
+      "name": "Search suggestion returns real leads or an honest empty answer",
+      "pass": true,
+      "detail": "1 lead thật phù hợp"
+    },
+    {
+      "group": "interaction 360px",
+      "name": "Demo \"Xem bài đầy đủ\" expands the post",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "interaction 360px",
+      "name": "No layout problems after interacting with the demo",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "interaction 1280px",
+      "name": "Hero primary CTA \"Bắt đầu ngay\" links to /dang-ky",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "interaction 1280px",
+      "name": "Hero CTA \"Thử ngay\" scrolls to the demo",
+      "pass": true,
+      "detail": "demo top 68"
+    },
+    {
+      "group": "interaction 1280px",
+      "name": "No unverified or absolute claims on the landing",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "interaction 1280px",
+      "name": "Hero illustration is labelled; the search section promises real leads, not samples",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "interaction 1280px",
+      "name": "Hero headline reads \"Tìm lead tự động trên Facebook\"",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "interaction 1280px",
+      "name": "Sections in order: hero, demo, cách hoạt động, so sánh, CTA",
+      "pass": true,
+      "detail": "hero,demo,cach-hoat-dong,so-sanh,final-cta"
+    },
+    {
+      "group": "interaction 1280px",
+      "name": "\"Mỗi lead có đủ thông tin\" section is gone",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "interaction 1280px",
+      "name": "Every in-page link points to an existing section",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "interaction 1280px",
+      "name": "\"QLead giúp bạn\" shows the three steps in order",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "interaction 1280px",
+      "name": "Nav \"Bắt đầu ngay\" visible and reachable",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "interaction 1280px",
+      "name": "Search suggestion returns real leads or an honest empty answer",
+      "pass": true,
+      "detail": "1 lead thật phù hợp"
+    },
+    {
+      "group": "interaction 1280px",
+      "name": "Demo \"Xem bài đầy đủ\" expands the post",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "interaction 1280px",
+      "name": "No layout problems after interacting with the demo",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "group": "console",
+      "name": "No page errors",
+      "pass": true,
+      "detail": ""
+    }
+  ]
+}

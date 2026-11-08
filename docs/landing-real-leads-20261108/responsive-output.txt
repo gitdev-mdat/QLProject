@@ -1,0 +1,43 @@
+PASS [sweep] 290 widths 280–2560px without layout problems
+PASS [landscape] 568×320
+PASS [landscape] 667×375
+PASS [landscape] 740×360
+PASS [landscape] 844×390
+PASS [landscape] 932×430
+PASS [landscape] 1024×768
+PASS [landscape] 1180×820
+PASS [landscape] 1280×600
+PASS [zoom] 200% of a 1280px window (640 CSS px)
+PASS [zoom] 400% of a 1280px window (320 CSS px)
+PASS [reduced-motion] 360px: content visible, no problems — 0 hidden; 
+PASS [reduced-motion] 1366px: content visible, no problems — 0 hidden; 
+PASS [reported] 440×956 mobile (DPR 2, touch)
+PASS [interaction 360px] Hero primary CTA "Bắt đầu ngay" links to /dang-ky
+PASS [interaction 360px] Hero CTA "Thử ngay" scrolls to the demo — demo top 99
+PASS [interaction 360px] No unverified or absolute claims on the landing
+PASS [interaction 360px] Hero illustration is labelled; the search section promises real leads, not samples
+PASS [interaction 360px] Hero headline reads "Tìm lead tự động trên Facebook"
+PASS [interaction 360px] Sections in order: hero, demo, cách hoạt động, so sánh, CTA — hero,demo,cach-hoat-dong,so-sanh,final-cta
+PASS [interaction 360px] "Mỗi lead có đủ thông tin" section is gone
+PASS [interaction 360px] Every in-page link points to an existing section
+PASS [interaction 360px] "QLead giúp bạn" shows the three steps in order
+PASS [interaction 360px] Nav "Bắt đầu ngay" visible and reachable
+PASS [interaction 360px] Search suggestion returns real leads or an honest empty answer — 1 lead thật phù hợp
+PASS [interaction 360px] Demo "Xem bài đầy đủ" expands the post
+PASS [interaction 360px] No layout problems after interacting with the demo
+PASS [interaction 1280px] Hero primary CTA "Bắt đầu ngay" links to /dang-ky
+PASS [interaction 1280px] Hero CTA "Thử ngay" scrolls to the demo — demo top 68
+PASS [interaction 1280px] No unverified or absolute claims on the landing
+PASS [interaction 1280px] Hero illustration is labelled; the search section promises real leads, not samples
+PASS [interaction 1280px] Hero headline reads "Tìm lead tự động trên Facebook"
+PASS [interaction 1280px] Sections in order: hero, demo, cách hoạt động, so sánh, CTA — hero,demo,cach-hoat-dong,so-sanh,final-cta
+PASS [interaction 1280px] "Mỗi lead có đủ thông tin" section is gone
+PASS [interaction 1280px] Every in-page link points to an existing section
+PASS [interaction 1280px] "QLead giúp bạn" shows the three steps in order
+PASS [interaction 1280px] Nav "Bắt đầu ngay" visible and reachable
+PASS [interaction 1280px] Search suggestion returns real leads or an honest empty answer — 1 lead thật phù hợp
+PASS [interaction 1280px] Demo "Xem bài đầy đủ" expands the post
+PASS [interaction 1280px] No layout problems after interacting with the demo
+PASS [console] No page errors
+
+41/41 checks passed

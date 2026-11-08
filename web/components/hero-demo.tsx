@@ -1,150 +1,274 @@
 'use client';
 
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
-import { extractContactFromPost, extractLocationFromPost, extractNeedFromPost } from '../../src/lead-data';
-import { demoLeadsFor, personaForRequest, type DemoLead, type PersonaId } from '@/lib/demo-data';
-import { readLead } from '@/lib/lead-format';
+import { LANDING_QUERY_MIN, type LandingPreviewLead } from '@/lib/landing-search';
+import { saveLandingHandoff, trackLanding, type LandingFailure, type LandingSearchResponse, type LandingTrigger } from '@/lib/landing-client';
+import { relativeTime } from '@/lib/lead-format';
 import { GoatMascot } from './goat-mascot';
 import { Icon } from './visuals';
 
-type Phase = 'searching' | 'found' | 'no-sample';
-
-/** Example requests. They only fill the input; the user can rewrite them for any industry. */
+/** Example requests. They only fill the input; the visitor can rewrite them for any industry. */
 const suggestions = [
-  { label: 'Phần mềm bán hàng', text: 'Tôi bán phần mềm quản lý bán hàng, muốn tìm shop thời trang, mỹ phẩm sắp mở bán hoặc mở thêm chi nhánh.' },
-  { label: 'Thiết bị quán cafe', text: 'Tôi bán thiết bị và thi công quán, muốn tìm quán ăn uống mới thuê mặt bằng hoặc sắp khai trương ở miền Nam.' },
+  { label: 'Phần mềm quán cafe', text: 'Tôi bán phần mềm quản lý quán cafe, muốn tìm các quán cà phê sắp khai trương ở TP.HCM.' },
+  { label: 'Thiết bị nhà hàng', text: 'Tôi bán thiết bị và thi công quán, muốn tìm quán ăn, nhà hàng sắp khai trương hoặc mới thuê mặt bằng ở miền Nam.' },
   { label: 'Phần mềm khách sạn', text: 'Tôi bán phần mềm quản lý khách sạn, muốn tìm khách sạn, homestay sắp đi vào hoạt động hoặc mở thêm cơ sở.' },
 ];
 const defaultRequest = 'Tôi bán phần mềm quản lý quán, muốn tìm những quán F&B sắp khai trương, đang tuyển người hoặc mở chi nhánh.';
+/** Past this, the visitor sees "taking longer than usual" instead of an endless spinner. */
+const CLIENT_TIMEOUT_MS = 8000;
+/** A fast answer replaces the old one directly; the skeleton only appears when the wait is noticeable. */
+const SKELETON_DELAY_MS = 180;
+const SIGNUP_HREF = '/dang-ky?tu=thu-tim';
+const LOGIN_HREF = '/dang-nhap?tiep=/app/thu-tim';
 
+type Phase = 'idle' | 'searching' | 'found' | 'empty' | 'error';
+type Full = { key: string; text: string; summarized: boolean; original: string | null; author: string | null; url: string | null; publishedAt: string | null; area: string | null; contact: string | null };
 
-function minutesLabel(minutes: number): string {
-  if (minutes < 60) return `${minutes} phút trước`;
-  return `${Math.floor(minutes / 60)} giờ trước`;
+const FAILURES: Record<LandingFailure, { title: string; text: string }> = {
+  timeout: { title: 'Tìm lâu hơn bình thường', text: 'Máy chủ chưa trả lời kịp. Bấm thử lại nhé.' },
+  rate_limited: { title: 'Bạn vừa tìm nhiều lần liên tiếp', text: 'Đợi khoảng một phút rồi thử lại.' },
+  overloaded: { title: 'QLead đang bận', text: 'Có nhiều người đang tìm cùng lúc. Thử lại sau vài giây.' },
+  network: { title: 'Không kết nối được', text: 'Kiểm tra mạng rồi thử lại.' },
+  server: { title: 'Chưa tìm được lúc này', text: 'Đã có lỗi phía QLead. Thử lại sau ít phút.' },
+};
+
+function failureOf(status: number): LandingFailure {
+  if (status === 429) return 'rate_limited';
+  if (status === 503) return 'overloaded';
+  return 'server';
 }
 
-
-function prefersReducedMotion() {
-  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
-
-function DemoLeadCard({ lead, index }: { lead: DemoLead; index: number }) {
+function LeadCard({ lead, index, now, member, previewId, query, resultCount, expiresAt, unlock }: {
+  lead: LandingPreviewLead; index: number; now: number; member: boolean; previewId: string; query: string; resultCount: number; expiresAt: string;
+  unlock: () => Promise<Full[] | null>;
+}) {
   const [open, setOpen] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const reading = readLead(lead.text, extractNeedFromPost(lead.text));
-  const area = extractLocationFromPost(lead.text);
-  const contact = extractContactFromPost(lead.text);
-  const isFresh = lead.postedMinutesAgo < 60;
+  const [full, setFull] = useState<Full | null | 'error'>(null);
+  const panelId = `demo-post-${previewId}-${lead.key}`;
 
-  return <li className="demo-lead" style={{ animationDelay: `${index * 110}ms` }}>
+  async function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (!next) return;
+    trackLanding('landing_preview_opened', { previewId, resultCount });
+    if (member && full === null) {
+      const leads = await unlock();
+      setFull(leads?.find(item => item.key === lead.key) ?? 'error');
+    }
+  }
+
+  return <li className="demo-lead" style={{ animationDelay: `${index * 90}ms` }}>
     <div className="demo-lead-top">
-      <ul className="signal-chips" aria-label="Tín hiệu trong bài">{reading.signals.slice(0, 2).map(signal => <li key={signal}>{signal}</li>)}</ul>
-      <span className={`freshness ${isFresh ? 'is-fresh' : ''}`}><Icon name="clock" size={14}/>Đăng {minutesLabel(lead.postedMinutesAgo)}</span>
+      {lead.signals.length > 0 ? <ul className="signal-chips" aria-label="Tín hiệu trong bài">{lead.signals.map(signal => <li key={signal}>{signal}</li>)}</ul> : <span/>}
+      {lead.publishedAt && <span className={`freshness ${now - Date.parse(lead.publishedAt) < 86_400_000 ? 'is-fresh' : ''}`}><Icon name="clock" size={14}/>Đăng {relativeTime(lead.publishedAt, now).toLocaleLowerCase('vi')}</span>}
     </div>
-    <p className="demo-lead-need">{reading.evidence}</p>
+    <p className="demo-lead-need">{lead.summarized && <span className="demo-lead-kind">QLead tóm tắt</span>}{lead.excerpt}</p>
     <div className="demo-lead-meta">
-      <span><Icon name="user" size={15}/>{lead.author} · <span className="muted-text">{lead.group}</span></span>
-      <span className={area.location ? '' : 'muted-text'}><Icon name="pin" size={15}/>{area.location ?? 'Bài chưa nêu rõ khu vực'}</span>
-      {contact ? <span className="has-contact"><Icon name="phone" size={15}/>{contact.number}</span> : <span className="muted-text"><Icon name="phone" size={15}/>Bài không ghi số</span>}
+      <span><Icon name="radar" size={15}/>{lead.source}</span>
+      {lead.area && <span><Icon name="pin" size={15}/>{lead.area}</span>}
+      {lead.hasContact && <span className="has-contact"><Icon name="phone" size={15}/>Có số liên hệ trong bài</span>}
     </div>
-    {open && <blockquote className="demo-lead-post" id={`demo-post-${lead.id}`}>{lead.text}<small>QLead phát hiện {minutesLabel(lead.detectedMinutesAgo)}</small></blockquote>}
+    <p className="demo-lead-match"><Icon name="check" size={14}/>Phù hợp: {lead.match}</p>
+    {open && <div className="demo-lead-post" id={panelId}>
+      {!member && <div className="demo-lock">
+        <p><Icon name="lock" size={16}/><span>Bài gốc, link Facebook{lead.hasContact ? ' và số liên hệ' : ''} mở khi bạn có tài khoản QLead. Miễn phí, không cần thanh toán.</span></p>
+        <Link className="btn btn-sm btn-primary" href={SIGNUP_HREF} onClick={() => { saveLandingHandoff({ query, previewId, resultCount, expiresAt }); trackLanding('landing_signup_clicked', { previewId, resultCount }); }}>Đăng ký miễn phí để xem</Link>
+      </div>}
+      {member && full === null && <p className="muted-text">Đang mở…</p>}
+      {member && full === 'error' && <p className="muted-text">Không mở được bài này. Bấm “Tìm khách hàng” để tìm lại.</p>}
+      {member && full && full !== 'error' && <div className="demo-full">
+        <p>{full.text}</p>
+        {full.original && <details><summary>Nội dung gốc</summary><p>{full.original}</p></details>}
+        <div className="demo-lead-meta">
+          {full.author && <span><Icon name="user" size={15}/>{full.author}</span>}
+          {full.contact && <span className="has-contact"><Icon name="phone" size={15}/>{full.contact}</span>}
+        </div>
+        {full.url && <a className="text-link" href={full.url} target="_blank" rel="noopener noreferrer">Mở bài Facebook <Icon name="external" size={15}/></a>}
+      </div>}
+    </div>}
     <div className="demo-lead-actions">
-      <button type="button" className="btn btn-sm btn-outline" aria-expanded={open} aria-controls={`demo-post-${lead.id}`} onClick={() => setOpen(value => !value)}>{open ? 'Thu gọn' : 'Xem bài đầy đủ'}</button>
-      <button type="button" className={`btn btn-sm ${saved ? 'btn-saved' : 'btn-ghost'}`} aria-pressed={saved} onClick={() => setSaved(value => !value)}><Icon name="bookmark" size={15}/>{saved ? 'Đã lưu' : 'Lưu'}</button>
+      <button type="button" className="btn btn-sm btn-outline" aria-expanded={open} aria-controls={panelId} onClick={toggle}>{open ? 'Thu gọn' : 'Xem bài đầy đủ'}</button>
     </div>
   </li>;
 }
 
 export function HeroDemo() {
   const [request, setRequest] = useState(defaultRequest);
-  const [persona, setPersona] = useState<PersonaId | null>('pos_fnb');
-  const [phase, setPhase] = useState<Phase>('found');
-  const [runId, setRunId] = useState(0);
-  const timer = useRef<number | null>(null);
+  const [phase, setPhase] = useState<Phase>('idle');
+  const [showSkeleton, setShowSkeleton] = useState(false);
+  const [result, setResult] = useState<(LandingSearchResponse & { query: string }) | null>(null);
+  const [failure, setFailure] = useState<LandingFailure | null>(null);
+  const [hint, setHint] = useState('');
+  const [now, setNow] = useState(0);
   const typing = useRef<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inflight = useRef<AbortController | null>(null);
+  const unlocked = useRef<Map<string, Promise<Full[] | null>>>(new Map());
+  const autoRan = useRef(false);
 
   useEffect(() => () => {
-    if (timer.current) window.clearTimeout(timer.current);
     if (typing.current) window.clearInterval(typing.current);
+    inflight.current?.abort();
   }, []);
 
-  function show(nextPersona: PersonaId | null) {
-    setPersona(nextPersona);
-    setRunId(value => value + 1);
-    if (timer.current) window.clearTimeout(timer.current);
-    if (!nextPersona) { setPhase('no-sample'); return; }
-    if (prefersReducedMotion()) { setPhase('found'); return; }
+  const search = useCallback(async (text: string, trigger: LandingTrigger) => {
+    const query = text.trim();
+    if (query.length < LANDING_QUERY_MIN) { setHint('Viết vài chữ về khách hàng bạn muốn tìm.'); inputRef.current?.focus(); return; }
+    setHint('');
+    inflight.current?.abort();
+    const controller = new AbortController();
+    inflight.current = controller;
+    const started = performance.now();
+    let timedOut = false;
+    const timeout = window.setTimeout(() => { timedOut = true; controller.abort(); }, CLIENT_TIMEOUT_MS);
+    const skeleton = window.setTimeout(() => setShowSkeleton(true), SKELETON_DELAY_MS);
     setPhase('searching');
-    timer.current = window.setTimeout(() => setPhase('found'), 700);
-  }
+    setFailure(null);
+    trackLanding('landing_search_started', { trigger });
+    try {
+      const response = await fetch('/api/landing/search', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query }), signal: controller.signal });
+      if (!response.ok) {
+        await response.body?.cancel().catch(() => undefined); // release the connection; the status says enough
+        throw Object.assign(new Error('http'), { failure: failureOf(response.status) });
+      }
+      const data = await response.json() as LandingSearchResponse;
+      if (controller.signal.aborted) return;
+      const clientMs = performance.now() - started;
+      setNow(Date.now());
+      setResult({ ...data, query });
+      setPhase(data.outcome === 'found' ? 'found' : 'empty');
+      trackLanding(data.outcome === 'found' ? 'landing_search_results_shown' : 'landing_search_empty', { previewId: data.previewId, trigger, resultCount: data.leads.length, clientMs });
+    } catch (error) {
+      if (controller.signal.aborted && !timedOut) return; // replaced by a newer search
+      const reason: LandingFailure = timedOut ? 'timeout' : (error as { failure?: LandingFailure }).failure ?? 'network';
+      setFailure(reason);
+      setPhase('error');
+      trackLanding('landing_search_failed', { trigger, reason, clientMs: performance.now() - started });
+    } finally {
+      window.clearTimeout(timeout);
+      window.clearTimeout(skeleton);
+      setShowSkeleton(false);
+      if (inflight.current === controller) inflight.current = null;
+    }
+  }, []);
 
-  function analyse(text: string) {
-    show(personaForRequest(text));
-  }
+  // The example request runs once when the section comes into view, so the first thing a visitor sees is real leads.
+  useEffect(() => {
+    const node = rootRef.current;
+    if (!node || autoRan.current) return;
+    const run = () => { if (!autoRan.current) { autoRan.current = true; void search(defaultRequest, 'auto'); } };
+    if (!('IntersectionObserver' in window)) { run(); return; }
+    const observer = new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) { observer.disconnect(); run(); } }, { rootMargin: '200px' });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [search]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!request.trim()) { inputRef.current?.focus(); return; }
-    analyse(request);
+    if (typing.current) { window.clearInterval(typing.current); typing.current = null; }
+    autoRan.current = true;
+    void search(request, 'user');
   }
 
   /** Types the example into the input, then searches, so it reads like a real request. */
   function applySuggestion(text: string) {
     if (typing.current) window.clearInterval(typing.current);
+    autoRan.current = true;
     inputRef.current?.focus();
-    if (prefersReducedMotion()) { setRequest(text); analyse(text); return; }
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setRequest(text); void search(text, 'suggestion'); return; }
     let length = 0;
     typing.current = window.setInterval(() => {
-      length = Math.min(text.length, length + 3);
+      length = Math.min(text.length, length + 4);
       setRequest(text.slice(0, length));
       if (length === text.length) {
         window.clearInterval(typing.current!);
         typing.current = null;
-        analyse(text);
+        void search(text, 'suggestion');
       }
-    }, 16);
+    }, 14);
   }
 
+  const unlock = useCallback((previewId: string) => {
+    let pending = unlocked.current.get(previewId);
+    if (!pending) {
+      pending = fetch(`/api/landing/previews/${previewId}`).then(async response => {
+        if (response.ok) return (await response.json() as { leads: Full[] }).leads;
+        await response.body?.cancel().catch(() => undefined);
+        return null;
+      }).catch(() => null);
+      unlocked.current.set(previewId, pending);
+    }
+    return pending;
+  }, []);
 
-  // Two sample leads keep the results column about as tall as the input column.
-  const leads = persona ? demoLeadsFor(persona).slice(0, 2) : [];
+  function rememberForSignup() {
+    if (!result) return;
+    saveLandingHandoff({ query: result.query, previewId: result.previewId, resultCount: result.leads.length, expiresAt: result.expiresAt });
+    trackLanding('landing_signup_clicked', { previewId: result.previewId, resultCount: result.leads.length });
+  }
 
-  return <div className="demo">
+  const leads = result?.leads ?? [];
+  const member = Boolean(result?.member);
+  const stale = phase === 'searching' && !showSkeleton;
+  const headline = phase === 'searching' ? 'Đang tìm lead phù hợp…'
+    : phase === 'found' ? `${leads.length} lead thật phù hợp`
+      : phase === 'empty' ? 'Chưa có lead phù hợp lúc này'
+        : phase === 'error' && failure ? FAILURES[failure].title
+          : 'Mô tả khách hàng bạn cần';
+  const subline = phase === 'found' ? 'Từ bài đăng Facebook QLead đã thu thập'
+    : phase === 'searching' ? 'Trong các bài đăng QLead đã thu thập'
+      : phase === 'idle' ? 'QLead trả về tối đa 2 lead thật để bạn xem thử' : null;
+
+  return <div className="demo" ref={rootRef}>
     <div className="demo-side">
       <form className="demo-search" onSubmit={submit}>
         <div className="demo-side-head">
           <h3 id="demo-request-label">Bạn muốn tìm khách hàng nào?</h3>
         </div>
-        <textarea id="demo-request" ref={inputRef} rows={4} maxLength={300} value={request} onChange={event => setRequest(event.target.value)} aria-labelledby="demo-request-label" placeholder={defaultRequest}/>
+        <textarea id="demo-request" ref={inputRef} rows={4} maxLength={300} value={request} onChange={event => setRequest(event.target.value)} aria-labelledby="demo-request-label" aria-describedby={hint ? 'demo-hint' : undefined} placeholder={defaultRequest}/>
+        {hint && <p className="demo-hint" id="demo-hint" role="alert">{hint}</p>}
         <div className="suggestions" role="group" aria-label="Gợi ý mô tả">
           <span>Gợi ý:</span>
           {suggestions.map(item => <button key={item.label} type="button" onClick={() => applySuggestion(item.text)}>{item.label}</button>)}
         </div>
-        <button type="submit" className="btn btn-primary full">Tìm khách hàng <Icon name="arrow" size={16}/></button>
+        <button type="submit" className="btn btn-primary full" disabled={phase === 'searching'}>{phase === 'searching' ? 'Đang tìm…' : 'Tìm khách hàng'} {phase !== 'searching' && <Icon name="arrow" size={16}/>}</button>
       </form>
-
     </div>
 
-    <div className="demo-results">
+    <div className="demo-results" aria-busy={phase === 'searching'}>
       <div className="demo-results-head" aria-live="polite">
         <span className="goat-badge"><GoatMascot size="xs"/></span>
         <div>
-          <b>{phase === 'searching' ? 'Đang lọc bài đăng phù hợp…' : phase === 'found' ? `${leads.length} lead mẫu` : 'Đã hiểu mô tả của bạn'}</b>
-          {phase === 'no-sample' && <span>Bản demo chưa có bài mẫu cho ngành này</span>}
+          <b>{headline}</b>
+          {subline && <span>{subline}</span>}
         </div>
       </div>
-      {phase === 'searching' && <div className="demo-progress" aria-hidden="true"><i/></div>}
-      {phase === 'searching' && <ul className="demo-lead-list" aria-hidden="true">{[0, 1].map(index => <li key={index} className="skeleton-item"><span/><span/><span/></li>)}</ul>}
-      {phase === 'found' && <ul className="demo-lead-list" key={runId}>{leads.map((lead, index) => <DemoLeadCard key={lead.id} lead={lead} index={index}/>)}</ul>}
-      {phase === 'no-sample' && <div className="demo-empty">
-        <p>Khi dùng thật, QLead theo dõi bài đăng theo đúng điều kiện bạn vừa mô tả. Bản demo chỉ có một ít bài mẫu nên chưa có kết quả cho ngành này.</p>
-        <p className="muted-text">Bấm một gợi ý bên trái để xem một lead trông như thế nào.</p>
+      {phase === 'searching' && showSkeleton && <div className="demo-progress" aria-hidden="true"><i/></div>}
+      {phase === 'searching' && showSkeleton && <ul className="demo-lead-list" aria-hidden="true">{[0, 1].map(index => <li key={index} className="skeleton-item"><span/><span/><span/></li>)}</ul>}
+      {(phase === 'found' || (stale && result?.outcome === 'found')) && result && <ul className={`demo-lead-list ${stale ? 'is-stale' : ''}`} key={result.previewId}>
+        {leads.map((lead, index) => <LeadCard key={lead.key} lead={lead} index={index} now={now} member={member} previewId={result.previewId} query={result.query}
+          resultCount={leads.length} expiresAt={result.expiresAt} unlock={() => unlock(result.previewId)}/>)}
+      </ul>}
+      {phase === 'idle' && <div className="demo-empty"><p>Viết bạn bán gì và muốn tìm khách nào, hoặc bấm một gợi ý. QLead tìm trong các bài đăng Facebook đã thu thập và trả về lead thật, không phải bài mẫu.</p></div>}
+      {(phase === 'empty' || (stale && result?.outcome === 'empty')) && <div className={`demo-empty ${stale ? 'is-stale' : ''}`}>
+        <p>QLead chưa có bài nào trong 30 ngày qua khớp với mô tả này. Khi bạn tạo tài khoản, QLead bắt đầu tìm riêng trên Facebook theo đúng mô tả của bạn.</p>
+        <p className="muted-text">Bạn cũng có thể thử một gợi ý bên trái, hoặc mô tả rộng hơn (bỏ bớt khu vực).</p>
+      </div>}
+      {phase === 'error' && failure && <div className="demo-empty">
+        <p>{FAILURES[failure].text}</p>
+        {failure !== 'rate_limited' && <button type="button" className="btn btn-sm btn-outline" onClick={() => search(request, 'user')}>Thử lại</button>}
       </div>}
       <div className="demo-results-foot">
-        <p>Bài mẫu để minh họa.</p>
-        <Link href="/dang-ky" className="text-link">Tìm lead thật cho ngành của bạn <Icon name="arrow" size={16}/></Link>
+        {member
+          ? <><p>Bạn đang đăng nhập: mở từng lead để xem đầy đủ.</p><Link href="/app" className="text-link">Vào QLead <Icon name="arrow" size={16}/></Link></>
+          : phase === 'found'
+            ? <><p>Xem bài gốc, link Facebook và nhận lead mới cho nhu cầu này. Miễn phí.</p><Link href={SIGNUP_HREF} className="btn btn-primary demo-cta" onClick={rememberForSignup}>Đăng ký miễn phí để xem đầy đủ <Icon name="arrow" size={16}/></Link></>
+            : phase === 'empty'
+              ? <><p>Miễn phí, không cần thanh toán.</p><Link href={SIGNUP_HREF} className="btn btn-primary demo-cta" onClick={rememberForSignup}>Đăng ký để QLead tìm cho bạn <Icon name="arrow" size={16}/></Link></>
+              : <><p>Lead thật từ Facebook, đã ẩn thông tin liên hệ.</p><Link href={SIGNUP_HREF} className="text-link">Tạo tài khoản miễn phí <Icon name="arrow" size={16}/></Link></>}
+        {!member && (phase === 'found' || phase === 'empty') && result && <Link href={LOGIN_HREF} className="demo-login" onClick={() => saveLandingHandoff({ query: result.query, previewId: result.previewId, resultCount: result.leads.length, expiresAt: result.expiresAt })}>Đã có tài khoản? Đăng nhập</Link>}
       </div>
     </div>
   </div>;

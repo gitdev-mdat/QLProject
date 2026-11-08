@@ -114,9 +114,13 @@ async function settle(page) {
 }
 
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
+// Each context is a different visitor address (as behind Vercel's proxy): the landing search is rate-limited per address,
+// and hundreds of page loads from one address would otherwise be (correctly) refused.
+let visitorSeq = 0;
+const visitor = () => ({ extraHTTPHeaders: { 'x-forwarded-for': `198.18.${Math.floor(visitorSeq / 250)}.${(visitorSeq++ % 250) + 1}` } });
 const consoleErrors = [];
 async function open(width, options = {}) {
-  const context = await browser.newContext({ viewport: { width, height: heightFor(width) }, ...options });
+  const context = await browser.newContext({ viewport: { width, height: heightFor(width) }, ...visitor(), ...options });
   const page = await context.newPage();
   page.on('pageerror', error => consoleErrors.push(`pageerror ${error.message}`));
   page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()); });
@@ -146,7 +150,7 @@ for (const [problem, widths] of [...byProblem].slice(0, 60)) console.log(`   ${w
 
 // 2. Landscape phones/tablets and a short laptop window.
 for (const [width, height] of [[568, 320], [667, 375], [740, 360], [844, 390], [932, 430], [1024, 768], [1180, 820], [1280, 600]]) {
-  const context = await browser.newContext({ viewport: { width, height } });
+  const context = await browser.newContext({ viewport: { width, height }, ...visitor() });
   const page = await context.newPage();
   await page.goto(BASE + '/', { waitUntil: 'networkidle' });
   await settle(page);
@@ -157,7 +161,7 @@ for (const [width, height] of [[568, 320], [667, 375], [740, 360], [844, 390], [
 
 // 3. Browser zoom 200% at 1280×800 = 640×400 CSS px with DPR 2; 400% at 1280 = 320 CSS px.
 for (const [zoom, width, height] of [[2, 640, 400], [4, 320, 200]]) {
-  const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: zoom });
+  const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: zoom, ...visitor() });
   const page = await context.newPage();
   await page.goto(BASE + '/', { waitUntil: 'networkidle' });
   await settle(page);
@@ -186,7 +190,7 @@ if (!process.env.SWEEP_ONLY) {
   }
   // Original report: 440 × 956.
   {
-    const context = await browser.newContext({ viewport: { width: 440, height: 956 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+    const context = await browser.newContext({ viewport: { width: 440, height: 956 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, ...visitor() });
     const page = await context.newPage();
     await page.goto(BASE + '/', { waitUntil: 'networkidle' });
     await settle(page);
@@ -199,7 +203,7 @@ if (!process.env.SWEEP_ONLY) {
 
   // 6. Interactions on a touch phone and a laptop window.
   for (const [width, mobile] of [[360, true], [1280, false]]) {
-    const context = await browser.newContext({ viewport: { width, height: heightFor(width) }, isMobile: mobile, hasTouch: mobile });
+    const context = await browser.newContext({ viewport: { width, height: heightFor(width) }, isMobile: mobile, hasTouch: mobile, ...visitor() });
     const page = await context.newPage();
     await page.goto(BASE + '/', { waitUntil: 'networkidle' });
     await settle(page);
@@ -217,7 +221,7 @@ if (!process.env.SWEEP_ONLY) {
       const bodyText = await page.locator('main').innerText();
       const overclaims = ['bình luận', 'hình ảnh', 'mọi bài', 'không bỏ sót', 'toàn bộ', 'chắc chắn'].filter(word => bodyText.toLocaleLowerCase('vi').includes(word));
       record(g, 'No unverified or absolute claims on the landing', overclaims.length === 0, overclaims.join(', '));
-      record(g, 'Illustrations are labelled (hero scene, demo)', await page.locator('.scan-caption', { hasText: 'Minh họa' }).isVisible() && await page.locator('#demo .section-head p', { hasText: 'không phải lead thật' }).isVisible());
+      record(g, 'Hero illustration is labelled; the search section promises real leads, not samples', await page.locator('.scan-caption', { hasText: 'Minh họa' }).isVisible() && await page.locator('#demo .section-head p', { hasText: 'lead thật' }).isVisible());
       record(g, 'Hero headline reads "Tìm lead tự động trên Facebook"', (await page.locator('#hero-title').innerText()).replace(/\s+/g, ' ').trim() === 'Tìm lead tự động trên Facebook');
       const order = await page.evaluate(() => [...document.querySelectorAll('main > section')].map(s => s.id || s.className.split(' ')[0]));
       record(g, 'Sections in order: hero, demo, cách hoạt động, so sánh, CTA', order.join(',') === 'hero,demo,cach-hoat-dong,so-sanh,final-cta', order.join(','));
@@ -230,7 +234,7 @@ if (!process.env.SWEEP_ONLY) {
       await click(page.locator('.suggestions button').nth(2));
       await page.waitForTimeout(2600);
       const head = await page.locator('.demo-results-head b').innerText();
-      record(g, 'Demo suggestion runs a search and shows sample leads', /lead mẫu|Đã hiểu/.test(head), head);
+      record(g, 'Search suggestion returns real leads or an honest empty answer', /lead thật phù hợp|Chưa có lead phù hợp/.test(head), head);
       const expand = page.locator('.demo-lead-actions button').first();
       if (await expand.count()) {
         await click(expand);
