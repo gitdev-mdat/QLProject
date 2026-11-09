@@ -209,7 +209,7 @@ export function HeroDemo() {
   const member = Boolean(result?.member);
   const stale = phase === 'searching' && !showSkeleton;
   const headline = phase === 'searching' ? 'Đang tìm lead phù hợp…'
-    : phase === 'found' ? (result?.nearest ? 'Lead mới nhất QLead vừa tìm thấy' : `${leads.length} lead thật phù hợp`)
+    : phase === 'found' ? (result?.nearest ? 'Lead thật QLead đã tìm thấy' : `${leads.length} lead thật phù hợp`)
       : phase === 'empty' ? 'QLead sẵn sàng tìm cho bạn'
         : phase === 'error' && failure ? FAILURES[failure].title
           : 'Mô tả khách hàng bạn cần';

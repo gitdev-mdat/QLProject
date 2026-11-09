@@ -148,9 +148,9 @@ try {
     const ms = await runSearch(page, NOTHING);
     const head = await resultsHead(page);
     const last = apiResponses.at(-1);
-    assert(head === 'Lead mới nhất QLead vừa tìm thấy' && last.nearest === true && last.outcome === 'found', head);
+    assert(head === 'Lead thật QLead đã tìm thấy' && last.nearest === true && last.outcome === 'found', head);
     const cards = await page.locator('.demo-lead-list:not(.is-stale) .demo-lead').count();
-    assert(cards >= 1 && cards === last.leads.length && last.leads.every((lead: { match: string }) => lead.match === 'Lead mới nhất QLead tìm thấy'), `${cards} cards`);
+    assert(cards >= 1 && cards === last.leads.length && last.leads.every((lead: { match: string }) => lead.match === 'Lead thật QLead đã tìm thấy'), `${cards} cards`);
     assert(!/Chưa có lead|30 ngày qua/.test(await page.locator('.demo-results').innerText()), 'no empty wording');
     await page.locator('#demo').screenshot({ path: resolve(SHOTS, 'nearest-1440.png') });
     return `${ms} ms, ${cards} card(s)`;

@@ -440,7 +440,7 @@ export function rankLandingCandidates(query: string, pool: AnalyzedCandidate[] |
 
 /** The landing page's default request; its matches are the fallback when a visitor's own words find nothing. */
 export const DEFAULT_LANDING_REQUEST = 'Tôi bán phần mềm quản lý quán, muốn tìm những quán F&B sắp khai trương, đang tuyển người hoặc mở chi nhánh.';
-export const NEAREST_MATCH_LABEL = 'Lead mới nhất QLead tìm thấy';
+export const NEAREST_MATCH_LABEL = 'Lead thật QLead đã tìm thấy';
 
 /**
  * Never answer the landing visitor with an empty box while QLead has real leads: when the visitor's words match
@@ -470,4 +470,30 @@ export function nearestLandingCandidates(pool: AnalyzedCandidate[], now = Date.n
     url: isSupportedFacebookPostUrl(item.candidate.original_url) ? item.candidate.original_url! : null,
     match: NEAREST_MATCH_LABEL,
   } }, index));
+}
+
+/** Preview card for one analysed post, without any relevance or age filter (used for pinned showcase posts). */
+function plainPreview(item: AnalyzedCandidate, match: string, key: string): LandingPreviewLead {
+  return {
+    key, signals: item.signals.slice(0, 2).map(id => SIGNAL_LABELS[id]).filter((label): label is string => Boolean(label)),
+    excerpt: clip(maskContacts(item.shown.text)), summarized: item.shown.summarized, area: item.places.places[0] ?? null,
+    publishedAt: item.candidate.published_at && Number.isFinite(Date.parse(item.candidate.published_at)) ? new Date(item.candidate.published_at).toISOString() : null,
+    source: item.source, hasContact: item.hasContact,
+    url: isSupportedFacebookPostUrl(item.candidate.original_url) ? item.candidate.original_url! : null,
+    match,
+  };
+}
+
+/**
+ * The pinned showcase posts (in pin order) as landing previews. They are matched against the default request as of
+ * the moment they were pinned, so the 'why it fits' line stays the same however old the posts become.
+ */
+export function showcasePreviews(pins: Array<LandingCandidate & { pinned_at: string }>): LandingMatch[] {
+  const analyzed = analyzeCandidates(pins);
+  return analyzed.slice(0, LANDING_MAX_RESULTS).map((item, index) => {
+    const at = Date.parse((item.candidate as LandingCandidate & { pinned_at: string }).pinned_at) || Date.now();
+    const ranked = rankLandingCandidates(DEFAULT_LANDING_REQUEST, [item], at)[0];
+    const preview = ranked ? { ...ranked.preview, key: String(index + 1) } : plainPreview(item, NEAREST_MATCH_LABEL, String(index + 1));
+    return { candidate: item.candidate, score: ranked?.score ?? 0, preview };
+  });
 }

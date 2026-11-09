@@ -4,6 +4,7 @@ import { extractContactFromPost } from '../../../src/lead-data';
 import { isSupportedFacebookPostUrl, sourceLinkedPostSql } from '../../../src/lead-eligibility';
 import {
   analyzeCandidates, displayableText, findPlaces, LANDING_MAX_AGE_DAYS, normalizeLandingQuery, rankLandingCandidates, nearestLandingCandidates,
+  showcasePreviews, DEFAULT_LANDING_REQUEST, NEAREST_MATCH_LABEL,
   type AnalyzedCandidate, type LandingCandidate, type LandingPreviewLead,
 } from '../landing-search';
 import { db } from './db';
@@ -59,6 +60,25 @@ async function candidatePool(catalog: string[]): Promise<{ pool: Pool; loaded: b
   return { pool: await state.qleadLandingLoad, loaded: true };
 }
 
+const PINS_TTL_MS = 60_000;
+const pinState = globalThis as unknown as { qleadLandingPins?: { at: number; matches: Answer['matches'] } };
+
+/** The admin-pinned showcase leads (landing_showcase_pins), cached for a minute. Missing table → none. */
+async function showcasePins(): Promise<Answer['matches']> {
+  const cached = pinState.qleadLandingPins;
+  if (cached && Date.now() - cached.at < PINS_TTL_MS) return cached.matches;
+  let matches: Answer['matches'] = [];
+  try {
+    const { rows } = await db().query<LandingCandidate & { pinned_at: string }>(`SELECT fp.id, fp.normalized_url, fp.original_url, fp.title, fp.content, fp.summary_vi,
+        fp.published_at, fp.first_seen_at AS discovered_at, sp.pinned_at
+      FROM landing_showcase_pins sp JOIN facebook_posts fp ON fp.id = sp.post_id
+      WHERE ${sourceLinkedPostSql('fp')} ORDER BY sp.position`);
+    matches = showcasePreviews(rows).map(match => ({ postId: match.candidate.id, preview: match.preview }));
+  } catch { matches = []; }
+  pinState.qleadLandingPins = { at: Date.now(), matches };
+  return matches;
+}
+
 export type LandingSearchResult = {
   previewId: string;
   outcome: 'found' | 'empty';
@@ -88,15 +108,26 @@ export async function runLandingSearch(query: string, viewerUserId: string | nul
   if (!answer || Date.now() - answer.at > ANSWER_TTL_MS) {
     let matches: Answer['matches'] = [];
     let nearest = false;
-    if (catalog.length) {
-      const { pool, loaded } = await candidatePool(catalog);
-      servedFrom = loaded ? 'database' : 'pool';
-      matches = rankLandingCandidates(query, pool.items).map(match => ({ postId: match.candidate.id, preview: match.preview }));
+    const pins = await showcasePins();
+    const isDefault = normalized === normalizeLandingQuery(DEFAULT_LANDING_REQUEST);
+    if (isDefault && pins.length) {
+      // The landing page's own example always shows the two showcase leads the admin pinned.
+      matches = pins;
+    } else {
+      let poolItems: AnalyzedCandidate[] = [];
+      if (catalog.length) {
+        const { pool, loaded } = await candidatePool(catalog);
+        servedFrom = loaded ? 'database' : 'pool';
+        poolItems = pool.items;
+        matches = rankLandingCandidates(query, pool.items).map(match => ({ postId: match.candidate.id, preview: match.preview }));
+      } else servedFrom = 'pool';
       if (!matches.length) {
-        matches = nearestLandingCandidates(pool.items).map(match => ({ postId: match.candidate.id, preview: match.preview }));
+        // Never an empty box while QLead has real leads: the pinned showcase first, else the newest catalog leads.
+        matches = pins.length ? pins.map(pin => ({ ...pin, preview: { ...pin.preview, match: NEAREST_MATCH_LABEL } }))
+          : nearestLandingCandidates(poolItems).map(match => ({ postId: match.candidate.id, preview: match.preview }));
         nearest = matches.length > 0;
       }
-    } else servedFrom = 'pool';
+    }
     answer = { at: Date.now(), nearest, matches } satisfies Answer;
     answers.delete(cacheKey);
     answers.set(cacheKey, answer);
@@ -140,11 +171,15 @@ export async function unlockLandingPreview(previewId: string, userId: string): P
   if (!preview) return { status: 'not_found' };
   if (preview.expired) return { status: 'expired' };
   const catalog = landingCatalogUserIds();
-  if (!catalog.length || !preview.post_ids.length) return { status: 'ok', leads: [], expiresAt: preview.expires_at.toISOString(), firstClaim: false };
+  if (!preview.post_ids.length) return { status: 'ok', leads: [], expiresAt: preview.expires_at.toISOString(), firstClaim: false };
+  // A post opens if it is a pinned showcase lead, or still belongs to the catalog. Nothing else ever opens here.
+  const pinned = await db().query<{ post_id: string }>('SELECT post_id FROM landing_showcase_pins WHERE post_id = ANY($1::uuid[])', [preview.post_ids])
+    .then(result => result.rows.map(row => row.post_id)).catch(() => [] as string[]);
   const { rows } = await db().query<{ id: string; author: string | null; title: string | null; content: string | null; summary_vi: string | null; published_at: Date | null; original_url: string | null }>(`SELECT fp.id, fp.author, fp.title, fp.content, fp.summary_vi, fp.published_at, fp.original_url
     FROM facebook_posts fp JOIN agent_connections ac ON ac.id = fp.agent_connection_id JOIN users u ON u.id = ac.user_id
-    WHERE fp.id = ANY($1::uuid[]) AND ac.user_id = ANY($2::uuid[]) AND ac.kind = 'search_profile' AND ac.status = 'active'
-      AND u.lead_monitoring_status = 'active' AND ${sourceLinkedPostSql('fp')}`, [preview.post_ids, catalog]);
+    WHERE fp.id = ANY($1::uuid[]) AND ${sourceLinkedPostSql('fp')}
+      AND (fp.id = ANY($3::uuid[]) OR (ac.user_id = ANY($2::uuid[]) AND ac.kind = 'search_profile' AND ac.status = 'active'
+        AND u.lead_monitoring_status = 'active'))`, [preview.post_ids, catalog, pinned]);
   const leads: LandingFullLead[] = [];
   preview.post_ids.forEach((postId, index) => {
     const post = rows.find(row => row.id === postId);

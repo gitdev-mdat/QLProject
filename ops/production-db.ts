@@ -14,6 +14,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import pg from 'pg';
+import { landingShowcasePin, landingShowcaseStart, landingShowcaseStatus } from './landing-showcase.ts';
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
@@ -146,7 +147,8 @@ async function landingCatalogCandidates(db: pg.Client) {
 }
 
 const command = process.argv[2];
-const actions: Record<string, (db: pg.Client) => Promise<void>> = { check, migrate, harden, verify, 'provision-admin': provisionAdmin, 'landing-catalog-candidates': landingCatalogCandidates };
+const actions: Record<string, (db: pg.Client) => Promise<void>> = { check, migrate, harden, verify, 'provision-admin': provisionAdmin, 'landing-catalog-candidates': landingCatalogCandidates,
+  'landing-showcase-start': landingShowcaseStart, 'landing-showcase-status': landingShowcaseStatus, 'landing-showcase-pin': landingShowcasePin };
 if (!command || !actions[command]) { console.error(`Usage: npx tsx ops/production-db.ts <${Object.keys(actions).join('|')}>`); process.exit(2); }
 // Pinned to Supabase's public root CA (also set as DATABASE_CA_CERT on Vercel). Override with PROD_DATABASE_CA_FILE.
 const caFile = (await envFile('.env.supabase')).PROD_DATABASE_CA_FILE ?? 'ops/supabase-root-2021-ca.crt';
