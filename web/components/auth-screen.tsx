@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Brand, Icon } from './visuals';
 import { GoatMascot } from './goat-mascot';
+import { captureFirstTouch } from '@/lib/attribution-client';
 
 const AUTH_ERRORS: Record<string, string> = {
   email_taken: 'Email này đã có tài khoản. Hãy đăng nhập.',
@@ -23,7 +24,7 @@ function AuthForm({ mode, returnTo = null }: { mode: 'login' | 'register'; retur
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true); setError('');
-    const body = mode === 'register' ? form : { email: form.email, password: form.password };
+    const body = mode === 'register' ? { ...form, attribution: captureFirstTouch() } : { email: form.email, password: form.password };
     try {
       const response = await fetch(`/api/auth/${mode}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       const data = await response.json().catch(() => ({})) as { redirect?: string; error?: string };

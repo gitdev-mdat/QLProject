@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#f8faf5"/><stop offset="1" stop-color="#eaf3e7"/></linearGradient>
+    <linearGradient id="shape" x2="1" y2="1"><stop stop-color="#80c866"/><stop offset="1" stop-color="#398e3e"/></linearGradient>
+  </defs>
+  <rect width="1200" height="630" rx="0" fill="url(#bg)"/>
+  <circle cx="1035" cy="100" r="220" fill="#d6e9ce" opacity=".65"/>
+  <circle cx="1100" cy="620" r="250" fill="#d6e9ce" opacity=".48"/>
+  <path d="M774 0h426v630H858c81-120 118-264 62-366C874 153 820 77 774 0Z" fill="#edf4e9"/>
+  <rect x="82" y="82" width="91" height="91" rx="26" fill="url(#shape)"/>
+  <path d="M101 133c4-20 15-32 29-32 14 0 25 12 29 32-5 18-16 29-29 29-13 0-24-11-29-29Z" fill="#fff"/>
+  <circle cx="120" cy="126" r="3.8" fill="#244d32"/><circle cx="140" cy="126" r="3.8" fill="#244d32"/>
+  <path d="M126 142q4 5 8 0" fill="none" stroke="#244d32" stroke-width="3" stroke-linecap="round"/>
+  <text x="196" y="148" font-family="Arial, sans-serif" font-size="53" font-weight="700" fill="#183d2b">QLead</text>
+  <rect x="82" y="240" width="124" height="8" rx="4" fill="#64ad4e"/>
+  <text x="82" y="325" font-family="Arial, sans-serif" font-size="54" font-weight="700" fill="#173b29">Tìm khách hàng</text>
+  <text x="82" y="393" font-family="Arial, sans-serif" font-size="54" font-weight="700" fill="#173b29">đúng thời điểm</text>
+  <text x="84" y="462" font-family="Arial, sans-serif" font-size="25" fill="#53665a">Nhận ra tín hiệu kinh doanh từ bài đăng Facebook.</text>
+  <text x="84" y="500" font-family="Arial, sans-serif" font-size="25" fill="#53665a">Tập trung vào cơ hội phù hợp với đội ngũ sales.</text>
+  <rect x="84" y="548" width="225" height="48" rx="24" fill="#e2efdc"/>
+  <text x="111" y="580" font-family="Arial, sans-serif" font-size="19" font-weight="700" fill="#37723d">qlead.vn</text>
+  <circle cx="1001" cy="316" r="144" fill="url(#shape)"/>
+  <circle cx="1001" cy="316" r="103" fill="#fff" opacity=".17"/>
+  <path d="M911 329c13-61 46-96 90-96 44 0 77 35 90 96-16 54-49 86-90 86-41 0-74-32-90-86Z" fill="#fff"/>
+  <circle cx="970" cy="309" r="12" fill="#244d32"/><circle cx="1032" cy="309" r="12" fill="#244d32"/>
+  <path d="M981 355q20 21 40 0" fill="none" stroke="#244d32" stroke-width="8" stroke-linecap="round"/>
+  <path d="M964 245l-16-37m92 37 16-37" stroke="#fff" stroke-width="11" stroke-linecap="round"/>
+  <circle cx="1113" cy="175" r="12" fill="#f0b947"/><circle cx="856" cy="454" r="8" fill="#f0b947"/>
+</svg>

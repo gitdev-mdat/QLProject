@@ -4,8 +4,15 @@ import { evaluateDevLogin, headersToRecord } from '@/lib/dev-login-gate';
 import { devQuickLoginUsers } from '@/lib/server/dev-users';
 import { getSession } from '@/lib/server/session';
 import { safeAppPath } from '@/lib/safe-return';
+import { pageMetadata } from '@/lib/seo';
 
 export const dynamic = 'force-dynamic';
+export const metadata = pageMetadata({
+  title: 'Đăng nhập QLead',
+  description: 'Đăng nhập tài khoản QLead để tiếp tục theo dõi khách hàng tiềm năng từ Facebook.',
+  path: '/dang-nhap',
+  indexable: false,
+});
 
 /** `?tiep=/app/…` (from a notification tap while signed out) is where a successful sign-in continues. */
 export default async function Login({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {

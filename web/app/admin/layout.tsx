@@ -2,9 +2,11 @@ import Link from 'next/link';
 import { Brand } from '@/components/visuals';
 import { AdminNav } from '@/components/admin-nav';
 import { requireAdmin } from '@/lib/server/admin';
+import { noIndexMetadata } from '@/lib/seo';
 import './admin.css';
 
 export const dynamic = 'force-dynamic';
+export const metadata = noIndexMetadata();
 
 /** Every /admin route requires a signed-in user on the server-side admin allowlist; others get a 404. */
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {

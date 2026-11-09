@@ -1,16 +1,14 @@
 import Link from 'next/link';
-import type { Metadata } from 'next';
 import { Brand } from '@/components/visuals';
 import { BlogCtaLink } from '@/components/blog/blog-cta';
-import { SITE_URL, productHref } from '@/lib/blog/site';
+import { productHref } from '@/lib/blog/site';
+import { BlogAnalytics } from '@/components/blog/blog-analytics';
 import './blog.css';
 
 /**
  * The blog has its own chrome so it never touches the approved landing page. It shares the brand, colours and type
  * from globals.css, and none of the landing's motion or hero code.
  */
-export const metadata: Metadata = { metadataBase: new URL(SITE_URL) };
-
 export default function BlogLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return <div className="blog-shell">
     <a className="skip-link" href="#blog-main">Bỏ qua điều hướng</a>
@@ -23,7 +21,7 @@ export default function BlogLayout({ children }: Readonly<{ children: React.Reac
         </div>
       </div>
     </header>
-    <main id="blog-main">{children}</main>
+    <main id="blog-main"><BlogAnalytics/>{children}</main>
     <footer className="blog-footer">
       <div className="blog-wrap blog-footer-inner">
         <Brand/>

@@ -5,6 +5,7 @@ import { Icon } from '@/components/visuals';
 import { BlogCtaLink } from '@/components/blog/blog-cta';
 import { visiblePosts } from '@/lib/blog/posts';
 import { TOPICS, formatDate, productHref } from '@/lib/blog/site';
+import { SOCIAL_IMAGE } from '@/lib/seo';
 
 const title = 'Blog QLead: tìm khách hàng theo tín hiệu kinh doanh';
 const description = 'Hướng dẫn nhận ra cơ sở kinh doanh đang có nhu cầu trên Facebook, từ quán sắp khai trương đến cửa hàng mở chi nhánh, và cách tiếp cận đúng lúc.';
@@ -15,7 +16,8 @@ export function generateMetadata(): Metadata {
   return {
     title, description,
     alternates: { canonical: '/blog' },
-    openGraph: { type: 'website', locale: 'vi_VN', siteName: 'QLead', title, description, url: '/blog' },
+    openGraph: { type: 'website', locale: 'vi_VN', siteName: 'QLead', title, description, url: '/blog', images: [SOCIAL_IMAGE] },
+    twitter: { card: 'summary_large_image', title, description, images: [SOCIAL_IMAGE] },
     // While every listed post is still a draft, the index is a review page and stays out of search.
     robots: onlyDrafts ? { index: false, follow: false } : undefined,
   };

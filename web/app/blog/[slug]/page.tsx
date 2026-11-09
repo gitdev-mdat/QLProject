@@ -6,6 +6,7 @@ import { BlogCtaLink } from '@/components/blog/blog-cta';
 import { findPost, relatedPosts, visiblePosts } from '@/lib/blog/posts';
 import { SITE_URL, TOPICS, formatDate, productHref } from '@/lib/blog/site';
 import type { BlogPost } from '@/lib/blog/types';
+import { SOCIAL_IMAGE } from '@/lib/seo';
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -26,8 +27,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     openGraph: {
       type: 'article', locale: 'vi_VN', siteName: 'QLead', url, title: post.title, description: post.description,
       ...(post.publishedAt ? { publishedTime: post.publishedAt } : {}), modifiedTime: post.updatedAt,
+      images: [SOCIAL_IMAGE],
     },
-    twitter: { card: 'summary', title: post.title, description: post.description },
+    twitter: { card: 'summary_large_image', title: post.title, description: post.description, images: [SOCIAL_IMAGE] },
     // A draft is a review copy: never indexed, even if someone shares the preview link.
     robots: post.status === 'draft' ? { index: false, follow: false } : undefined,
   };

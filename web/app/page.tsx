@@ -4,6 +4,9 @@ import { HeroDemo } from '@/components/hero-demo';
 import { HeroScene } from '@/components/hero-scene';
 import { RevealOnScroll } from '@/components/reveal-on-scroll';
 import { NavScrollState } from '@/components/landing-motion';
+import { pageMetadata, SITE_DESCRIPTION, SITE_TITLE } from '@/lib/seo';
+
+export const metadata = pageMetadata({ title: SITE_TITLE, description: SITE_DESCRIPTION, path: '/' });
 
 /**
  * Three things QLead does, each backed by shipped behaviour: signal-based search over posts and Reels
@@ -26,6 +29,31 @@ const compare = [
 
 export default function LandingPage() {
   return <>
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{
+        __html: JSON.stringify({
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'Organization',
+              '@id': 'https://qlead.vn/#organization',
+              name: 'QLead',
+              url: 'https://qlead.vn',
+              logo: 'https://qlead.vn/icons/icon-512.png',
+            },
+            {
+              '@type': 'WebSite',
+              '@id': 'https://qlead.vn/#website',
+              url: 'https://qlead.vn',
+              name: 'QLead',
+              inLanguage: 'vi-VN',
+              publisher: { '@id': 'https://qlead.vn/#organization' },
+            },
+          ],
+        }).replace(/</g, '\\u003c'),
+      }}
+    />
     <a className="skip-link" href="#main">Bỏ qua điều hướng</a>
     <RevealOnScroll/>
     <NavScrollState/>

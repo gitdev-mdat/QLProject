@@ -16,6 +16,11 @@ export const registerInput = z.object({
   name: z.string().trim().min(1).max(200),
   email: z.string().trim().toLowerCase().email().max(254),
   password: z.string().min(8).max(200),
+  attribution: z.object({
+    source: z.enum(['organic', 'blog', 'campaign', 'referral', 'direct', 'unknown']),
+    campaign: z.string().regex(/^[a-z0-9][a-z0-9-]{0,79}$/).nullable(),
+    content: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,39}$/).nullable(),
+  }).optional(),
 }).strict();
 export const loginInput = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
@@ -47,6 +52,8 @@ export async function registerAccount(input: z.infer<typeof registerInput>): Pro
     const { rows: [user] } = await client.query<{ id: string }>('INSERT INTO users(display_name) VALUES ($1) RETURNING id', [input.name]);
     const inserted = await client.query('INSERT INTO user_accounts(user_id, email, password_hash) VALUES ($1, $2, $3) ON CONFLICT (email) DO NOTHING', [user.id, input.email, passwordHash]);
     if (!inserted.rowCount) { await client.query('ROLLBACK'); return { ok: false, error: 'email_taken' }; }
+    if (input.attribution) await client.query(`UPDATE users SET first_touch_source = $2, first_touch_campaign = $3,
+      first_touch_content = $4, first_touch_at = now() WHERE id = $1`, [user.id, input.attribution.source, input.attribution.campaign, input.attribution.content]);
     await client.query('COMMIT');
     return { ok: true, userId: user.id };
   } catch (error) {

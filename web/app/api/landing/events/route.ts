@@ -17,6 +17,10 @@ const body = z.object({
   resultCount: z.number().int().min(0).max(2).nullable().optional(),
   clientMs: z.number().int().min(0).max(600_000).nullable().optional(),
   reason: z.enum(['timeout', 'rate_limited', 'overloaded', 'network', 'server', 'expired']).nullable().optional(),
+  attributionSource: z.enum(['organic', 'blog', 'campaign', 'referral', 'direct', 'unknown']).nullable().optional(),
+  attributionCampaign: z.string().regex(/^[a-z0-9][a-z0-9-]{0,79}$/).nullable().optional(),
+  attributionContent: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,39}$/).nullable().optional(),
+  pagePath: z.string().regex(/^\/blog(?:\/[a-z0-9-]+)?$/).nullable().optional(),
 }).strict();
 
 /** Conversion funnel counters from the landing search. No query text, IP or User-Agent is stored. */
@@ -29,7 +33,9 @@ export async function POST(request: NextRequest) {
   const data = parsed.data;
   try {
     await recordLandingEvent({ event: data.event, visitorId: data.visitorId ?? null, previewId: data.previewId ?? null, trigger: data.trigger ?? null,
-      resultCount: data.resultCount ?? null, clientMs: data.clientMs ?? null, reason: data.reason ?? null }, session?.userId ?? null);
+      resultCount: data.resultCount ?? null, clientMs: data.clientMs ?? null, reason: data.reason ?? null,
+      attributionSource: data.attributionSource ?? null, attributionCampaign: data.attributionCampaign ?? null,
+      attributionContent: data.attributionContent ?? null, pagePath: data.pagePath ?? null }, session?.userId ?? null);
   } catch (error) {
     console.error('landing event not stored', error instanceof Error ? error.message : 'unknown');
   }
