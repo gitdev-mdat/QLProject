@@ -48,7 +48,12 @@ export async function landingShowcasePin(db: pg.Client, argv: string[] = process
   const { sourceLinkedPostSql } = await import('../src/lead-eligibility.ts');
   const demo = await demoProfile(db);
   if (!demo) throw new Error('No demo search. Run landing-showcase-start first.');
-  const chosen = argv.find(a => a.startsWith('--post-ids='))?.split('=')[1]?.split(',').map(s => s.trim()).filter(Boolean);
+  // --summaries-file=<json {postId: 'Vietnamese summary'}>: the admin's own Vietnamese summary for chosen posts whose
+  // collected text is unaccented or English (stored as summary_vi only where it is empty; shown as 'QLead tóm tắt').
+  const summariesFile = argv.find(a => a.startsWith('--summaries-file='))?.slice('--summaries-file='.length);
+  const summaries: Record<string, string> = summariesFile ? JSON.parse((await import('node:fs')).readFileSync(summariesFile, 'utf8')) : {};
+  const chosen = argv.find(a => a.startsWith('--post-ids='))?.split('=')[1]?.split(',').map(s => s.trim()).filter(Boolean)
+    ?? (Object.keys(summaries).length ? Object.keys(summaries) : undefined);
   const { rows } = await db.query(`SELECT fp.id, fp.normalized_url, fp.original_url, fp.title, fp.content, fp.summary_vi, fp.published_at, fp.first_seen_at AS discovered_at
     FROM facebook_posts fp WHERE fp.agent_connection_id = $1 AND ${sourceLinkedPostSql('fp')}`, [demo.profile_id]);
   const pool = analyzeCandidates(rows);
@@ -58,7 +63,13 @@ export async function landingShowcasePin(db: pg.Client, argv: string[] = process
   const ranked = pool.map(item => ({ item, score: rankLandingCandidates(DEFAULT_LANDING_REQUEST, [item], refTime(item.candidate))[0]?.score ?? -1 }))
     .sort((x, y) => y.score - x.score || refTime(y.item.candidate) - refTime(x.item.candidate));
   let picks: any[] = [];
-  if (chosen?.length) picks = chosen.map(id => rows.find(row => row.id === id)).filter(Boolean);
+  if (chosen?.length) {
+    picks = chosen.map(id => rows.find(row => row.id === id)).filter(Boolean);
+    if (picks.length !== chosen.length) throw new Error('Some --post-ids are not source-linked demo posts.');
+    const { displayableText } = await import('../web/lib/landing-search.ts');
+    const unreadable = picks.filter(post => !displayableText(post) && !summaries[post.id]?.trim());
+    if (unreadable.length) throw new Error(`No Vietnamese text for ${unreadable.map(p => p.id).join(', ')}: add it in --summaries-file.`);
+  }
   else for (const { item } of ranked) if (picks.length < 2 && !picks.some(p => p.normalized_url === item.candidate.normalized_url)) picks.push(item.candidate);
   if (!picks.length) {
     const sample = rows.slice(0, 12).map(row => ({ id: row.id, published_at: row.published_at, has_summary_vi: Boolean(row.summary_vi),
@@ -68,6 +79,10 @@ export async function landingShowcasePin(db: pg.Client, argv: string[] = process
   }
   try {
     await db.query('BEGIN');
+    for (const post of picks) if (summaries[post.id]?.trim()) {
+      await db.query('UPDATE facebook_posts SET summary_vi = $2 WHERE id = $1 AND nullif(btrim(summary_vi), \'\') IS NULL', [post.id, summaries[post.id]!.trim()]);
+      post.summary_vi = post.summary_vi?.trim() || summaries[post.id]!.trim();
+    }
     await db.query('DELETE FROM landing_showcase_pins');
     for (const [index, post] of picks.entries()) await db.query('INSERT INTO landing_showcase_pins(position, post_id) VALUES ($1, $2)', [index + 1, post!.id]);
     if (!argv.includes('--keep-scanning')) {

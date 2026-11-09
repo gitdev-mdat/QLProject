@@ -114,6 +114,23 @@ await check('S8 re-pin works when every demo post is months old (Muse often retu
   assert(rows.length === 2 && rows.every(row => !/xe máy/.test(row.content)), JSON.stringify(rows));
 });
 
+await check('S9 unaccented posts (as Muse returned on production) are pinned with admin Vietnamese summaries', async () => {
+  const { rows: posts } = await db.query('SELECT id FROM facebook_posts WHERE agent_connection_id = $1 ORDER BY id LIMIT 2', [profileId]);
+  await db.query("UPDATE facebook_posts SET content = 'Quan 93 Hu tieu mi - khai truong 17/11', summary_vi = NULL, title = NULL WHERE agent_connection_id = $1", [profileId]);
+  const { writeFileSync } = await import('node:fs');
+  const file = `${process.env.TEMP ?? '.'}/showcase-summaries-e2e.json`;
+  writeFileSync(file, JSON.stringify({ [posts[0].id]: 'Quán 93 Hủ tiếu mì sắp khai trương vào ngày 17/11.', [posts[1].id]: 'Quán cà phê sắp khai trương, dự kiến từ ngày 14 đến 16/11.' }));
+  let failedWithout = false;
+  try { await landingShowcasePin(db, []); } catch { failedWithout = true; }
+  const log = console.log; console.log = () => undefined;
+  try { await landingShowcasePin(db, [`--summaries-file=${file}`]); } finally { console.log = log; }
+  const { rows } = await db.query('SELECT fp.summary_vi FROM landing_showcase_pins sp JOIN facebook_posts fp ON fp.id = sp.post_id ORDER BY sp.position');
+  assert(failedWithout && rows.length === 2 && rows.every(row => /khai trương/.test(row.summary_vi)), JSON.stringify(rows));
+  await new Promise(resolve => setTimeout(resolve, 61_000));
+  const body = await search('Tôi bán cân điện tử, muốn tìm siêu thị mini ở Cà Mau.');
+  assert(body.leads.length === 2 && body.leads.some(lead => /Hủ tiếu/.test(lead.excerpt)), JSON.stringify(body).slice(0, 300));
+});
+
 await db.end();
 await app.close();
 console.log(`${passed}/${passed + failed} passed`);
