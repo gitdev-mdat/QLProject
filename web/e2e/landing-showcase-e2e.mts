@@ -106,6 +106,14 @@ await check('S7 pinning forever: the pins survive their posts getting old', asyn
   assert(body.leads.length === 2, JSON.stringify(body).slice(0, 300));
 });
 
+await check('S8 re-pin works when every demo post is months old (Muse often returns older posts)', async () => {
+  await db.query("UPDATE facebook_posts SET published_at = now() - interval '90 days', first_seen_at = now() - interval '90 days' WHERE agent_connection_id = $1", [profileId]);
+  const log = console.log; console.log = () => undefined;
+  try { await landingShowcasePin(db, []); } finally { console.log = log; }
+  const { rows } = await db.query('SELECT fp.content FROM landing_showcase_pins sp JOIN facebook_posts fp ON fp.id = sp.post_id ORDER BY sp.position');
+  assert(rows.length === 2 && rows.every(row => !/xe máy/.test(row.content)), JSON.stringify(rows));
+});
+
 await db.end();
 await app.close();
 console.log(`${passed}/${passed + failed} passed`);
