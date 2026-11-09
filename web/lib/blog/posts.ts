@@ -15,6 +15,11 @@ export function visiblePosts(): BlogPost[] {
   return ALL_POSTS.filter(post => post.status === 'published' || preview);
 }
 
+/** True when this deployment has at least one article to show, so links to the guide never lead to an empty page or a 404. */
+export function hasVisiblePosts(): boolean {
+  return visiblePosts().length > 0;
+}
+
 export function findPost(slug: string): BlogPost | null {
   return visiblePosts().find(post => post.slug === slug) ?? null;
 }

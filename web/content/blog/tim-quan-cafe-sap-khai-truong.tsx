@@ -30,8 +30,7 @@ export const meta: BlogPostMeta = {
   ],
   related: ['tim-khach-hang-tiem-nang-tren-facebook'],
   sources: [
-    { label: 'Sapo: Lập kế hoạch khai trương quán cafe chi tiết và hiệu quả', url: 'https://www.sapo.vn/blog/khai-truong-quan-cafe', note: 'Đặt việc mua phần mềm quản lý quán và đào tạo nhân viên vào kế hoạch trước ngày khai trương.' },
-    { label: 'Toast: Opening a Coffee Shop Checklist', url: 'https://pos.toasttab.com/vi-us/resources/opening-a-coffee-shop-checklist', note: 'Checklist mở quán có mốc 9, 6 và 3 tháng trước khai trương và mục chọn hệ thống POS (tiếng Anh).' },
+    { label: 'Sapo: Lập kế hoạch khai trương quán cafe chi tiết và hiệu quả', url: 'https://www.sapo.vn/blog/khai-truong-quan-cafe', note: 'Phần lập kế hoạch khai trương có mục mua phần mềm quản lý quán và checklist đào tạo nhân viên trước ngày khai trương.' },
     { label: 'Bộ tín hiệu và cách xếp hạng bài đăng QLead đang dùng', note: 'Mô tả trong bài dựa trên mã nguồn sản phẩm tại thời điểm cập nhật.' },
   ],
 };
@@ -63,7 +62,7 @@ export default function Article() {
     <p>Bài này dành cho người bán sản phẩm hoặc dịch vụ cho quán: phần mềm quản lý và máy tính tiền, máy pha, nguyên liệu, nội thất, biển hiệu, đồng phục, dịch vụ tuyển dụng hay quảng bá. Mọi bước dưới đây làm được bằng tài khoản Facebook bình thường, không cần công cụ nào.</p>
 
     <h2 id="vi-sao-truoc-khai-truong">Vì sao nên liên hệ trước ngày khai trương</h2>
-    <p>Nhiều việc mua sắm của một quán mới được chốt trong giai đoạn chuẩn bị. Các bản kế hoạch mở quán phổ biến cũng xếp như vậy: hướng dẫn khai trương quán cafe của Sapo đưa việc mua phần mềm quản lý quán và đào tạo nhân viên vào phần chuẩn bị trước ngày mở cửa, còn checklist mở quán của Toast chia việc theo mốc 9, 6 và 3 tháng trước khai trương và có mục chọn hệ thống bán hàng (POS).</p>
+    <p>Nhiều việc mua sắm của một quán mới được chốt trong giai đoạn chuẩn bị. Ví dụ, hướng dẫn lập kế hoạch khai trương quán cafe của Sapo xếp việc mua phần mềm quản lý quán vào phần chuẩn bị cho buổi khai trương, cùng với checklist đào tạo nhân viên trước ngày mở cửa. Nhân viên cần được dạy dùng máy tính tiền trước khi đón khách, nên phần mềm thường phải được chọn trước đó.</p>
     <p>Sau khi quán đã mở, chủ quán bận vận hành và phần lớn nhà cung cấp đã được chọn. Bạn vẫn có thể chào hàng, nhưng khi đó bạn phải thuyết phục họ đổi sang bạn, thay vì giúp họ chọn từ đầu.</p>
 
     <h2 id="dau-hieu">Năm dấu hiệu quán sắp mở trên Facebook</h2>

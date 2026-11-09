@@ -14,7 +14,7 @@ export default function BlogLayout({ children }: Readonly<{ children: React.Reac
     <a className="skip-link" href="#blog-main">Bỏ qua điều hướng</a>
     <header className="blog-nav">
       <div className="blog-wrap blog-nav-inner">
-        <div className="blog-nav-brand"><Brand/><Link href="/blog" className="blog-nav-section">Blog</Link></div>
+        <div className="blog-nav-brand"><Brand/><Link href="/blog" className="blog-nav-section">Cẩm nang</Link></div>
         <div className="blog-nav-actions">
           <BlogCtaLink className="btn btn-ghost blog-nav-try" href={productHref('/', 'blog', 'nav', '#demo')} slug="blog" position="nav">Thử tìm khách</BlogCtaLink>
           <BlogCtaLink className="btn btn-primary btn-sm" href={productHref('/dang-ky', 'blog', 'nav')} slug="blog" position="nav-signup">Bắt đầu</BlogCtaLink>
@@ -26,7 +26,7 @@ export default function BlogLayout({ children }: Readonly<{ children: React.Reac
       <div className="blog-wrap blog-footer-inner">
         <Brand/>
         <p>Hướng dẫn tìm và tiếp cận khách hàng đang có nhu cầu, do đội ngũ QLead biên soạn.</p>
-        <nav aria-label="Liên kết"><Link href="/">Trang chủ</Link><Link href="/blog">Blog</Link><Link href="/dang-nhap">Đăng nhập</Link></nav>
+        <nav aria-label="Liên kết"><Link href="/">Trang chủ</Link><Link href="/blog">Cẩm nang</Link><Link href="/dang-nhap">Đăng nhập</Link></nav>
       </div>
     </footer>
   </div>;

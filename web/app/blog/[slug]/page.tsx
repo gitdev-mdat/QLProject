@@ -51,7 +51,7 @@ function structuredData(post: BlogPost) {
       '@context': 'https://schema.org', '@type': 'BreadcrumbList',
       itemListElement: [
         { '@type': 'ListItem', position: 1, name: 'QLead', item: SITE_URL },
-        { '@type': 'ListItem', position: 2, name: 'Blog', item: `${SITE_URL}/blog` },
+        { '@type': 'ListItem', position: 2, name: 'Cẩm nang', item: `${SITE_URL}/blog` },
         { '@type': 'ListItem', position: 3, name: post.h1, item: url },
       ],
     },
@@ -73,7 +73,7 @@ export default async function BlogArticle({ params }: Props) {
     <div className="blog-wrap blog-article-head">
       {post.status === 'draft' && <p className="blog-draft-banner" role="note"><Icon name="info" size={18}/>Bản nháp chờ duyệt. Trang này không được lập chỉ mục và chưa xuất bản.</p>}
       <nav className="blog-breadcrumb" aria-label="Đường dẫn">
-        <ol><li><Link href="/">QLead</Link></li><li><Link href="/blog">Blog</Link></li><li aria-current="page">{TOPICS[post.topic].label}</li></ol>
+        <ol><li><Link href="/">QLead</Link></li><li><Link href="/blog">Cẩm nang</Link></li><li aria-current="page">{TOPICS[post.topic].label}</li></ol>
       </nav>
       <h1>{post.h1}</h1>
       <p className="blog-dek">{post.description}</p>
