@@ -12,6 +12,7 @@ export type LeadSource =
 /** A lead plus every search that found the same Facebook post; the earliest discovery is the lead itself. */
 export type Lead = LeadRecord & {
   sources: LeadSource[];
+  deliveredAt: string | null;
   eligibility: { basis: 'source_linked_search'; relevance: 'selected_by_search'; independentlyVerified: false };
 };
 

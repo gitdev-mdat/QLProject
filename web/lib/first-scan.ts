@@ -14,12 +14,8 @@ export type FirstScan = {
   /** Posts the scan looked at and posts it newly stored, exactly as recorded; null before the scan finished. */
   totalFound: number | null;
   newPosts: number | null;
-  /**
-   * Whether QLead currently has a search service that can start queued searches (an active worker whose connection
-   * was verified). Evidence, not a promise: false means a queued search will NOT start until setup is finished.
-   * Customer copy never names the worker or its credential.
-   */
-  searchReady: boolean;
+  /** False: no verified active worker is configured. True: this job has a live lease. Null: Hook polling is unobservable. */
+  searchReady: boolean | null;
   /** Additive backend contract for Claude's discovery progress view; counts are new usable source posts, not businesses. */
   discovery: {
     status: 'initial_waiting' | 'initial_running' | 'initial_completed' | 'followup_planned' | 'followup_waiting' | 'followup_running' | 'completed' | 'no_additional_coverage' | 'failed' | 'retrying' | 'paused' | 'suspended';

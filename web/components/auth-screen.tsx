@@ -71,7 +71,7 @@ function DevQuickLogin({ users }: { users: DevLoginOption[] }) {
   </section>;
 }
 
-export function AuthScreen({ mode, devUsers = [], signedInAs = null, returnTo = null }: { mode: 'login' | 'register'; devUsers?: DevLoginOption[]; signedInAs?: string | null; returnTo?: string | null }) {
+export function AuthScreen({ mode, devUsers = [], signedInAs = null, returnTo = null, context = null }: { mode: 'login' | 'register'; devUsers?: DevLoginOption[]; signedInAs?: string | null; returnTo?: string | null; context?: 'landing' | null }) {
   const isLogin = mode === 'login';
   return <div className="auth-layout">
     <section className="auth-aside">
@@ -92,12 +92,12 @@ export function AuthScreen({ mode, devUsers = [], signedInAs = null, returnTo = 
       <div className="auth-card">
         <div className="auth-card-head">
           <h1>{isLogin ? 'Chào mừng trở lại' : 'Tạo tài khoản QLead'}</h1>
-          <p>{isLogin ? 'Đăng nhập để tiếp tục xem lead mới của bạn.' : 'Thiết lập nhu cầu theo dõi đầu tiên trong vài phút.'}</p>
+          <p>{isLogin ? 'Đăng nhập để tiếp tục xem lead mới của bạn.' : context === 'landing' ? 'Miễn phí. Xem thêm lead cho nhu cầu bạn vừa tìm, không cần nhập lại.' : 'Thiết lập nhu cầu theo dõi đầu tiên trong vài phút.'}</p>
         </div>
         {signedInAs && <p className="auth-signed-in" role="status"><Icon name="info" size={16}/><span>Trình duyệt đang đăng nhập với tên <b>{signedInAs}</b>. {isLogin ? 'Đăng nhập' : 'Tạo tài khoản'} sẽ thay phiên này. <Link href={returnTo ?? '/app'}>Tiếp tục với {signedInAs}</Link></span></p>}
         <AuthForm mode={mode} returnTo={returnTo}/>
         {isLogin && devUsers.length > 0 && <DevQuickLogin users={devUsers}/>}
-        <p className="auth-switch">{isLogin ? <>Chưa có tài khoản? <Link href="/dang-ky">Tạo tài khoản</Link></> : <>Đã có tài khoản? <Link href="/dang-nhap">Đăng nhập</Link></>}</p>
+        <p className="auth-switch">{isLogin ? <>Chưa có tài khoản? <Link href="/dang-ky">Tạo tài khoản</Link></> : <>Đã có tài khoản? <Link href={context === 'landing' ? '/dang-nhap?tiep=/app/thu-tim' : '/dang-nhap'}>Đăng nhập</Link></>}</p>
       </div>
     </main>
   </div>;

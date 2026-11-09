@@ -1,0 +1,165 @@
+{
+  "run": "915e69",
+  "base": "http://127.0.0.1:3052",
+  "passed": 27,
+  "failed": 0,
+  "timings_ms": {
+    "auto": [
+      90
+    ],
+    "user": [
+      967
+    ],
+    "cached": [
+      301
+    ]
+  },
+  "median_ms": {
+    "auto": 90,
+    "user": 967,
+    "cached": 301
+  },
+  "server": {
+    "p50": 0,
+    "p95": 10.299999999999955,
+    "db_loads": 15,
+    "n": 338
+  },
+  "results": [
+    {
+      "name": "A1 Landing loads; the demo section no longer says \"bài mẫu\"",
+      "pass": true,
+      "detail": "Nhập nhu cầu, xem ngay lead thật QLead đã tìm thấy trên Facebook."
+    },
+    {
+      "name": "A2 Scrolling to the section runs the example search and shows real leads (≤2)",
+      "pass": true,
+      "detail": "2 lead thật phù hợp, 101 ms after scroll"
+    },
+    {
+      "name": "A3 User search returns real stored posts that match (category, signal, place)",
+      "pass": true,
+      "detail": "967 ms click→leads; posts df742867, 57567e86"
+    },
+    {
+      "name": "A4 Same search again is served from the answer cache",
+      "pass": true,
+      "detail": "301 ms"
+    },
+    {
+      "name": "A5 Public payload: the real Facebook link, but no author, contact or internal ids; no phone on screen",
+      "pass": true,
+      "detail": "keys: key,signals,excerpt,summarized,area,publishedAt,source,hasContact,url,match"
+    },
+    {
+      "name": "A6 Anonymous visitor opens each post on Facebook (new tab); \"Xem thêm\" under the leads goes to sign-up",
+      "pass": true,
+      "detail": "2 Facebook link(s)"
+    },
+    {
+      "name": "A7 Unrecognised or uncovered request → honest empty state, no padding",
+      "pass": true,
+      "detail": "74 ms"
+    },
+    {
+      "name": "A8 Too-short request is caught in the browser without a request",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "A9 Server 503 → \"QLead đang bận\" (forced via request routing)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "A9 Server 429 → \"Bạn vừa tìm nhiều lần liên tiếp\" (forced via request routing)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "A10 Slow server (>8 s) → \"Tìm lâu hơn bình thường\" with retry, no endless spinner",
+      "pass": true,
+      "detail": "gave up after 8219 ms"
+    },
+    {
+      "name": "A11 Loading state is honest (no %); skeleton only on a slow answer",
+      "pass": true,
+      "detail": "Đang tìm lead phù hợp…"
+    },
+    {
+      "name": "A12 No console errors on the landing page",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "B1 \"Xem thêm lead phù hợp\" saves the search and opens the existing register form with landing copy",
+      "pass": true,
+      "detail": "Miễn phí. Xem thêm lead cho nhu cầu bạn vừa tìm, không cần nhập lại."
+    },
+    {
+      "name": "B2 Register (no payment, same form) → onboarding shows the same leads in full and the request prefilled",
+      "pass": true,
+      "detail": "2 lead(s) with their Facebook links"
+    },
+    {
+      "name": "B3 Server recorded signup_completed + full_results_viewed for that preview and account",
+      "pass": true,
+      "detail": "landing_signup_completed, landing_full_results_viewed"
+    },
+    {
+      "name": "B4 Finishing onboarding saves the same request and queues the real first search (Muse path)",
+      "pass": true,
+      "detail": "job initial/pending"
+    },
+    {
+      "name": "B5 Signed-in visitor on the landing page opens full details inline",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "C1 Existing account: Xem thêm → register page → \"Đăng nhập\" → sign in → /app/thu-tim shows the leads in full",
+      "pass": true,
+      "detail": "2 lead(s); expired state explained"
+    },
+    {
+      "name": "C2 Unlock API: another account cannot see anything it was not shown; garbage ids are 404",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "D1 768px: results, Facebook links and \"Xem thêm\" fit without horizontal scroll",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "D1 390px: results, Facebook links and \"Xem thêm\" fit without horizontal scroll",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "D2 Layout shift: the results column does not jump when real leads replace the loading state",
+      "pass": true,
+      "detail": "CLS 0.001"
+    },
+    {
+      "name": "E1 Rate limit: the 13th search in a minute from one address is refused (429)",
+      "pass": true,
+      "detail": "200,200,200,200,200,200,200,200,200,200,200,200,429"
+    },
+    {
+      "name": "E2 Cross-origin and oversized requests are refused; the client cannot ask for more than 2 leads",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "E3 Tenant isolation: every post any landing preview ever showed belongs to a catalog account",
+      "pass": true,
+      "detail": "337 previews checked"
+    },
+    {
+      "name": "E4 Funnel events recorded without query text",
+      "pass": true,
+      "detail": "landing_full_results_viewed=22, landing_preview_opened=26, landing_search_empty=31, landing_search_failed=40, landing_search_results_shown=192, landing_search_started=263, landing_signup_clicked=7, landing_signup_completed=6"
+    }
+  ]
+}

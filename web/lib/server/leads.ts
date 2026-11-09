@@ -1,5 +1,7 @@
 import 'server-only';
+import type { PoolClient } from 'pg';
 import { toLeadRecord, type StoredFacebookPost } from '../../../src/lead-data';
+import { distributeProfileLeads } from '../../../src/lead-distribution';
 import type { Lead, LeadSource } from '../lead-source';
 import { compareLeadByPostedAt } from '../lead-order';
 import { completeLeadMetadataSql, sourceLinkedPostSql } from '../../../src/lead-eligibility';
@@ -10,7 +12,8 @@ import { db } from './db';
  * posts collected by their own agents. Same columns as the agent API's GET /api/agent/posts.
  */
 const POST_SELECT = `SELECT fp.id, fp.author, fp.title, fp.content, fp.summary_vi, fp.published_at, fp.original_url, fp.normalized_url,
-    fp.first_seen_at AS discovered_at, fp.source_type, fp.collected_via, fp.platform, ac.name AS agent_name,
+    fp.first_seen_at AS discovered_at, (SELECT min(d.delivered_at) FROM profile_lead_deliveries d WHERE d.post_id = fp.id AND d.state = 'delivered') AS delivered_at,
+    fp.source_type, fp.collected_via, fp.platform, ac.name AS agent_name,
     ac.id AS connection_id, ac.kind AS connection_kind,
     COALESCE(jsonb_agg(jsonb_build_object('version',sc.version,'enabled',sc.enabled,'keywords',sc.keywords,
       'location',sc.location,'sources',sc.sources,'frequency_minutes',sc.frequency_minutes)
@@ -54,7 +57,8 @@ function groupByPost(rows: Row[]): Lead[] {
     const sorted = [...group].sort((x, y) => time(x) - time(y) || x.id.localeCompare(y.id));
     const firstValue = (field: 'author' | 'title' | 'content' | 'summary_vi') => sorted.find(row => row[field]?.trim())?.[field] ?? null;
     const record = toLeadRecord({ ...sorted[0], author: firstValue('author'), title: firstValue('title'), content: firstValue('content'), summary_vi: firstValue('summary_vi'), published_at: originalPostTime(group) });
-    return { ...record, agent_name: null, sources: sorted.map(sourceOf), eligibility: { basis: 'source_linked_search' as const, relevance: 'selected_by_search' as const, independentlyVerified: false as const } };
+    const deliveredAt = sorted.map(row => row.delivered_at).filter(Boolean).map(value => new Date(value!).toISOString()).sort()[0] ?? null;
+    return { ...record, agent_name: null, sources: sorted.map(sourceOf), deliveredAt, eligibility: { basis: 'source_linked_search' as const, relevance: 'selected_by_search' as const, independentlyVerified: false as const } };
   });
 }
 
@@ -67,29 +71,107 @@ function groupByPost(rows: Row[]): Lead[] {
 export type LeadScope = { kind: 'all' } | { kind: 'profile'; profileId: string } | { kind: 'legacy' };
 
 /** Newest leads in scope, plus how many leads the scope holds in total (before the limit). */
-export type LeadPage = { leads: Lead[]; total: number };
+export type LeadPage = { leads: Lead[]; total: number; delivery: LeadDistributionSummary };
+
+export type LeadDistributionSummary = {
+  status: 'ready' | 'searching' | 'paused' | 'suspended' | 'worker_unavailable';
+  maxLeadsPerCycle: number;
+  deliveredThisCycle: number;
+  queued: number;
+  nextCycleAt: string | null;
+  workerClaimed: boolean;
+  currentSearchStatus: 'queued' | 'running' | 'retrying' | 'completed' | 'failed' | null;
+  worker: { configuredActive: boolean; lastAuthenticatedAt: string | null; lastClaimAt: string | null; connectionVerifiedAt: string | null };
+};
 
 /** Upper bound for one scoped list. A single search profile is far below this; the total says when it is not. */
 export const SCOPED_LEAD_LIMIT = 2000;
 
+async function withTx<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await db().connect();
+  try { await client.query('BEGIN'); const value = await fn(client); await client.query('COMMIT'); return value; }
+  catch (error) { await client.query('ROLLBACK').catch(() => undefined); throw error; }
+  finally { client.release(); }
+}
+
+async function deliverWaitingLeads(userId: string, scope: LeadScope): Promise<void> {
+  await withTx(async client => {
+    const params: unknown[] = [userId];
+    const filter = scope.kind === 'profile' ? 'AND ac.id = $2 AND ac.kind = \'search_profile\'' : scope.kind === 'legacy' ? 'AND false' : "AND ac.kind = 'search_profile'";
+    if (scope.kind === 'profile') params.push(scope.profileId);
+    const { rows } = await client.query<{ id: string }>(`SELECT ac.id FROM agent_connections ac JOIN users u ON u.id = ac.user_id
+      JOIN LATERAL (SELECT enabled FROM scan_configs WHERE agent_connection_id = ac.id ORDER BY version DESC LIMIT 1) sc ON true
+      WHERE ac.user_id = $1 AND ac.kind = 'search_profile' AND ac.status = 'active' AND sc.enabled AND u.lead_monitoring_status = 'active' ${filter}
+      ORDER BY ac.id`, params);
+    for (const profile of rows) await distributeProfileLeads(client, userId, profile.id);
+  });
+}
+
+async function deliverySummary(userId: string, scope: LeadScope): Promise<LeadDistributionSummary> {
+  const params: unknown[] = [userId];
+  let filter = '';
+  if (scope.kind === 'profile') { params.push(scope.profileId); filter = 'AND ac.id = $2'; }
+  if (scope.kind === 'legacy') filter = "AND ac.kind <> 'search_profile'";
+  const { rows: [row] } = await db().query(`SELECT
+      coalesce(sum(settings.max_leads_per_scan), 0)::int AS max_leads_per_cycle,
+      coalesce(sum(CASE WHEN c.cycle_key = floor(extract(epoch FROM now()) / (sc.frequency_minutes * 60))::bigint::text THEN
+        (SELECT count(*) FROM profile_lead_deliveries d WHERE d.search_profile_id = ac.id AND d.delivery_cycle_id = c.id AND d.state = 'delivered') ELSE 0 END), 0)::int AS delivered_this_cycle,
+      coalesce(sum((SELECT count(*) FROM profile_lead_deliveries d WHERE d.search_profile_id = ac.id AND d.state = 'queued')), 0)::int AS queued,
+      min(to_timestamp((floor(extract(epoch FROM now()) / (sc.frequency_minutes * 60)) + 1) * sc.frequency_minutes * 60)) AS next_cycle_at,
+      bool_or(j.status = 'claimed' AND j.lease_expires_at > now()) AS worker_claimed,
+      bool_or(j.status IN ('pending', 'claimed', 'blocked', 'needs_reauthorization')) AS searching,
+      bool_or((j.status = 'claimed' AND j.lease_expires_at <= now()) OR (j.status = 'pending' AND j.attempts > 0)) AS retrying,
+      bool_or(j.status = 'blocked' AND j.last_error = 'no_authorized_worker') AS worker_unavailable,
+      bool_or(NOT sc.enabled) AS paused,
+      bool_or(u.lead_monitoring_status <> 'active') AS suspended,
+      bool_or(j.status = 'failed') AS latest_failed,
+      bool_or(j.status = 'completed') AS latest_completed
+    FROM agent_connections ac JOIN users u ON u.id = ac.user_id
+    JOIN LATERAL (SELECT enabled, frequency_minutes FROM scan_configs WHERE agent_connection_id = ac.id ORDER BY version DESC LIMIT 1) sc ON true
+    LEFT JOIN lead_distribution_settings settings ON settings.search_profile_id = ac.id
+    LEFT JOIN LATERAL (SELECT status, lease_expires_at, attempts, last_error FROM search_jobs WHERE search_profile_id = ac.id ORDER BY created_at DESC LIMIT 1) j ON true
+    LEFT JOIN LATERAL (SELECT id, cycle_key FROM lead_distribution_cycles WHERE search_profile_id = ac.id ORDER BY created_at DESC LIMIT 1) c ON true
+    WHERE ac.user_id = $1 ${filter}`, params);
+  const { rows: [worker] } = await db().query(`SELECT bool_or(status = 'active' AND credential_status = 'active') AS configured_active,
+      max(last_seen_at) AS last_authenticated_at, max(last_claim_at) AS last_claim_at, max(connection_verified_at) AS connection_verified_at
+    FROM muse_workers WHERE status = 'active' AND credential_status = 'active'`);
+  const searching = Boolean(row?.searching);
+  const status = row?.suspended ? 'suspended' : row?.paused ? 'paused' : row?.worker_unavailable ? 'worker_unavailable' : searching ? 'searching' : 'ready';
+  return { status, maxLeadsPerCycle: row?.max_leads_per_cycle ?? 0, deliveredThisCycle: row?.delivered_this_cycle ?? 0,
+    queued: row?.queued ?? 0, nextCycleAt: row?.next_cycle_at ? new Date(row.next_cycle_at).toISOString() : null,
+    workerClaimed: Boolean(row?.worker_claimed), currentSearchStatus: row?.worker_claimed ? 'running'
+      : row?.retrying ? 'retrying' : searching ? 'queued' : row?.latest_failed ? 'failed' : row?.latest_completed ? 'completed' : null,
+    worker: { configuredActive: Boolean(worker?.configured_active), lastAuthenticatedAt: worker?.last_authenticated_at ? new Date(worker.last_authenticated_at).toISOString() : null,
+      lastClaimAt: worker?.last_claim_at ? new Date(worker.last_claim_at).toISOString() : null,
+      connectionVerifiedAt: worker?.connection_verified_at ? new Date(worker.connection_verified_at).toISOString() : null } };
+}
+
 export async function listLeadPageForUser(userId: string, scope: LeadScope, limit = 200): Promise<LeadPage> {
+  if (scope.kind === 'profile' && !UUID.test(scope.profileId)) {
+    return { leads: [], total: 0, delivery: { status: 'ready', maxLeadsPerCycle: 0, deliveredThisCycle: 0, queued: 0, nextCycleAt: null, workerClaimed: false, currentSearchStatus: null,
+      worker: { configuredActive: false, lastAuthenticatedAt: null, lastClaimAt: null, connectionVerifiedAt: null } } };
+  }
+  await deliverWaitingLeads(userId, scope);
   const params: unknown[] = [userId, limit];
   let scopeSql = '';
   if (scope.kind === 'profile') {
-    if (!UUID.test(scope.profileId)) return { leads: [], total: 0 };
+    if (!UUID.test(scope.profileId)) return { leads: [], total: 0, delivery: { status: 'ready', maxLeadsPerCycle: 0, deliveredThisCycle: 0, queued: 0, nextCycleAt: null, workerClaimed: false, currentSearchStatus: null,
+      worker: { configuredActive: false, lastAuthenticatedAt: null, lastClaimAt: null, connectionVerifiedAt: null } } };
     params.push(scope.profileId);
     scopeSql = `AND EXISTS (SELECT 1 FROM facebook_posts sp JOIN agent_connections sac ON sac.id = sp.agent_connection_id
-          WHERE sac.id = $3 AND sac.user_id = $1 AND sac.kind = 'search_profile' AND sp.normalized_url = fp.normalized_url AND ${sourceLinkedPostSql('sp')})`;
+          WHERE sac.id = $3 AND sac.user_id = $1 AND sac.kind = 'search_profile' AND sp.normalized_url = fp.normalized_url AND ${sourceLinkedPostSql('sp')}
+            AND EXISTS (SELECT 1 FROM profile_lead_deliveries d WHERE d.search_profile_id = sp.agent_connection_id AND d.post_id = sp.id AND d.state = 'delivered'))`;
   } else if (scope.kind === 'legacy') {
     scopeSql = `AND EXISTS (SELECT 1 FROM facebook_posts sp JOIN agent_connections sac ON sac.id = sp.agent_connection_id
           WHERE sac.user_id = $1 AND sac.kind <> 'search_profile' AND sp.normalized_url = fp.normalized_url AND ${sourceLinkedPostSql('sp')})`;
   }
+  const deliveredOnly = "AND (ac.kind <> 'search_profile' OR EXISTS (SELECT 1 FROM profile_lead_deliveries d WHERE d.search_profile_id = fp.agent_connection_id AND d.post_id = fp.id AND d.state = 'delivered'))";
   const { rows } = await db().query<Row & { scope_total: number }>(`WITH lead_page AS (
       SELECT chosen.normalized_url, chosen.id, chosen.published_at, chosen.scope_total FROM (
         SELECT url_pick.*, count(*) OVER ()::int AS scope_total FROM (
           SELECT DISTINCT ON (fp.normalized_url) fp.normalized_url, fp.id, fp.published_at
           FROM facebook_posts fp JOIN agent_connections ac ON ac.id = fp.agent_connection_id
-          WHERE ac.user_id = $1 AND ${sourceLinkedPostSql('fp')} ${scopeSql}
+          WHERE ac.user_id = $1 AND ${sourceLinkedPostSql('fp')} ${deliveredOnly} ${scopeSql}
           ORDER BY fp.normalized_url, (fp.published_at IS NULL), fp.id
         ) url_pick
       ) chosen
@@ -97,12 +179,12 @@ export async function listLeadPageForUser(userId: string, scope: LeadScope, limi
     )
     ${POST_SELECT.replace('SELECT fp.id,', 'SELECT page.scope_total, fp.id,')}
     JOIN lead_page page ON page.normalized_url = fp.normalized_url
-    WHERE ac.user_id = $1 AND ${sourceLinkedPostSql('fp')} GROUP BY fp.id, ac.id, page.published_at, page.id, page.scope_total
+    WHERE ac.user_id = $1 AND ${sourceLinkedPostSql('fp')} ${deliveredOnly} GROUP BY fp.id, ac.id, page.published_at, page.id, page.scope_total
     ORDER BY page.published_at DESC NULLS LAST, page.id, fp.first_seen_at ASC NULLS LAST, fp.id`, params);
   const leads = groupByPost(rows)
     .sort((a, b) => compareLeadByPostedAt(a, b))
     .slice(0, limit);
-  return { leads, total: rows[0]?.scope_total ?? 0 };
+  return { leads, total: rows[0]?.scope_total ?? 0, delivery: await deliverySummary(userId, scope) };
 }
 
 export async function listLeadsForUser(userId: string, limit = 200, _rankingNow = Date.now()): Promise<Lead[]> {
@@ -114,6 +196,7 @@ export async function getLeadForUser(userId: string, postId: string): Promise<Le
   if (!UUID.test(postId)) return null;
   const { rows } = await db().query<Row>(`${POST_SELECT}
     WHERE ac.user_id = $1 AND ${sourceLinkedPostSql('fp')}
+      AND (ac.kind <> 'search_profile' OR EXISTS (SELECT 1 FROM profile_lead_deliveries d WHERE d.search_profile_id = fp.agent_connection_id AND d.post_id = fp.id AND d.state = 'delivered'))
       AND fp.normalized_url = (SELECT p.normalized_url FROM facebook_posts p JOIN agent_connections c ON c.id = p.agent_connection_id WHERE p.id = $2 AND c.user_id = $1)
     ${GROUP_BY}`, [userId, postId]);
   const self = rows.find(row => row.id === postId);
@@ -122,7 +205,8 @@ export async function getLeadForUser(userId: string, postId: string): Promise<Le
   const ordered = [self, ...others].sort((x, y) => time(x) - time(y));
   const firstValue = (field: 'author' | 'title' | 'content' | 'summary_vi') => ordered.find(row => row[field]?.trim())?.[field] ?? null;
   const record = toLeadRecord({ ...self, author: firstValue('author'), title: firstValue('title'), content: firstValue('content'), summary_vi: firstValue('summary_vi'), published_at: originalPostTime(rows) });
-  return { ...record, agent_name: null, sources: ordered.map(sourceOf), eligibility: { basis: 'source_linked_search', relevance: 'selected_by_search', independentlyVerified: false } };
+  return { ...record, agent_name: null, sources: ordered.map(sourceOf), deliveredAt: ordered.map(row => row.delivered_at).filter(Boolean).map(value => new Date(value!).toISOString()).sort()[0] ?? null,
+    eligibility: { basis: 'source_linked_search', relevance: 'selected_by_search', independentlyVerified: false } };
 }
 
 /**

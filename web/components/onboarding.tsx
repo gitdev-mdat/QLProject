@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { draftPayload, effectiveKeywords, emptyDraft, planFor, withDescription, type Draft } from '@/lib/profile-draft';
 import { frequencyLabel, PROFILE_FREQUENCIES } from '@/lib/profile-state';
+import { clearLandingHandoff, readLandingHandoff } from '@/lib/landing-client';
+import { LandingHandoffLeads, useLandingHandoff } from './landing-handoff';
 import { GoatMascot } from './goat-mascot';
 import { Brand, Icon } from './visuals';
 
@@ -38,11 +40,16 @@ export function Onboarding({ userId, displayName }: { userId: string; displayNam
   const [error, setError] = useState('');
   const { step, draft, choice } = state;
   const describeBox = useRef<HTMLTextAreaElement>(null);
+  const landing = useLandingHandoff();
 
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(storageKey);
-      if (raw) {
+      const fromLanding = readLandingHandoff();
+      if (!raw && fromLanding) {
+        // Came from the landing search: start from the visitor's own words instead of asking again.
+        setState({ step: 0, choice: CUSTOM, texts: { [CUSTOM]: fromLanding.query }, draft: { ...emptyDraft, description: fromLanding.query, location: '' } });
+      } else if (raw) {
         const saved = JSON.parse(raw) as Saved;
         const known = saved.choice === CUSTOM || EXAMPLES.some(example => example.id === saved.choice);
         const choice = known ? saved.choice : saved.draft?.description ? CUSTOM : null;
@@ -93,6 +100,7 @@ export function Onboarding({ userId, displayName }: { userId: string; displayNam
       const data = await response.json().catch(() => ({})) as { redirect?: string; error?: string };
       if (!response.ok || !data.redirect) throw new Error(data.error === 'invalid_request' ? 'Hãy quay lại và mô tả rõ hơn khách hàng bạn muốn tìm.' : 'Không lưu được. Thử lại sau ít phút.');
       try { window.localStorage.removeItem(storageKey); } catch { /* ignore */ }
+      clearLandingHandoff();
       window.location.assign(data.redirect);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Không lưu được.');
@@ -105,6 +113,7 @@ export function Onboarding({ userId, displayName }: { userId: string; displayNam
     <header className="onboarding-head"><Brand/><span>Bước {step + 1}/{STEPS.length}</span></header>
     <div className="onboarding-progress" role="progressbar" aria-valuemin={1} aria-valuemax={STEPS.length} aria-valuenow={step + 1} aria-label="Tiến độ thiết lập"><i style={{ width: `${((step + 1) / STEPS.length) * 100}%` }}/></div>
     <main className="onboarding-body">
+      {step === 0 && landing.status !== 'none' && <LandingHandoffLeads load={landing} compact/>}
       {step === 0 && <section aria-labelledby="ob-title">
         <p className="onboarding-hello">Chào {displayName}!</p>
         <h1 id="ob-title">Bạn là ai và muốn tìm khách hàng nào?</h1>

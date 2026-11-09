@@ -225,6 +225,35 @@ img, svg { display: block; }
 .demo-empty p { max-width: 460px; color: var(--muted); }
 .demo-results-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; padding: 16px 24px; background: var(--surface-2); }
 .demo-results-foot p { color: var(--muted); font-size: 14px; }
+/* Real-lead preview (landing search). */
+.demo-lead-list { min-height: 300px; }
+.demo-lead-list.is-stale, .demo-empty.is-stale { opacity: .55; transition: opacity .15s; }
+.demo-lead-kind { display: inline-block; margin-right: 8px; padding: 1px 8px; border-radius: 6px; background: var(--surface-2); color: var(--muted); font-size: 12px; font-weight: 600; vertical-align: 2px; }
+.demo-lead-match { display: flex; align-items: flex-start; gap: 6px; color: var(--muted); font-size: 13.5px; }
+.demo-lead-match .icon { flex: none; margin-top: 3px; color: var(--green-600); }
+.demo-lock { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+.demo-lock p { display: flex; gap: 8px; align-items: flex-start; color: var(--ink-2); font-size: 14.5px; }
+.demo-lock p .icon { flex: none; margin-top: 3px; color: var(--green-700); }
+.demo-full { display: grid; gap: 8px; color: var(--ink-2); }
+.demo-full details summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+.demo-hint { color: var(--gold-ink); font-size: 14px; }
+.demo-results-foot .demo-cta { flex: none; }
+/* Landing search results after sign-up (onboarding) or sign-in (/app/thu-tim). */
+.handoff { display: grid; gap: 10px; padding: 16px 18px; border: 1px solid var(--green-100); border-radius: 14px; background: var(--green-50); }
+.handoff h2 { display: flex; align-items: center; gap: 8px; font-size: 17px; }
+.handoff h2 .icon { color: var(--green-700); }
+.handoff-list { display: grid; gap: 10px; }
+.handoff-lead { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.handoff-lead-text { color: var(--ink); font-size: 15.5px; line-height: 1.5; }
+.handoff-original summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+.handoff-original p { margin-top: 6px; color: var(--ink-2); font-size: 14.5px; }
+.handoff.is-compact .handoff-lead-text { font-size: 15px; }
+.handoff-page { display: grid; gap: 16px; max-width: 720px; }
+.handoff-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+@media (max-width: 640px) {
+  .demo-lead-list { min-height: 0; }
+  .demo-results-foot .demo-cta, .demo-lock .btn { width: 100%; justify-content: center; white-space: normal; text-align: center; }
+}
 
 /* Sections */
 .section { padding: 88px 0; }
