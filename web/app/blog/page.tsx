@@ -7,7 +7,7 @@ import { visiblePosts } from '@/lib/blog/posts';
 import { TOPICS, formatDate, productHref } from '@/lib/blog/site';
 import { SOCIAL_IMAGE } from '@/lib/seo';
 
-const title = 'Blog QLead: tìm khách hàng theo tín hiệu kinh doanh';
+const title = 'Cẩm nang tìm khách hàng theo tín hiệu kinh doanh | QLead';
 const description = 'Hướng dẫn nhận ra cơ sở kinh doanh đang có nhu cầu trên Facebook, từ quán sắp khai trương đến cửa hàng mở chi nhánh, và cách tiếp cận đúng lúc.';
 
 export function generateMetadata(): Metadata {
@@ -30,8 +30,8 @@ export default function BlogIndex() {
 
   return <div className="blog-wrap blog-index">
     <header className="blog-index-head">
-      <h1>Blog QLead</h1>
-      <p>Cách nhận ra cơ sở kinh doanh đang có nhu cầu trên Facebook và tiếp cận họ đúng lúc.</p>
+      <h1>Cẩm nang tìm khách hàng</h1>
+      <p>Hướng dẫn thực tế cho người bán hàng: nhận ra cửa hàng, quán, cơ sở dịch vụ đang có nhu cầu trên Facebook, lọc bài lạc đề và liên hệ đúng lúc.</p>
     </header>
 
     <ul className="blog-cards">{posts.map(post => <li key={post.slug} className="blog-card">

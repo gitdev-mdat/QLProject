@@ -5,6 +5,7 @@ import { HeroScene } from '@/components/hero-scene';
 import { RevealOnScroll } from '@/components/reveal-on-scroll';
 import { NavScrollState } from '@/components/landing-motion';
 import { pageMetadata, SITE_DESCRIPTION, SITE_TITLE } from '@/lib/seo';
+import { hasVisiblePosts } from '@/lib/blog/posts';
 
 export const metadata = pageMetadata({ title: SITE_TITLE, description: SITE_DESCRIPTION, path: '/' });
 
@@ -28,6 +29,8 @@ const compare = [
 ];
 
 export default function LandingPage() {
+  // "Cẩm nang" only appears once there is an article this deployment can serve; production hides drafts.
+  const showGuide = hasVisiblePosts();
   return <>
     <script
       type="application/ld+json"
@@ -60,7 +63,7 @@ export default function LandingPage() {
     <header className="site-nav">
       <div className="wrap site-nav-inner">
         <Brand/>
-        <nav aria-label="Trang giới thiệu"><a href="#demo">Dùng thử</a><a href="#cach-hoat-dong">Cách hoạt động</a><a href="#so-sanh">So sánh</a></nav>
+        <nav aria-label="Trang giới thiệu"><a href="#demo">Dùng thử</a><a href="#cach-hoat-dong">Cách hoạt động</a><a href="#so-sanh">So sánh</a>{showGuide && <Link href="/blog">Cẩm nang</Link>}</nav>
         <div className="site-nav-actions"><Link className="btn btn-ghost" href="/dang-nhap">Đăng nhập</Link><Link className="btn btn-primary" href="/dang-ky">Bắt đầu ngay</Link></div>
       </div>
     </header>
@@ -126,6 +129,6 @@ export default function LandingPage() {
       </section>
     </main>
 
-    <footer className="site-footer"><div className="wrap site-footer-inner"><Brand/><p>Tìm khách hàng tiềm năng từ bài đăng và Reels trên Facebook.</p><nav className="site-footer-links" aria-label="Tài khoản"><Link href="/dang-nhap">Đăng nhập</Link><Link href="/dang-ky">Tạo tài khoản</Link></nav><span>© 2026 QLead</span></div></footer>
+    <footer className="site-footer"><div className="wrap site-footer-inner"><Brand/><p>Tìm khách hàng tiềm năng từ bài đăng và Reels trên Facebook.</p><nav className="site-footer-links" aria-label="Liên kết">{showGuide && <Link href="/blog">Cẩm nang</Link>}<Link href="/dang-nhap">Đăng nhập</Link><Link href="/dang-ky">Tạo tài khoản</Link></nav><span>© 2026 QLead</span></div></footer>
   </>;
 }
