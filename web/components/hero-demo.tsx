@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
-import { LANDING_QUERY_MIN, type LandingPreviewLead } from '@/lib/landing-search';
+import { LANDING_QUERY_MIN, NEAREST_MATCH_LABEL, type LandingPreviewLead } from '@/lib/landing-search';
 import { saveLandingHandoff, trackLanding, type LandingFailure, type LandingSearchResponse, type LandingTrigger } from '@/lib/landing-client';
 import { relativeTime } from '@/lib/lead-format';
 import { GoatMascot } from './goat-mascot';
@@ -68,7 +68,7 @@ function LeadCard({ lead, index, now, member, previewId, resultCount, unlock }: 
       {lead.area && <span><Icon name="pin" size={15}/>{lead.area}</span>}
       {lead.hasContact && <span className="has-contact"><Icon name="phone" size={15}/>Có số liên hệ trong bài</span>}
     </div>
-    <p className="demo-lead-match"><Icon name="check" size={14}/>Phù hợp: {lead.match}</p>
+    {lead.match !== NEAREST_MATCH_LABEL && <p className="demo-lead-match"><Icon name="check" size={14}/>Phù hợp: {lead.match}</p>}
     {member && open && <div className="demo-lead-post" id={panelId}>
       {full === null && <p className="muted-text">Đang mở…</p>}
       {full === 'error' && <p className="muted-text">Không mở được bài này. Bấm “Tìm khách hàng” để tìm lại.</p>}
@@ -209,11 +209,11 @@ export function HeroDemo() {
   const member = Boolean(result?.member);
   const stale = phase === 'searching' && !showSkeleton;
   const headline = phase === 'searching' ? 'Đang tìm lead phù hợp…'
-    : phase === 'found' ? `${leads.length} lead thật phù hợp`
-      : phase === 'empty' ? 'Chưa có lead phù hợp lúc này'
+    : phase === 'found' ? (result?.nearest ? 'Lead mới nhất QLead vừa tìm thấy' : `${leads.length} lead thật phù hợp`)
+      : phase === 'empty' ? 'QLead sẵn sàng tìm cho bạn'
         : phase === 'error' && failure ? FAILURES[failure].title
           : 'Mô tả khách hàng bạn cần';
-  const subline = phase === 'found' ? 'Từ bài đăng Facebook QLead đã thu thập'
+  const subline = phase === 'found' ? (result?.nearest ? 'Đăng ký để QLead tìm đúng theo mô tả của bạn' : 'Từ bài đăng Facebook QLead đã thu thập')
     : phase === 'searching' ? 'Trong các bài đăng QLead đã thu thập'
       : phase === 'idle' ? 'QLead trả về tối đa 2 lead thật để bạn xem thử' : null;
 
@@ -249,8 +249,7 @@ export function HeroDemo() {
       </ul>}
       {phase === 'idle' && <div className="demo-empty"><p>Viết bạn bán gì và muốn tìm khách nào, hoặc bấm một gợi ý. QLead tìm trong các bài đăng Facebook đã thu thập và trả về lead thật, không phải bài mẫu.</p></div>}
       {(phase === 'empty' || (stale && result?.outcome === 'empty')) && <div className={`demo-empty ${stale ? 'is-stale' : ''}`}>
-        <p>QLead chưa có bài nào trong 30 ngày qua khớp với mô tả này. Khi bạn tạo tài khoản, QLead bắt đầu tìm riêng trên Facebook theo đúng mô tả của bạn.</p>
-        <p className="muted-text">Bạn cũng có thể thử một gợi ý bên trái, hoặc mô tả rộng hơn (bỏ bớt khu vực).</p>
+        <p>Đăng ký miễn phí, QLead bắt đầu tìm khách hàng trên Facebook theo đúng mô tả của bạn.</p>
       </div>}
       {phase === 'error' && failure && <div className="demo-empty">
         <p>{FAILURES[failure].text}</p>

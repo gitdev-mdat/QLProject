@@ -437,3 +437,37 @@ export function rankLandingCandidates(query: string, pool: AnalyzedCandidate[] |
   }
   return picked.map(({ item, score, preview }, index) => ({ candidate: item.candidate, score, preview: { ...preview, key: String(index + 1) } }));
 }
+
+/** The landing page's default request; its matches are the fallback when a visitor's own words find nothing. */
+export const DEFAULT_LANDING_REQUEST = 'Tôi bán phần mềm quản lý quán, muốn tìm những quán F&B sắp khai trương, đang tuyển người hoặc mở chi nhánh.';
+export const NEAREST_MATCH_LABEL = 'Lead mới nhất QLead tìm thấy';
+
+/**
+ * Never answer the landing visitor with an empty box while QLead has real leads: when the visitor's words match
+ * nothing, show the best matches for the default F&B request, and failing that the newest fresh posts in the pool.
+ * The cards say plainly that these are QLead's newest leads, not matches for the visitor's words.
+ */
+export function nearestLandingCandidates(pool: AnalyzedCandidate[], now = Date.now()): LandingMatch[] {
+  const relabel = (match: LandingMatch, index: number): LandingMatch => ({ ...match, preview: { ...match.preview, key: String(index + 1), match: NEAREST_MATCH_LABEL } });
+  const byDefault = rankLandingCandidates(DEFAULT_LANDING_REQUEST, pool, now);
+  if (byDefault.length) return byDefault.map(relabel);
+  const fresh = pool.map(item => ({ item, fresh: freshness(item.candidate.published_at, item.candidate.discovered_at, now) }))
+    .filter((entry): entry is { item: AnalyzedCandidate; fresh: number } => entry.fresh !== null)
+    .sort((a, b) => b.fresh - a.fresh
+      || (Date.parse(b.item.candidate.published_at ?? b.item.candidate.discovered_at ?? '') || 0) - (Date.parse(a.item.candidate.published_at ?? a.item.candidate.discovered_at ?? '') || 0)
+      || a.item.candidate.id.localeCompare(b.item.candidate.id));
+  const picked: AnalyzedCandidate[] = [];
+  for (const { item } of fresh) {
+    if (picked.some(other => other.candidate.normalized_url === item.candidate.normalized_url || similar(other.tokens, item.tokens))) continue;
+    picked.push(item);
+    if (picked.length === LANDING_MAX_RESULTS) break;
+  }
+  return picked.map((item, index) => relabel({ candidate: item.candidate, score: 0, preview: {
+    key: '', signals: item.signals.slice(0, 2).map(id => SIGNAL_LABELS[id]).filter((label): label is string => Boolean(label)),
+    excerpt: clip(maskContacts(item.shown.text)), summarized: item.shown.summarized, area: item.places.places[0] ?? null,
+    publishedAt: item.candidate.published_at && Number.isFinite(Date.parse(item.candidate.published_at)) ? new Date(item.candidate.published_at).toISOString() : null,
+    source: item.source, hasContact: item.hasContact,
+    url: isSupportedFacebookPostUrl(item.candidate.original_url) ? item.candidate.original_url! : null,
+    match: NEAREST_MATCH_LABEL,
+  } }, index));
+}

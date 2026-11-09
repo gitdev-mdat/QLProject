@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { extractContactFromPost } from '../../../src/lead-data';
 import { isSupportedFacebookPostUrl, sourceLinkedPostSql } from '../../../src/lead-eligibility';
 import {
-  analyzeCandidates, displayableText, findPlaces, LANDING_MAX_AGE_DAYS, normalizeLandingQuery, rankLandingCandidates,
+  analyzeCandidates, displayableText, findPlaces, LANDING_MAX_AGE_DAYS, normalizeLandingQuery, rankLandingCandidates, nearestLandingCandidates,
   type AnalyzedCandidate, type LandingCandidate, type LandingPreviewLead,
 } from '../landing-search';
 import { db } from './db';
@@ -30,7 +30,7 @@ const ANSWER_TTL_MS = 5 * 60_000;
 const ANSWER_CACHE_MAX = 300;
 
 type Pool = { key: string; loadedAt: number; items: AnalyzedCandidate[] };
-type Answer = { at: number; matches: Array<{ postId: string; preview: LandingPreviewLead }> };
+type Answer = { at: number; nearest: boolean; matches: Array<{ postId: string; preview: LandingPreviewLead }> };
 const state = globalThis as unknown as { qleadLandingPool?: Pool; qleadLandingLoad?: Promise<Pool>; qleadLandingAnswers?: Map<string, Answer> };
 
 async function loadPool(catalog: string[]): Promise<Pool> {
@@ -67,6 +67,8 @@ export type LandingSearchResult = {
   serverMs: number;
   /** The signed-in viewer can open full details straight away. */
   member: boolean;
+  /** True when the leads are QLead's newest ones because nothing matched the visitor's own words. */
+  nearest: boolean;
 };
 
 const queryHash = (normalized: string) => createHash('sha256').update(`landing:${normalized}`).digest('hex');
@@ -85,12 +87,17 @@ export async function runLandingSearch(query: string, viewerUserId: string | nul
   let answer: Answer | undefined = answers.get(cacheKey);
   if (!answer || Date.now() - answer.at > ANSWER_TTL_MS) {
     let matches: Answer['matches'] = [];
+    let nearest = false;
     if (catalog.length) {
       const { pool, loaded } = await candidatePool(catalog);
       servedFrom = loaded ? 'database' : 'pool';
       matches = rankLandingCandidates(query, pool.items).map(match => ({ postId: match.candidate.id, preview: match.preview }));
+      if (!matches.length) {
+        matches = nearestLandingCandidates(pool.items).map(match => ({ postId: match.candidate.id, preview: match.preview }));
+        nearest = matches.length > 0;
+      }
     } else servedFrom = 'pool';
-    answer = { at: Date.now(), matches } satisfies Answer;
+    answer = { at: Date.now(), nearest, matches } satisfies Answer;
     answers.delete(cacheKey);
     answers.set(cacheKey, answer);
     if (answers.size > ANSWER_CACHE_MAX) answers.delete(answers.keys().next().value!);
@@ -101,7 +108,7 @@ export async function runLandingSearch(query: string, viewerUserId: string | nul
       (query_hash, post_ids, result_count, outcome, served_from, server_ms, viewer_user_id, expires_at)
     VALUES ($1, $2::uuid[], $3, $4, $5, $6, $7, now() + make_interval(hours => $8)) RETURNING id, expires_at`,
   [queryHash(normalized), answer.matches.map(match => match.postId), answer.matches.length, outcome, servedFrom, serverMs, viewerUserId, PREVIEW_TTL_HOURS]);
-  return { previewId: row!.id, outcome, leads: answer.matches.map(match => match.preview), expiresAt: row!.expires_at.toISOString(), serverMs, member: Boolean(viewerUserId) };
+  return { previewId: row!.id, outcome, leads: answer.matches.map(match => match.preview), expiresAt: row!.expires_at.toISOString(), serverMs, member: Boolean(viewerUserId), nearest: answer.nearest };
 }
 
 export type LandingFullLead = {

@@ -234,7 +234,7 @@ if (!process.env.SWEEP_ONLY) {
       await click(page.locator('.suggestions button').nth(2));
       await page.waitForTimeout(2600);
       const head = await page.locator('.demo-results-head b').innerText();
-      record(g, 'Search suggestion returns real leads or an honest empty answer', /lead thật phù hợp|Chưa có lead phù hợp/.test(head), head);
+      record(g, 'Search suggestion returns real leads (matching or newest)', /lead thật phù hợp|Lead mới nhất QLead|QLead sẵn sàng/.test(head), head);
       const expand = page.locator('.demo-lead-actions button').first();
       if (await expand.count()) {
         await click(expand);
