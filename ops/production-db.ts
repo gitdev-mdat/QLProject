@@ -14,6 +14,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import pg from 'pg';
+import { landingShowcasePin, landingShowcaseStart, landingShowcaseStatus } from './landing-showcase.ts';
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
@@ -129,8 +130,25 @@ async function provisionAdmin(db: pg.Client) {
   } catch (error) { await db.query('ROLLBACK').catch(() => undefined); throw error; }
 }
 
+/** Read-only: accounts whose search profiles could feed the landing demo (QLEAD_LANDING_CATALOG_USER_IDS). */
+async function landingCatalogCandidates(db: pg.Client) {
+  const { rows } = await db.query(`SELECT u.id AS user_id, u.display_name,
+      coalesce(left(ua.email, 2) || '***' || substring(ua.email from position('@' in ua.email)), '(no email login)') AS email,
+      string_agg(DISTINCT ac.name, ' | ') AS profiles,
+      count(fp.id) FILTER (WHERE fp.first_seen_at > now() - interval '30 days')::int AS posts_last_30_days,
+      max(fp.first_seen_at) AS newest_post
+    FROM users u LEFT JOIN user_accounts ua ON ua.user_id = u.id
+    JOIN agent_connections ac ON ac.user_id = u.id AND ac.kind = 'search_profile' AND ac.status = 'active'
+    LEFT JOIN facebook_posts fp ON fp.agent_connection_id = ac.id
+    WHERE u.lead_monitoring_status = 'active'
+    GROUP BY u.id, u.display_name, ua.email ORDER BY posts_last_30_days DESC LIMIT 30`);
+  console.table(rows.map(r => ({ ...r, profiles: String(r.profiles).slice(0, 70), newest_post: r.newest_post?.toISOString?.().slice(0, 16) ?? null })));
+  console.log('Pick YOUR OWN showcase account(s) only (never a customer), then set on Vercel Production: QLEAD_LANDING_CATALOG_USER_IDS=<id>[,<id>]');
+}
+
 const command = process.argv[2];
-const actions: Record<string, (db: pg.Client) => Promise<void>> = { check, migrate, harden, verify, 'provision-admin': provisionAdmin };
+const actions: Record<string, (db: pg.Client) => Promise<void>> = { check, migrate, harden, verify, 'provision-admin': provisionAdmin, 'landing-catalog-candidates': landingCatalogCandidates,
+  'landing-showcase-start': landingShowcaseStart, 'landing-showcase-status': landingShowcaseStatus, 'landing-showcase-pin': landingShowcasePin };
 if (!command || !actions[command]) { console.error(`Usage: npx tsx ops/production-db.ts <${Object.keys(actions).join('|')}>`); process.exit(2); }
 // Pinned to Supabase's public root CA (also set as DATABASE_CA_CERT on Vercel). Override with PROD_DATABASE_CA_FILE.
 const caFile = (await envFile('.env.supabase')).PROD_DATABASE_CA_FILE ?? 'ops/supabase-root-2021-ca.crt';

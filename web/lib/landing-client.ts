@@ -34,7 +34,7 @@ export function trackLanding(event: LandingEvent, extra: { previewId?: string | 
   } catch { /* ignore */ }
 }
 
-export type LandingSearchResponse = { previewId: string; outcome: 'found' | 'empty'; leads: LandingPreviewLead[]; expiresAt: string; serverMs: number; member: boolean };
+export type LandingSearchResponse = { previewId: string; outcome: 'found' | 'empty'; leads: LandingPreviewLead[]; expiresAt: string; serverMs: number; member: boolean; nearest?: boolean };
 
 /** What survives sign-up: the visitor's words and the id of the preview they saw (opened again after sign-up). */
 export type LandingHandoff = { query: string; previewId: string; resultCount: number; expiresAt: string; savedAt: string };

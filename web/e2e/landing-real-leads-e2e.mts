@@ -144,14 +144,16 @@ try {
     return `${links.length} Facebook link(s)`;
   });
 
-  await check('A7 Unrecognised or uncovered request → honest empty state, no padding', async () => {
+  await check('A7 Unmatched request → never an empty box: QLead\'s newest real leads, labelled as such', async () => {
     const ms = await runSearch(page, NOTHING);
     const head = await resultsHead(page);
-    assert(head === 'Chưa có lead phù hợp lúc này', head);
-    assert(await page.locator('.demo-lead-list:not(.is-stale) .demo-lead').count() === 0, 'no cards');
-    assert(await page.locator('.demo-results-foot a', { hasText: 'Đăng ký để QLead tìm cho bạn' }).isVisible(), 'CTA');
-    await page.locator('#demo').screenshot({ path: resolve(SHOTS, 'empty-1440.png') });
-    return `${ms} ms`;
+    const last = apiResponses.at(-1);
+    assert(head === 'Lead thật QLead đã tìm thấy' && last.nearest === true && last.outcome === 'found', head);
+    const cards = await page.locator('.demo-lead-list:not(.is-stale) .demo-lead').count();
+    assert(cards >= 1 && cards === last.leads.length && last.leads.every((lead: { match: string }) => lead.match === 'Lead thật QLead đã tìm thấy'), `${cards} cards`);
+    assert(!/Chưa có lead|30 ngày qua/.test(await page.locator('.demo-results').innerText()), 'no empty wording');
+    await page.locator('#demo').screenshot({ path: resolve(SHOTS, 'nearest-1440.png') });
+    return `${ms} ms, ${cards} card(s)`;
   });
 
   await check('A8 Too-short request is caught in the browser without a request', async () => {
