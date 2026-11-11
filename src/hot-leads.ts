@@ -23,16 +23,36 @@ function normalize(value: string): string {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[đĐ]/g, 'd').toLocaleLowerCase('vi');
 }
 
+function normalizeWithSourceMap(source: string): { normalized: string; starts: number[]; ends: number[] } {
+  const normalized: string[] = [];
+  const starts: number[] = [];
+  const ends: number[] = [];
+  let offset = 0;
+  for (const character of source) {
+    const end = offset + character.length;
+    for (const unit of normalize(character)) {
+      normalized.push(unit);
+      starts.push(offset);
+      ends.push(end);
+    }
+    offset = end;
+  }
+  return { normalized: normalized.join(''), starts, ends };
+}
+
 function tokens(value: string): string[] {
   return [...new Set(normalize(value).match(/[a-z0-9]{3,}/g) ?? [])].filter(token => !STOP_WORDS.has(token));
 }
 
 function evidencePhrase(text: string): string | null {
-  const normalized = normalize(text);
+  const { normalized, starts, ends } = normalizeWithSourceMap(text);
   for (const pattern of INTENT) {
     const match = normalized.match(pattern);
     if (match?.index === undefined) continue;
-    const grounded = normalized.slice(match.index, match.index + match[0].length).trim();
+    const start = starts[match.index];
+    const end = ends[match.index + match[0].length - 1];
+    if (start === undefined || end === undefined) return null;
+    const grounded = text.slice(start, end).trim();
     return grounded.length >= 8 ? grounded : null;
   }
   return null;
@@ -55,10 +75,9 @@ export function assessHotLead(candidate: HotLeadCandidate, at = new Date()): Hot
   const overlap = profileTerms.filter(term => textTerms.has(term));
   const relevant = matchingPhrase !== undefined || (overlap.length >= 2 && overlap.length / Math.min(profileTerms.length, 8) >= 0.25);
   if (!relevant) return { hot: false, reasonVi: null, evidence: null, expiresAt: null };
-  const relevanceEvidence = matchingPhrase ?? overlap.slice(0, 3).join(', ');
   return {
     hot: true,
-    reasonVi: `Bài đăng còn mới, nêu nhu cầu “${evidence}” và khớp hồ sơ tìm kiếm (${relevanceEvidence}).`,
+    reasonVi: `Bài đăng còn mới, nêu nhu cầu “${evidence}” và khớp hồ sơ tìm kiếm của bạn.`,
     evidence,
     expiresAt: new Date(publishedAt.getTime() + 2 * 60 * 60_000),
   };

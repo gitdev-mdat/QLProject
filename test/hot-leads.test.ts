@@ -11,7 +11,9 @@ const candidate = (overrides: Partial<HotLeadCandidate> = {}): HotLeadCandidate 
 test('a recent explicit request relevant to this profile is a grounded Hot Lead', () => {
   const result = assessHotLead(candidate(), now);
   assert.equal(result.hot, true);
-  assert.match(result.reasonVi ?? '', /dang tim phan mem/);
+  assert.match(result.reasonVi ?? '', /đang tìm phần mềm/);
+  assert.doesNotMatch(result.reasonVi ?? '', /dang tim/);
+  assert.equal(result.evidence, 'đang tìm phần mềm');
   assert.equal(result.expiresAt?.toISOString(), '2026-11-10T13:30:00.000Z');
 });
 

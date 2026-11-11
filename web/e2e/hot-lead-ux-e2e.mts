@@ -170,12 +170,13 @@ async function main() {
     const { context, page } = await as(one);
     await page.goto(`${BASE}/app/bai-viet/${oneHot.id}`); await settle(page);
     const t = await page.locator('.lead-facts').innerText();
+    assert(await page.locator('.lead-detail-head .hot-tag').count() === 0, 'missing verified publication time clears the active Hot label');
     await context.close();
     const [row] = await q("SELECT published_at FROM facebook_posts WHERE id=$1", [oneHot.id]);
     await q("UPDATE facebook_posts SET published_at = now() - interval '15 minutes' WHERE id = $1", [oneHot.id]);
     assert(row.published_at === null, 'reset');
     assert(/Chưa rõ giờ đăng/.test(t), t);
-    return 'Đăng lúc: Chưa rõ giờ đăng';
+    return 'Đăng lúc: Chưa rõ giờ đăng; active Hot label cleared';
   });
 
   // 6. Expiry: on an open page (client clock passes expiresAt) and after the server window ends.

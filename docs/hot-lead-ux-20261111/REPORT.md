@@ -17,6 +17,7 @@ Nhánh `claude/hot-lead-ux`, dựng trên backend của Codex `codex/hot-lead-qu
 `web/e2e/hot-lead-ux-e2e.mts` trên DB riêng `muse_bridge_test_hot` (001–025), worker giả gọi API worker thật (phân loại Hot là code của Codex): **25/25**. Bao gồm 20 kịch bản của brief + 390/768/1440 không cuộn ngang. Production build OK, test quiet-hours/hot-leads 8/8. Ảnh chụp ở `docs/hot-lead-ux-20261111/screenshots/` (png bị gitignore).
 Chưa xác minh: push thật trên iPhone/Android (chỉ giả lập desktop); thời gian điều hướng chỉ đo trên dev build.
 
-## Vấn đề gửi Codex
-- `reasonVi` chứa cụm bằng chứng đã bỏ dấu, ví dụ: Bài đăng còn mới, nêu nhu cầu “dang can tim”… Khách sẽ thấy chữ không dấu. Nên dùng đoạn gốc có dấu.
-- Hot vẫn còn khi `published_at` bị xoá sau khi đánh giá (status chỉ dựa vào `hot_expires_at`); UI hiển thị "Chưa rõ giờ đăng".
+## Backend follow-up trên PR #24
+- Đã sửa `reasonVi` để trích cụm bằng chứng nguyên văn từ bài đăng, giữ dấu tiếng Việt.
+- Một assessment chỉ còn `hot` khi `published_at` hiện tại vẫn xác thực và còn trong cửa sổ 2 giờ. Nếu thời gian bị xóa, sửa thành tương lai hoặc đã hết hạn, API trả trạng thái lịch sử và UI bỏ nhãn Hot.
+- Push thật trên iPhone/Android vẫn chưa được xác minh trên thiết bị thật.

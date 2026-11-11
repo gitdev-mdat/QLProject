@@ -16,7 +16,9 @@ const POST_SELECT = `SELECT fp.id, fp.author, fp.title, fp.content, fp.summary_v
     fp.first_seen_at AS discovered_at, (SELECT min(d.delivered_at) FROM profile_lead_deliveries d WHERE d.post_id = fp.id AND d.state = 'delivered') AS delivered_at,
     fp.source_type, fp.collected_via, fp.platform, ac.name AS agent_name,
     (SELECT jsonb_agg(jsonb_build_object('profileId', d.search_profile_id, 'status',
-        CASE WHEN d.hot_at_discovery AND d.hot_expires_at > now() THEN 'hot' WHEN d.hot_at_discovery THEN 'historical' ELSE 'standard' END,
+        CASE WHEN d.hot_at_discovery AND d.hot_expires_at > now() AND fp.published_at IS NOT NULL
+          AND fp.published_at <= now() AND fp.published_at > now() - interval '2 hours' THEN 'hot'
+          WHEN d.hot_at_discovery THEN 'historical' ELSE 'standard' END,
         'reasonVi', d.hot_reason_vi, 'evidence', d.hot_evidence,
         'publishedAt', fp.published_at, 'assessedAt', d.hot_assessed_at, 'expiresAt', d.hot_expires_at)
       ORDER BY d.search_profile_id)

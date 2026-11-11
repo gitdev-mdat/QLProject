@@ -18,7 +18,7 @@ type HotLeadAssessment = {
 };
 ```
 
-Assessments are per search profile because relevance depends on that profile's stored keywords and customer description. `hot` means the stored evidence is still within its two hour window; `historical` means it qualified at discovery but its urgent window has ended; `standard` means it did not qualify. Consumers should render the server supplied status and reason, not reproduce classification in browser code. Unknown, future, or older than two hour publication times are never Hot. Only the source post's title and content can provide intent evidence; Vietnamese summaries and discovery timestamps do not qualify a post. Comment counts are not stored in this source and are not inferred.
+Assessments are per search profile because relevance depends on that profile's stored keywords and customer description. `hot` means the stored evidence is still within its two hour window and the current source post still has a valid publication time in that window; `historical` means it qualified at discovery but its urgent window has ended or its publication time is no longer verifiable; `standard` means it did not qualify. Consumers should render the server supplied status and reason, not reproduce classification in browser code. Unknown, future, or older than two hour publication times are never Hot. The reason quotes the original source phrase with its Vietnamese accents. Only the source post's title and content can provide intent evidence; Vietnamese summaries and discovery timestamps do not qualify a post. Comment counts are not stored in this source and are not inferred.
 
 ## Hot push notification
 
