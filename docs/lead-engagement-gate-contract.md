@@ -6,7 +6,7 @@ This change extends the existing `profile_lead_deliveries` queue and `lead_distr
 
 - Count one completed discovery scan per successful or partial `scan_runs.search_job_id` received after the profile's `policy_activated_at`. Claim retries and duplicate acknowledgements keep the same `search_jobs.id`, so they count once. Failed runs do not advance the stage.
 - Scans one and two always distribute from the profile's eligible pending pool, up to ten distinct leads each.
-- Scan three is claimed and run normally. Its results are stored and added to the pending ledger. If current engagement is below 80%, that scan's cycle delivers zero; pending candidates are retained and pending search jobs are canceled with `last_error = 'usage_gate'`. Valid claimed leases continue to completion.
+- Scan three is claimed and run normally. Its results are stored and added to the pending ledger. If current engagement is below 80%, that scan's cycle delivers zero; pending candidates are retained and not-yet-claimed pending/authorization-blocked search jobs are canceled with `last_error = 'usage_gate'`. Valid claimed leases continue to completion.
 - Later scans are neither materialized by recurring scheduling nor claimed while the gate is closed. Manual requests return `usage_gated`. Once review progress reaches the threshold, the same transaction distributes one pending batch and the next normal scheduled slot can resume.
 - A qualifying review event has a unique `(search_profile_id, normalized_url)` key. Its unlock cycle key is `unlock:<normalized URL>`; scan cycles use `scan:<search_job_id>`. Replayed requests cannot create another batch.
 

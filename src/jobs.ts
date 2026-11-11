@@ -69,7 +69,7 @@ export async function enqueueInitialJob(client: PoolClient, profileId: string, a
 /** Clear queued work after a completed scan closes the usage gate; valid in-flight leases remain untouched. */
 export async function cancelQueuedJobsForEngagementGate(client: PoolClient, profileId: string): Promise<number> {
   const { rowCount } = await client.query(`UPDATE search_jobs SET status = 'cancelled', last_error = 'usage_gate', updated_at = now(), completed_at = now()
-    WHERE search_profile_id = $1 AND status = 'pending'`, [profileId]);
+    WHERE search_profile_id = $1 AND status IN ('pending', 'blocked')`, [profileId]);
   return rowCount ?? 0;
 }
 
