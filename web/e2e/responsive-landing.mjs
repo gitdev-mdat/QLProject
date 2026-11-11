@@ -224,13 +224,24 @@ if (!process.env.SWEEP_ONLY) {
       record(g, 'Hero illustration is labelled; the search section promises real leads, not samples', await page.locator('.scan-caption', { hasText: 'Minh họa' }).isVisible() && await page.locator('#demo .section-head p', { hasText: 'lead thật' }).isVisible());
       record(g, 'Hero headline reads "Tìm lead tự động trên Facebook"', (await page.locator('#hero-title').innerText()).replace(/\s+/g, ' ').trim() === 'Tìm lead tự động trên Facebook');
       const order = await page.evaluate(() => [...document.querySelectorAll('main > section')].map(s => s.id || s.className.split(' ')[0]));
-      record(g, 'Sections in order: hero, demo, cách hoạt động, so sánh, CTA', order.join(',') === 'hero,demo,cach-hoat-dong,so-sanh,final-cta', order.join(','));
+      record(g, 'Sections in order: hero, lead là gì, demo, cách hoạt động, so sánh, CTA', order.join(',') === 'hero,lead-la-gi,demo,cach-hoat-dong,so-sanh,final-cta', order.join(','));
       record(g, '"Mỗi lead có đủ thông tin" section is gone', await page.locator('text=Mỗi lead có đủ thông tin').count() === 0);
       const anchors = await page.evaluate(() => [...document.querySelectorAll('a[href^="#"]')].map(a => a.getAttribute('href')).filter(h => h !== '#main' && !document.querySelector(h)));
       record(g, 'Every in-page link points to an existing section', anchors.length === 0, anchors.join(', '));
-      record(g, '"QLead giúp bạn" shows the three steps in order', (await page.locator('#cach-hoat-dong .flow h3').allInnerTexts()).map(t => t.replace(/^\d+\.\s*/, '')).join(' > ') === 'Tìm khách hàng tiềm năng > Đánh giá > Thông báo cho bạn');
+      record(g, 'Section title reads "QLead hoạt động ra sao"', (await page.locator('#flow-title').innerText()).trim() === 'QLead hoạt động ra sao');
+      record(g, 'Hero lede is the owner-approved sentence', (await page.locator('.hero-lede').innerText()).trim() === 'QLead tự phân tích và tìm kiếm khách hàng tiềm năng dựa trên lĩnh vực mà bạn đang kinh doanh.');
+      record(g, '"QLead hoạt động ra sao" shows the three steps in order', (await page.locator('#cach-hoat-dong .flow h3').allInnerTexts()).map(t => t.replace(/^\d+\.\s*/, '')).join(' > ') === 'Tìm khách hàng tiềm năng > Đánh giá > Thông báo cho bạn');
       const navCta = page.locator('.site-nav-actions .btn-primary');
       record(g, 'Nav "Bắt đầu ngay" visible and reachable', await navCta.isVisible() && (await navCta.boundingBox()).x + (await navCta.boundingBox()).width <= width);
+      const leadLink = page.locator('.site-nav nav a.nav-lead');
+      if (width >= 360) {
+        record(g, 'Nav "Lead là gì?" is visible in the header', await leadLink.isVisible() && (await leadLink.innerText()).trim() === 'Lead là gì?');
+        await click(leadLink);
+        await page.waitForTimeout(900);
+        const leadTop = await page.evaluate(() => document.querySelector('#lead-la-gi').getBoundingClientRect().top);
+        record(g, 'Nav "Lead là gì?" scrolls to the explainer below the sticky header', leadTop >= 40 && leadTop < 140, `top ${Math.round(leadTop)}`);
+        record(g, 'Explainer gives the definition, the example and the "not yet a buyer" caveat', await page.locator('#lead-la-gi', { hasText: 'khách hàng tiềm năng' }).isVisible() && await page.locator('#lead-la-gi dd', { hasText: 'sắp khai trương' }).isVisible() && await page.locator('#lead-la-gi .lead-note', { hasText: 'chưa phải là khách đã đồng ý mua' }).isVisible());
+      }
       await click(page.locator('.suggestions button').nth(2));
       await page.waitForTimeout(2600);
       const head = await page.locator('.demo-results-head b').innerText();

@@ -202,26 +202,32 @@ export async function unlockLandingPreview(previewId: string, userId: string): P
   const firstClaim = (rowCount ?? 0) > 0;
   if (firstClaim) {
     // An account created after the search it is opening signed up from the landing page.
-    await db().query(`INSERT INTO landing_events (event, preview_id, user_id, result_count)
-      SELECT 'landing_signup_completed', $1, u.id, $3 FROM users u WHERE u.id = $2 AND u.created_at >= $4`, [previewId, userId, leads.length, preview.created_at]);
+    await db().query(`INSERT INTO landing_events (event, preview_id, user_id, result_count, attribution_source, attribution_campaign, attribution_content)
+      SELECT 'landing_signup_completed', $1, u.id, $3, u.first_touch_source, u.first_touch_campaign, u.first_touch_content
+      FROM users u WHERE u.id = $2 AND u.created_at >= $4`, [previewId, userId, leads.length, preview.created_at]);
   }
-  await db().query(`INSERT INTO landing_events (event, preview_id, user_id, result_count) VALUES ('landing_full_results_viewed', $1, $2, $3)`, [previewId, userId, leads.length]);
+  await db().query(`INSERT INTO landing_events (event, preview_id, user_id, result_count, attribution_source, attribution_campaign, attribution_content)
+    SELECT 'landing_full_results_viewed', $1, u.id, $3, u.first_touch_source, u.first_touch_campaign, u.first_touch_content FROM users u WHERE u.id = $2`, [previewId, userId, leads.length]);
   return { status: 'ok', leads, expiresAt: preview.expires_at.toISOString(), firstClaim };
 }
 
-export const CLIENT_EVENTS = ['landing_search_started', 'landing_search_results_shown', 'landing_search_empty', 'landing_search_failed', 'landing_preview_opened', 'landing_signup_clicked'] as const;
+export const CLIENT_EVENTS = ['landing_search_started', 'landing_search_results_shown', 'landing_search_empty', 'landing_search_failed', 'landing_preview_opened', 'landing_signup_clicked', 'blog_view', 'blog_cta_clicked'] as const;
 export type ClientEvent = typeof CLIENT_EVENTS[number];
 export type LandingEventInput = {
   event: ClientEvent; visitorId: string | null; previewId: string | null; trigger: 'auto' | 'user' | 'suggestion' | null;
   resultCount: number | null; clientMs: number | null; reason: 'timeout' | 'rate_limited' | 'overloaded' | 'network' | 'server' | 'expired' | null;
+  attributionSource: 'organic' | 'blog' | 'campaign' | 'referral' | 'direct' | 'unknown' | null;
+  attributionCampaign: string | null; attributionContent: string | null; pagePath: string | null;
 };
 
 let eventWrites = 0;
 /** Stores one funnel event. An unknown preview id is dropped (stored as NULL), never trusted. */
 export async function recordLandingEvent(input: LandingEventInput, userId: string | null): Promise<void> {
-  await db().query(`INSERT INTO landing_events (event, visitor_id, preview_id, trigger, result_count, client_ms, reason, user_id)
-    VALUES ($1, $2, (SELECT id FROM landing_previews WHERE id = $3::uuid), $4, $5, $6, $7, $8)`,
-  [input.event, input.visitorId, input.previewId, input.trigger, input.resultCount, input.clientMs, input.reason, userId]);
+  await db().query(`INSERT INTO landing_events (event, visitor_id, preview_id, trigger, result_count, client_ms, reason, user_id,
+      attribution_source, attribution_campaign, attribution_content, page_path)
+    VALUES ($1, $2, (SELECT id FROM landing_previews WHERE id = $3::uuid), $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+  [input.event, input.visitorId, input.previewId, input.trigger, input.resultCount, input.clientMs, input.reason, userId,
+    input.attributionSource, input.attributionCampaign, input.attributionContent, input.pagePath]);
   if (++eventWrites % 500 === 0) {
     await db().query(`DELETE FROM landing_events WHERE created_at < now() - interval '180 days'`);
     await db().query(`DELETE FROM landing_previews WHERE created_at < now() - interval '180 days'`);

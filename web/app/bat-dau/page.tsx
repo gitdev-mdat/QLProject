@@ -2,8 +2,10 @@ import { redirect } from 'next/navigation';
 import { Onboarding } from '@/components/onboarding';
 import { needsOnboarding } from '@/lib/server/accounts';
 import { getSession } from '@/lib/server/session';
+import { noIndexMetadata } from '@/lib/seo';
 
 export const dynamic = 'force-dynamic';
+export const metadata = noIndexMetadata();
 
 /** Real onboarding for the signed-in customer: visitors without a session register first, anyone already set up goes to their own dashboard. */
 export default async function StartPage() {

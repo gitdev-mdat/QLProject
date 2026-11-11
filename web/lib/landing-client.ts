@@ -5,9 +5,10 @@
  * hand-off that carries a visitor's search through sign-up so they never type it again.
  */
 import type { LandingPreviewLead } from './landing-search';
+import { currentAttribution } from './attribution-client';
 
 export type LandingEvent = 'landing_search_started' | 'landing_search_results_shown' | 'landing_search_empty' | 'landing_search_failed'
-  | 'landing_preview_opened' | 'landing_signup_clicked';
+  | 'landing_preview_opened' | 'landing_signup_clicked' | 'blog_view' | 'blog_cta_clicked';
 export type LandingTrigger = 'auto' | 'user' | 'suggestion';
 export type LandingFailure = 'timeout' | 'rate_limited' | 'overloaded' | 'network' | 'server';
 
@@ -26,11 +27,13 @@ function visitorId(): string | null {
 }
 
 /** Never blocks the UI and never throws: analytics must not break the search. keepalive only for the click that leaves the page. */
-export function trackLanding(event: LandingEvent, extra: { previewId?: string | null; trigger?: LandingTrigger; resultCount?: number; clientMs?: number; reason?: LandingFailure } = {}): void {
+export function trackLanding(event: LandingEvent, extra: { previewId?: string | null; trigger?: LandingTrigger; resultCount?: number; clientMs?: number; reason?: LandingFailure; pagePath?: string | null } = {}): void {
   try {
+    const attribution = currentAttribution();
     const body = JSON.stringify({ event, visitorId: visitorId(), previewId: extra.previewId ?? null, trigger: extra.trigger ?? null,
-      resultCount: extra.resultCount ?? null, clientMs: extra.clientMs === undefined ? null : Math.min(600_000, Math.max(0, Math.round(extra.clientMs))), reason: extra.reason ?? null });
-    void fetch('/api/landing/events', { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: event === 'landing_signup_clicked' }).catch(() => undefined);
+      resultCount: extra.resultCount ?? null, clientMs: extra.clientMs === undefined ? null : Math.min(600_000, Math.max(0, Math.round(extra.clientMs))), reason: extra.reason ?? null,
+      attributionSource: attribution.source, attributionCampaign: attribution.campaign, attributionContent: attribution.content, pagePath: extra.pagePath ?? null });
+    void fetch('/api/landing/events', { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: event === 'landing_signup_clicked' || event === 'blog_cta_clicked' }).catch(() => undefined);
   } catch { /* ignore */ }
 }
 

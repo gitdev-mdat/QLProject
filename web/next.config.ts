@@ -16,6 +16,16 @@ const nextConfig: NextConfig = {
         { key: 'Content-Security-Policy', value: "default-src 'self'; script-src 'self'" },
         { key: 'Service-Worker-Allowed', value: '/' },
       ],
+    }, {
+      source: '/api/:path*',
+      headers: [
+        { key: 'X-Robots-Tag', value: 'noindex, nofollow, nosnippet' },
+      ],
+    }, {
+      source: '/health',
+      headers: [
+        { key: 'X-Robots-Tag', value: 'noindex, nofollow, nosnippet' },
+      ],
     }];
   },
 };

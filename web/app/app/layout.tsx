@@ -5,6 +5,9 @@ import { needsOnboarding } from '@/lib/server/accounts';
 import { isAdmin } from '@/lib/server/admin';
 import { requireSession } from '@/lib/server/session';
 import { unreadNotificationCount } from '@/lib/server/notifications';
+import { noIndexMetadata } from '@/lib/seo';
+
+export const metadata = noIndexMetadata();
 
 /**
  * Every /app route requires a valid server-side session; otherwise redirect to the login page. A newly registered

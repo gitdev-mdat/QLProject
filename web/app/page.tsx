@@ -4,6 +4,10 @@ import { HeroDemo } from '@/components/hero-demo';
 import { HeroScene } from '@/components/hero-scene';
 import { RevealOnScroll } from '@/components/reveal-on-scroll';
 import { NavScrollState } from '@/components/landing-motion';
+import { pageMetadata, SITE_DESCRIPTION, SITE_TITLE } from '@/lib/seo';
+import { hasVisiblePosts } from '@/lib/blog/posts';
+
+export const metadata = pageMetadata({ title: SITE_TITLE, description: SITE_DESCRIPTION, path: '/' });
 
 /**
  * Three things QLead does, each backed by shipped behaviour: signal-based search over posts and Reels
@@ -25,14 +29,41 @@ const compare = [
 ];
 
 export default function LandingPage() {
+  // "Cẩm nang" only appears once there is an article this deployment can serve; production hides drafts.
+  const showGuide = hasVisiblePosts();
   return <>
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{
+        __html: JSON.stringify({
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'Organization',
+              '@id': 'https://qlead.vn/#organization',
+              name: 'QLead',
+              url: 'https://qlead.vn',
+              logo: 'https://qlead.vn/icons/icon-512.png',
+            },
+            {
+              '@type': 'WebSite',
+              '@id': 'https://qlead.vn/#website',
+              url: 'https://qlead.vn',
+              name: 'QLead',
+              inLanguage: 'vi-VN',
+              publisher: { '@id': 'https://qlead.vn/#organization' },
+            },
+          ],
+        }).replace(/</g, '\\u003c'),
+      }}
+    />
     <a className="skip-link" href="#main">Bỏ qua điều hướng</a>
     <RevealOnScroll/>
     <NavScrollState/>
     <header className="site-nav">
       <div className="wrap site-nav-inner">
         <Brand/>
-        <nav aria-label="Trang giới thiệu"><a href="#demo">Dùng thử</a><a href="#cach-hoat-dong">Cách hoạt động</a><a href="#so-sanh">So sánh</a></nav>
+        <nav aria-label="Trang giới thiệu"><a className="nav-lead" href="#lead-la-gi">Lead là gì?</a><a href="#demo">Dùng thử</a><a href="#cach-hoat-dong">Cách hoạt động</a><a href="#so-sanh">So sánh</a>{showGuide && <Link href="/blog">Cẩm nang</Link>}</nav>
         <div className="site-nav-actions"><Link className="btn btn-ghost" href="/dang-nhap">Đăng nhập</Link><Link className="btn btn-primary" href="/dang-ky">Bắt đầu ngay</Link></div>
       </div>
     </header>
@@ -46,13 +77,34 @@ export default function LandingPage() {
               <span className="hero-in" style={{ animationDelay: '.08s' }}>Tìm lead tự động</span>{' '}
               <span className="hero-accent hero-in" style={{ animationDelay: '.18s' }}>trên <span className="fb-word">Facebook<svg viewBox="0 0 220 14" preserveAspectRatio="none" aria-hidden="true"><path d="M3 10c50-7 140-9 214-4"/></svg></span></span>
             </h1>
-            <p className="hero-lede hero-in" style={{ animationDelay: '.28s' }}>Không chỉ theo từ khóa. QLead theo dõi các dấu hiệu như sắp khai trương, tuyển người, mở chi nhánh và gom lead mới về cho bạn mỗi 30 phút.</p>
+            <p className="hero-lede hero-in" style={{ animationDelay: '.28s' }}>QLead tự phân tích và tìm kiếm khách hàng tiềm năng dựa trên lĩnh vực mà bạn đang kinh doanh.</p>
             <div className="hero-actions hero-in" style={{ animationDelay: '.38s' }}>
               <Link className="btn btn-primary btn-lg" href="/dang-ky">Bắt đầu ngay <Icon name="arrow" size={18}/></Link>
               <a className="btn btn-outline btn-lg" href="#demo">Thử ngay</a>
             </div>
           </div>
           <div className="hero-art"><HeroScene/></div>
+        </div>
+      </section>
+
+      {/* "Lead là gì?": one card for people who have never worked in sales, read in a few seconds. */}
+      <section className="lead-explainer" id="lead-la-gi" aria-labelledby="lead-title">
+        <div className="wrap">
+          <div className="lead-card" data-reveal>
+            <div className="lead-def">
+              <h2 id="lead-title">Lead là gì?</h2>
+              <p>Lead là <strong>khách hàng tiềm năng</strong>: người hoặc cửa hàng, doanh nghiệp đang có dấu hiệu sẽ cần sản phẩm, dịch vụ bạn bán.</p>
+            </div>
+            <div className="lead-example">
+              <p className="lead-example-label">Ví dụ</p>
+              <dl>
+                <dt>Bạn bán</dt><dd>Phần mềm quản lý quán</dd>
+                <dt>QLead thấy</dt><dd>Bài Facebook báo một quán cà phê sắp khai trương</dd>
+                <dt>Lead</dt><dd className="is-lead">Chủ quán đó, vì họ có thể sắp cần phần mềm bán hàng</dd>
+              </dl>
+              <p className="lead-note">Lead chưa phải là khách đã đồng ý mua. Bạn vẫn cần liên hệ và tư vấn.</p>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -65,7 +117,7 @@ export default function LandingPage() {
 
       <section className="section section-tint" id="cach-hoat-dong" aria-labelledby="flow-title">
         <div className="wrap">
-          <div className="section-head centered" data-reveal><h2 id="flow-title">QLead giúp bạn</h2></div>
+          <div className="section-head centered" data-reveal><h2 id="flow-title">QLead hoạt động ra sao</h2></div>
           <ol className="flow">{flow.map((step, index) => <li key={step.title} data-reveal style={{ transitionDelay: `${index * 90}ms` }}>
             <span className="flow-icon"><Icon name={step.icon} size={22}/></span>
             <h3><span className="flow-num">{index + 1}.</span> {step.title}</h3><p>{step.text}</p>
@@ -98,6 +150,6 @@ export default function LandingPage() {
       </section>
     </main>
 
-    <footer className="site-footer"><div className="wrap site-footer-inner"><Brand/><p>Tìm khách hàng tiềm năng từ bài đăng và Reels trên Facebook.</p><nav className="site-footer-links" aria-label="Tài khoản"><Link href="/dang-nhap">Đăng nhập</Link><Link href="/dang-ky">Tạo tài khoản</Link></nav><span>© 2026 QLead</span></div></footer>
+    <footer className="site-footer"><div className="wrap site-footer-inner"><Brand/><p>Tìm khách hàng tiềm năng từ bài đăng và Reels trên Facebook.</p><nav className="site-footer-links" aria-label="Liên kết">{showGuide && <Link href="/blog">Cẩm nang</Link>}<Link href="/dang-nhap">Đăng nhập</Link><Link href="/dang-ky">Tạo tài khoản</Link></nav><span>© 2026 QLead</span></div></footer>
   </>;
 }
