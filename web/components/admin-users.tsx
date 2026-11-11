@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { apiErrorText, frequencyText, MONITORING_LABEL, profileEffect, USERS_PAGE_SIZE, type AdminUserDetail, type AdminUserPage, type AdminUserRow, type MonitoringChange, type UserDeletionImpact } from '@/lib/admin-users';
+import { apiErrorText, engagementLine, frequencyText, MONITORING_LABEL, profileEffect, USERS_PAGE_SIZE, type AdminUserDetail, type AdminUserPage, type AdminUserRow, type MonitoringChange, type UserDeletionImpact } from '@/lib/admin-users';
 import { deviceText, LOGIN_METHOD_LABEL, SESSION_STATE_LABEL, type LoginHistoryFilter, type LoginHistoryPage } from '@/lib/login-history';
 import { Icon } from './visuals';
 
@@ -269,6 +269,7 @@ function UserDetail({ userId, currentAdminId, onClose, onChanged, onDeleted }: {
                 <div className="user-profile-top"><b>{p.name}</b><span className={`pill prof-pill is-${effect.tone}`}>{effect.label}</span></div>
                 {p.description && <p className="user-profile-desc">“{p.description}”</p>}
                 <p className="user-profile-meta">{p.enabled ? 'Khách bật' : 'Khách tạm dừng'} · {frequencyText(p.frequencyMinutes)} · {num.format(p.leadCount)} lead · quét gần nhất {at(p.lastScanAt)}</p>
+                {engagementLine(p) && <p className="user-profile-meta">{engagementLine(p)}</p>}
                 <p className="user-profile-note">{effect.note}</p>
               </li>;
             })}</ul>}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { announceLeadReview, REVIEW_STATUSES } from './engagement-gate';
 import { emptyWorkflow, type LeadNote, type LeadStatus, type LeadWorkflow, type WorkflowMap } from './lead-workflow';
 
 /**
@@ -24,7 +25,7 @@ export function useLeadWorkflow(initial: WorkflowMap) {
     if (!response?.ok) {
       setMap(current => ({ ...current, [id]: previous }));
       setError('Không lưu được trạng thái. Thử lại sau.');
-    }
+    } else if (REVIEW_STATUSES.includes(status)) announceLeadReview();
   }, []);
 
   /** Opening a lead moves it from "new" to "seen"; any later status is kept. */

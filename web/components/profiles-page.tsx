@@ -10,7 +10,9 @@ import { SCAN_OPEN, type ProfileScan, type ScanRequestOutcome } from '@/lib/prof
 import { frequencyLabel, locationLabel, NO_LOCATION_OPTION, PROFILE_FREQUENCIES, type LegacySummary, type SearchProfile } from '@/lib/profile-state';
 import { profileStatus, requestNote, rescanButton, type ProfileStatus } from '@/lib/profile-status';
 import { AppShell, useMonitoringSuspended } from './app-shell';
+import { EngagementPanel, EngagementReleased, useEngagementGate } from './engagement-gate';
 import { GoatMascot } from './goat-mascot';
+import { isGated } from '@/lib/engagement-gate';
 import { useQuietHours } from './quiet-hours';
 import { Icon } from './visuals';
 
@@ -279,6 +281,9 @@ function ProfileCard({ profile, saved, onEdit }: { profile: SearchProfile; saved
   const { scan, refresh } = useProfileScan(profile.id, profile.scan);
   const scanOpen = Boolean(scan && SCAN_OPEN.includes(scan.state));
   const suspended = useMonitoringSuspended();
+  // Re-read after each scan state change: a finished third scan is what can make the need wait for the customer.
+  const engagement = useEngagementGate(profile.id, scan?.state);
+  const waitingForCustomer = isGated(engagement.gate) && profile.enabled && !suspended;
 
   useEffect(() => {
     if (!saved) return;
@@ -308,12 +313,14 @@ function ProfileCard({ profile, saved, onEdit }: { profile: SearchProfile; saved
     const request = result.data.scan;
     if (request) setNote(requestNote(request));
     if (request?.outcome === 'cooldown') { setNow(Date.now()); setWaitUntil(Date.now() + request.retryAfterSeconds * 1000); }
+    if (request?.outcome === 'usage_gated') void engagement.reload();
     await refresh();
   }
 
   const quiet = useQuietHours();
   const status = profileStatus(profile, scan, suspended, shortTime, quiet);
-  const button = rescanButton(profile, scan, suspended, busy === 'scan', waitUntil, now, quiet);
+  // While the need waits for the customer to handle sent leads, the backend refuses new searches: offer no button for one.
+  const button = waitingForCustomer ? { show: false, disabled: true, label: 'Tìm lại ngay' } : rescanButton(profile, scan, suspended, busy === 'scan', waitUntil, now, quiet);
   // While the account is on hold an enabled need keeps its own "on" setting (grey, since nothing is searched right now).
   const monitoring = suspended && profile.enabled ? { label: 'Đang bật', tone: 'off' } : profile.enabled ? { label: 'Đang theo dõi', tone: 'on' } : profile.state === 'draft' ? { label: 'Bản nháp', tone: 'off' } : { label: 'Tạm dừng', tone: 'off' };
   // A finished scan of an older save can be followed by one of the latest save (the cooldown only covers the same save).
@@ -336,7 +343,10 @@ function ProfileCard({ profile, saved, onEdit }: { profile: SearchProfile; saved
 
     {justSaved && <p className="saved-line pf-saved" role="status"><Icon name="check" size={16}/>Đã lưu thay đổi.</p>}
     {/* The page header already says the account is on hold; an enabled card adds nothing until a running search finishes. */}
-    {!(suspended && profile.enabled && scan?.state !== 'running') && <StatusPanel status={status} scan={suspended && scan?.state !== 'running' ? null : scan} profile={profile} scanOpen={scanOpen} onEdit={onEdit} onToggle={toggle} onRescan={rescan} toggling={busy === 'toggle'} canRescanLatest={canRescanLatest}/>}
+    {/* Waiting for the customer replaces the scan headline (a held result must not read as "N khách hàng mới"); a running search keeps its stage. */}
+    {!(suspended && profile.enabled && scan?.state !== 'running') && !(waitingForCustomer && scan?.state !== 'running') && <StatusPanel status={status} scan={suspended && scan?.state !== 'running' ? null : scan} profile={profile} scanOpen={scanOpen} onEdit={onEdit} onToggle={toggle} onRescan={rescan} toggling={busy === 'toggle'} canRescanLatest={canRescanLatest}/>}
+    {waitingForCustomer && <EngagementPanel gate={engagement.gate} profileId={profile.id} place="card"/>}
+    <EngagementReleased release={engagement.released} onDismiss={engagement.dismissReleased}/>
     {note && <p className={note.tone === 'ok' ? 'pf-note' : 'pf-note is-warn'} role="status"><Icon name="info" size={14}/>{note.text}</p>}
 
     <footer className="pf-foot">

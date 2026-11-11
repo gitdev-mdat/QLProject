@@ -14,6 +14,8 @@ import { compareLeadByPostedAt, type LeadDateOrder } from '@/lib/lead-order';
 import { AppShell } from './app-shell';
 import { Icon } from './visuals';
 import { GoatMascot } from './goat-mascot';
+import { EngagementPanel, EngagementReleased, useEngagementGate } from './engagement-gate';
+import { isGated } from '@/lib/engagement-gate';
 import { reportSourceOpen } from '@/lib/feedback-client';
 import { deliveryClock, heldBackLine, latestDelivery, type DeliverySummary, type LatestDelivery } from '@/lib/lead-delivery';
 import './first-search-ux.css';
@@ -322,6 +324,9 @@ export function LeadResultsPage({ records, total = records.length, workflow: ini
   // A Hot assessment belongs to one need: on a need's own list only that need's assessment counts.
   const hotScope = source !== 'all' && source !== LEGACY_FILTER ? source : undefined;
   const hotNow = useHotNow(records, now);
+  // On one need's list: whether QLead waits for the customer to handle the leads already sent before it sends/searches more.
+  const engagement = useEngagementGate(hotScope ?? null);
+  const gated = isGated(engagement.gate);
   const hot = useMemo(() => hotLeads(records, hotNow, hotScope), [records, hotNow, hotScope]);
   const hotIds = useMemo(() => new Set(hot.map(lead => lead.id)), [hot]);
   const counts = useMemo(() => {
@@ -384,8 +389,10 @@ export function LeadResultsPage({ records, total = records.length, workflow: ini
       <Link href="/app/bo-loc" className="btn btn-outline hide-mobile"><Icon name="target" size={16}/>Sửa nhu cầu theo dõi</Link>
     </div>
     {notice}
+    <EngagementReleased release={engagement.released} onDismiss={engagement.dismissReleased}/>
+    {hotScope && gated && <EngagementPanel gate={engagement.gate} profileId={hotScope} place="list"/>}
     {!onlyHot && <HotLeadBand leads={hot} now={hotNow} profileId={hotScope} busy={Boolean(openId)} onOpen={openLead}/>}
-    {latest && <LatestDeliveryBand latest={latest} workflow={workflow} delivery={delivery} now={now} onlyLatest={onlyLatest}
+    {latest && <LatestDeliveryBand latest={latest} workflow={workflow} delivery={gated ? null : delivery} now={now} onlyLatest={onlyLatest}
       onToggle={() => setOnlyLatest(value => !value)} onStart={() => { const next = nextLatest(); if (next) openLead(next.id); }}/>}
 
     <div className="status-tabs" role="tablist" aria-label="Lọc theo trạng thái">

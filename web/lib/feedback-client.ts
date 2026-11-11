@@ -4,6 +4,8 @@
  * Browser side of the one-time feedback invitation. Nothing here decides eligibility: the server does. These helpers
  * only keep requests off the critical path (source-open clicks) and avoid asking the server again once it said "never".
  */
+import { announceLeadReview } from './engagement-gate';
+
 const reported = new Set<string>();
 
 /**
@@ -16,7 +18,7 @@ export function reportSourceOpen(leadId: string): void {
   queueMicrotask(() => {
     try {
       void fetch(`/api/leads/${encodeURIComponent(leadId)}/source-open`, { method: 'POST', keepalive: true, credentials: 'same-origin' })
-        .then(response => { if (!response.ok && response.status >= 500) reported.delete(leadId); })
+        .then(response => { if (response.ok) announceLeadReview(); else if (response.status >= 500) reported.delete(leadId); })
         .catch(() => reported.delete(leadId));
     } catch { reported.delete(leadId); }
   });

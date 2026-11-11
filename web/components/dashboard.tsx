@@ -22,6 +22,7 @@ import { QuietHoursNote } from './quiet-hours';
 import { InstallHint } from './pwa-runtime';
 import { hotLeads } from '@/lib/hot-lead';
 import { isSearchQuietHours, nextAllowedScanAt } from '../../src/quiet-hours';
+import { EngagementTodayLine } from './engagement-gate';
 
 export function Dashboard({ records, profiles, legacy, scans, scanTotals, firstRun, discovery, workflow: initialWorkflow, rankingNow }: { records: Lead[]; profiles: SearchProfile[]; legacy: LegacySummary | null; scans: ScanRun[]; scanTotals: ScanTotals; firstRun: FirstScan | null; discovery: FirstScan | null; workflow: WorkflowMap; rankingNow: number }) {
   const now = useNow();
@@ -132,6 +133,7 @@ function ScanHistoryPanel({ profiles, legacy, scans, totals, suspended }: { prof
         {monitoring.length > MONITOR_PREVIEW && <li><Link className="monitor-more" href="/app/bo-loc">+ {monitoring.length - MONITOR_PREVIEW} nhu cầu khác</Link></li>}
       </ul>}
     </div>
+    <EngagementTodayLine profiles={monitoring.map(({ id, name }) => ({ id, name }))}/>
     {monitoring.length > 0 && <div className={`scan-next ${remaining === null && now && !quiet ? 'is-late' : ''} ${quiet ? 'is-quiet' : ''}`}>
       {quiet
         ? <QuietHoursNote/>
