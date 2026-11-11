@@ -293,7 +293,7 @@ export function leadListHref(source: string) { return source === 'all' ? '/app/b
  * always describe the same need, and Back/Forward/refresh restore it. The page is keyed by source, so no client state
  * from the previous need survives the switch.
  */
-export function LeadResultsPage({ records, total = records.length, workflow: initialWorkflow, profiles, hasLegacy = false, source = 'all', notice, delivery = null, latestOnly = false, hotOnly = false }: { records: Lead[]; total?: number; workflow: WorkflowMap; profiles: ProfileOption[]; hasLegacy?: boolean; source?: string; notice?: ReactNode; delivery?: DeliverySummary | null; latestOnly?: boolean; hotOnly?: boolean }) {
+export function LeadResultsPage({ records, total = records.length, workflow: initialWorkflow, profiles, hasLegacy = false, source = 'all', notice, delivery = null, latestOnly = false, hotOnly = false, unreadFirst = false }: { records: Lead[]; total?: number; workflow: WorkflowMap; profiles: ProfileOption[]; hasLegacy?: boolean; source?: string; notice?: ReactNode; delivery?: DeliverySummary | null; latestOnly?: boolean; hotOnly?: boolean; unreadFirst?: boolean }) {
   const now = useNow();
   const router = useRouter();
   const workflow = useLeadWorkflow(initialWorkflow);
@@ -304,7 +304,8 @@ export function LeadResultsPage({ records, total = records.length, workflow: ini
   const latestOpen = Boolean(latest && latest.ids.some(id => workflow.get(id).status === 'new'));
   const [query, setQuery] = useState('');
   const [range, setRange] = useState<DateRange>('all');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  // ?chua-xem=1 (from "Xem khách hàng chưa xem") opens on unread leads, but only when this need still has some.
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => unreadFirst && records.some(lead => (initialWorkflow[lead.id]?.status ?? 'new') === 'new') ? 'new' : 'all');
   const [onlyContact, setOnlyContact] = useState(false);
   const [onlyNotes, setOnlyNotes] = useState(false);
   const [onlyHot, setOnlyHot] = useState(hotOnly);
@@ -392,7 +393,8 @@ export function LeadResultsPage({ records, total = records.length, workflow: ini
     <EngagementReleased release={engagement.released} onDismiss={engagement.dismissReleased}/>
     {hotScope && gated && <EngagementPanel gate={engagement.gate} profileId={hotScope} place="list"/>}
     {!onlyHot && <HotLeadBand leads={hot} now={hotNow} profileId={hotScope} busy={Boolean(openId)} onOpen={openLead}/>}
-    {latest && <LatestDeliveryBand latest={latest} workflow={workflow} delivery={gated ? null : delivery} now={now} onlyLatest={onlyLatest}
+    {/* While the need waits for the customer, the progress panel is the one guide: no second band stacked under it. */}
+    {latest && !gated && <LatestDeliveryBand latest={latest} workflow={workflow} delivery={delivery} now={now} onlyLatest={onlyLatest}
       onToggle={() => setOnlyLatest(value => !value)} onStart={() => { const next = nextLatest(); if (next) openLead(next.id); }}/>}
 
     <div className="status-tabs" role="tablist" aria-label="Lọc theo trạng thái">

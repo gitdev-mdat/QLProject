@@ -35,7 +35,7 @@ export function profileEffect(profile: AdminUserProfile, account: 'active' | 'su
   if (profile.profileStatus !== 'active') return { label: 'Đã xóa', tone: 'removed', note: 'Khách đã xóa nhu cầu này.' };
   if (!profile.enabled) return { label: 'Khách tạm dừng', tone: 'paused', note: account === 'suspended' ? 'Khách tự tạm dừng. Vẫn giữ tạm dừng sau khi kích hoạt lại.' : 'Khách tự tạm dừng nhu cầu này.' };
   if (account === 'suspended') return { label: 'Không quét mới', tone: 'blocked', note: 'Khách vẫn bật, nhưng tài khoản đang ngưng tìm lead. Tự quét lại khi kích hoạt.' };
-  if (profile.searchingPausedByUsagePolicy) return { label: 'Chờ khách xử lý lead', tone: 'paused', note: 'Đã qua 3 lượt tìm và khách xử lý chưa đủ 80% lead đã nhận, nên chưa quét hay gửi thêm. Tự mở lại khi khách xử lý đủ.' };
+  if (profile.searchingPausedByUsagePolicy) return { label: 'Chờ khách khám phá', tone: 'paused', note: 'Đã qua 3 lượt tìm và khách khám phá chưa đủ 80% lead đã giao, nên chưa quét hay gửi thêm. Tự mở lại khi khách khám phá đủ.' };
   return { label: 'Đang theo dõi', tone: 'ok', note: 'Quét theo lịch.' };
 }
 
@@ -65,7 +65,17 @@ export function engagementLine(profile: AdminUserProfile): string | null {
   const scans = profile.completedDiscoveryScans ?? 0;
   const delivered = profile.deliveredCount ?? 0;
   const reviewed = profile.reviewedCount ?? 0;
-  const parts = [`${scans} lượt tìm từ khi áp dụng`, `đã xử lý ${reviewed}/${delivered} lead (${Math.floor(profile.reviewedPercent ?? 0)}%, cần ${profile.requiredReviewedCount ?? 0})`];
-  if (profile.pendingCount) parts.push(`đang giữ ${profile.pendingCount}`);
+  const parts = [`${scans} lượt tìm từ khi áp dụng`, `đã khám phá ${reviewed}/${delivered} lead (${Math.floor(profile.reviewedPercent ?? 0)}%, cần ${profile.requiredReviewedCount ?? 0})`];
+  if (profile.pendingCount) parts.push(`chờ gửi ${profile.pendingCount}`);
   return parts.join(' · ');
+}
+
+/** Account totals of the engagement rule across needs where it is active; null when it is active nowhere. Sums only server counts. */
+export function engagementSummary(profiles: AdminUserProfile[]): { delivered: number; reviewed: number; percent: number; pending: number; waiting: number; needs: number } | null {
+  const active = profiles.filter(p => p.policyActive);
+  if (!active.length) return null;
+  const delivered = active.reduce((n, p) => n + (p.deliveredCount ?? 0), 0);
+  const reviewed = active.reduce((n, p) => n + (p.reviewedCount ?? 0), 0);
+  return { delivered, reviewed, percent: delivered ? Math.floor(reviewed / delivered * 100) : 0,
+    pending: active.reduce((n, p) => n + (p.pendingCount ?? 0), 0), waiting: active.filter(p => p.searchingPausedByUsagePolicy).length, needs: active.length };
 }

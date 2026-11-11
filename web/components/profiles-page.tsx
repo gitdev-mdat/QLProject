@@ -12,7 +12,7 @@ import { profileStatus, requestNote, rescanButton, type ProfileStatus } from '@/
 import { AppShell, useMonitoringSuspended } from './app-shell';
 import { EngagementPanel, EngagementReleased, useEngagementGate } from './engagement-gate';
 import { GoatMascot } from './goat-mascot';
-import { isGated } from '@/lib/engagement-gate';
+import { engagementPill, isGated } from '@/lib/engagement-gate';
 import { useQuietHours } from './quiet-hours';
 import { Icon } from './visuals';
 
@@ -322,7 +322,9 @@ function ProfileCard({ profile, saved, onEdit }: { profile: SearchProfile; saved
   // While the need waits for the customer to handle sent leads, the backend refuses new searches: offer no button for one.
   const button = waitingForCustomer ? { show: false, disabled: true, label: 'Tìm lại ngay' } : rescanButton(profile, scan, suspended, busy === 'scan', waitUntil, now, quiet);
   // While the account is on hold an enabled need keeps its own "on" setting (grey, since nothing is searched right now).
-  const monitoring = suspended && profile.enabled ? { label: 'Đang bật', tone: 'off' } : profile.enabled ? { label: 'Đang theo dõi', tone: 'on' } : profile.state === 'draft' ? { label: 'Bản nháp', tone: 'off' } : { label: 'Tạm dừng', tone: 'off' };
+  // Precedence: own pause/draft, then the Admin hold, then waiting for the customer to explore (its own reason), then on.
+  const waitPill = waitingForCustomer ? engagementPill(engagement.gate) : null;
+  const monitoring = suspended && profile.enabled ? { label: 'Đang bật', tone: 'off' } : waitPill ? { label: waitPill, tone: 'wait' } : profile.enabled ? { label: 'Đang theo dõi', tone: 'on' } : profile.state === 'draft' ? { label: 'Bản nháp', tone: 'off' } : { label: 'Tạm dừng', tone: 'off' };
   // A finished scan of an older save can be followed by one of the latest save (the cooldown only covers the same save).
   const canRescanLatest = button.show && !button.disabled;
 

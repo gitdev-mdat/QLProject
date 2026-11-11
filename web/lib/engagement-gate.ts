@@ -3,6 +3,9 @@ import type { LeadStatus } from './lead-workflow';
 /**
  * Customer side of the per-need engagement rule (backend contract: docs/lead-engagement-gate-contract.md). The server
  * owns every number and decision; this file only words them. Nothing here counts reviews or predicts eligibility.
+ *
+ * Wording: a counted review is "khám phá" (never "xem"), because the lead status "Đã xem" (opening the detail) does not
+ * count and must not be confused with it. The tone invites; it never says locked, not eligible or required.
  */
 export type LeadEngagementGate = {
   policyActive: boolean;
@@ -29,43 +32,56 @@ export function isGated(gate: LeadEngagementGate | null | undefined): gate is Le
 
 export type EngagementView = {
   title: string;
-  /** What happens once enough leads are handled. */
-  detail: string;
+  /** "Bạn đã khám phá r/d khách hàng." */
+  progressLine: string;
+  /** "Khám phá thêm X khách hàng để nhận lượt tiếp theo." */
+  nextLine: string;
   reviewed: number;
   delivered: number;
-  required: number;
   remaining: number;
+  /** Positive only when the server confirms held candidates. Details are never shown before delivery. */
   pending: number;
-  /** 0–100, progress toward the required count (not toward all delivered leads). */
-  progress: number;
+  /** Floored, so 79.9% never reads as the 80% target. */
+  percent: number;
+  target: number;
 };
 
-/** How a review is counted, in the customer's words. Kept in one place so every surface says the same thing. */
-export const HOW_IT_COUNTS = 'Một khách hàng được tính là đã xử lý khi bạn bấm “Xem bài Facebook”, hoặc chọn Đã liên hệ, Quan tâm, Không quan tâm hay Không phù hợp. Chỉ mở xem chi tiết thì chưa tính.';
+/** How a review is counted, in the customer's words. One place, so every surface says the same thing. */
+export const HOW_IT_COUNTS = 'Bấm “Xem bài Facebook”, hoặc chọn Đã liên hệ, Quan tâm, Không quan tâm hay Không phù hợp. Mỗi khách hàng chỉ tính một lần; chỉ mở xem chi tiết thì chưa tính.';
 
 export function engagementView(gate: LeadEngagementGate | null | undefined): EngagementView | null {
   if (!isGated(gate)) return null;
   const reviewed = gate.reviewedCount;
-  const required = Math.max(gate.requiredReviewedCount, 0);
-  const remaining = Math.max(required - reviewed, 0);
-  const pending = gate.pendingCount;
-  const progress = required ? Math.min(100, Math.round(reviewed / required * 100)) : 100;
-  const title = pending > 0
-    ? `QLead đang giữ ${pending} khách hàng mới cho bạn`
-    : 'Xử lý khách hàng đã nhận để QLead tìm tiếp';
-  const next = pending > 0
-    ? 'QLead sẽ gửi ngay các khách hàng đang giữ và tiếp tục tìm theo lịch.'
-    : 'QLead sẽ tiếp tục tìm khách hàng mới theo lịch.';
-  const detail = remaining > 0 ? `Xử lý thêm ${remaining} khách hàng nữa, ${next}` : next;
-  return { title, detail, reviewed, delivered: gate.deliveredCount, required, remaining, pending, progress };
+  const delivered = gate.deliveredCount;
+  const remaining = Math.max(gate.requiredReviewedCount - reviewed, 0);
+  const pending = Math.max(gate.pendingCount, 0);
+  return {
+    title: pending > 0 ? 'QLead đã lưu thêm cơ hội cho bạn' : 'Khám phá thêm cơ hội đang có nhé!',
+    progressLine: `Bạn đã khám phá ${reviewed}/${delivered} khách hàng.`,
+    nextLine: `Khám phá thêm ${remaining} khách hàng để nhận lượt tiếp theo.`,
+    reviewed, delivered, remaining, pending,
+    percent: Math.floor(Math.max(0, Math.min(100, gate.reviewedPercent))),
+    target: gate.thresholdPercent,
+  };
 }
 
-/** Request note after "Tìm lại ngay" / "Lưu và tìm lại" was refused because the need is waiting for reviews. */
-export const USAGE_GATED_NOTE = 'Hãy xử lý các khách hàng đã nhận trước. QLead sẽ tìm tiếp ngay khi đủ.';
+/** Pill on a need card while it waits for the customer. Distinct from paused, suspended and overnight. */
+export function engagementPill(gate: LeadEngagementGate | null | undefined): string | null {
+  const view = engagementView(gate);
+  return view ? (view.pending > 0 ? 'Có cơ hội đang chờ' : 'Chờ bạn khám phá thêm') : null;
+}
+
+/** Request note after "Tìm lại ngay" / "Lưu và tìm lại" was not started because the need waits for the customer. */
+export const USAGE_GATED_NOTE = 'Khám phá thêm các khách hàng hiện có để QLead tìm lượt tiếp theo.';
 
 /** Browser event fired after the server accepted an action that may count as a review. */
 export const LEAD_REVIEW_EVENT = 'qlead:lead-reviewed';
 
 export function announceLeadReview(): void {
   try { window.dispatchEvent(new Event(LEAD_REVIEW_EVENT)); } catch { /* not in a browser */ }
+}
+
+/** List URL for one need, opened on its unread leads ("Chưa xem") when it still has some. */
+export function unreviewedHref(profileId: string): string {
+  return `/app/bai-viet?nhu-cau=${encodeURIComponent(profileId)}&chua-xem=1`;
 }

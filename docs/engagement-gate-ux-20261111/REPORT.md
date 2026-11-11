@@ -1,32 +1,29 @@
 # Engagement gate — customer + admin UX (2026-11-11)
 
 Backend contract: `docs/lead-engagement-gate-contract.md` (Codex, PR #26). This branch only words what the server
-returns; it never counts reviews or decides eligibility in the browser.
+returns (`GET /api/profiles/:id/scan` → `engagement`, `usage_gated`, admin profile fields). No client-side 80% rule,
+no schema/scheduling change, no Codex file edited.
 
-## What the customer sees
+## Audit: where the old UI would mislead under the gate
+1. Nhu cầu card, held third scan: stage said "Tìm thấy N khách hàng mới" + "Xem khách hàng mới" although nothing was delivered. → replaced by the progress panel while held.
+2. "Tìm lại ngay" / "Lưu và tìm lại": the server returns `usage_gated` and creates no job; the old note was empty. → button hidden while held; note "Khám phá thêm các khách hàng hiện có để QLead tìm lượt tiếp theo."
+3. Today scan panel: countdown "Lượt quét dự kiến tiếp theo" and the "đang chậm hơn lịch" note for needs that are not searched. → waiting needs no longer drive the countdown; if all needs wait, the block is hidden and one line per need explains instead.
+4. Lead list: "QLead giữ thêm N cơ hội khác và sẽ gửi tiếp từ HH:MM" promised a time that the gate does not honour; plus a second stacked band. → while held only the progress panel shows.
+5. Push: `new_leads` is enqueued from the delivered count, so a held scan sends nothing (verified in src/worker-api.ts). Unlock batches send no push either (the customer is in the app and sees the in-page thanks).
+6. NOT fixed (Codex query, web/lib/server/leads.ts): scan history "Tìm thấy N lead mới" counts stored source-linked posts, not delivered ones, so a held third scan can still read as N new leads in Lịch sử quét / Today's recent rows. Needs a delivered-based count from the backend.
+7. NOT available: a per-lead "reviewed" flag. "Xem khách hàng chưa xem" therefore opens the need's "Chưa xem" tab (falls back to all when none are unread); an exact "chưa khám phá" view needs `reviewed` per lead in GET /api/leads.
 
-| Where | When | What |
-|---|---|---|
-| /app/bo-loc card | `policyActive && !mayStartNewScan` | Gold panel replaces the scan headline (a held third scan must not read "Tìm thấy N khách hàng mới"): "QLead đang giữ N khách hàng mới cho bạn" (or "Xử lý khách hàng đã nhận để QLead tìm tiếp" when nothing is held), "Xử lý thêm X khách hàng nữa…", progress `reviewed/required`, "Thế nào là đã xử lý?", CTA "Xử lý khách hàng". "Tìm lại ngay" hidden. A running search keeps its stage. |
-| /app/bai-viet?nhu-cau= | same | Same panel above the list; the "sẽ gửi tiếp lúc HH:MM" held-back promise is suppressed while held. |
-| /app (Today) | same | One compact line per held need with a "Xử lý" link (Thi: Today must stay uncluttered). |
-| After a review | server delivered more / reopened | Page refreshes once; "Cảm ơn bạn! QLead đã gửi thêm N khách hàng[ và sẽ tìm tiếp theo lịch]." |
-| Tìm lại / Lưu và tìm lại | `usage_gated` | "Hãy xử lý các khách hàng đã nhận trước. QLead sẽ tìm tiếp ngay khi đủ." |
+## Customer experience
+- Wording: a counted review is "khám phá" (the status "Đã xem" does not count, so the two words are kept apart). No "khóa / không đủ điều kiện / bắt buộc".
+- Card + list panel (calm emerald, one bar with an 80% tick): title "QLead đã lưu thêm cơ hội cho bạn" only when `pendingCount > 0` (chip "N cơ hội đang chờ gửi", no lead details), otherwise "Khám phá thêm cơ hội đang có nhé!"; "Bạn đã khám phá r/d khách hàng. Khám phá thêm X khách hàng để nhận lượt tiếp theo."; "p% / mục tiêu 80%" (floored); disclosure "Thế nào là khám phá?"; card CTA "Xem khách hàng chưa xem" → `/app/bai-viet?nhu-cau=<id>&chua-xem=1`.
+- Card pill precedence: own pause/draft → Admin hold ("Đang bật", grey) → "Có cơ hội đang chờ" / "Chờ bạn khám phá thêm" → "Đang theo dõi". Overnight copy stays on the status line for searching needs.
+- First two scans, zero leads, paused, suspended: nothing new is shown.
+- Release: after a source open or a counted status, the page re-reads progress (~0.9 s, keepalive lands first) and on tab focus. If the server delivered more / reopened, the list refreshes in place and one dismissible line shows the real number: "Cảm ơn bạn đã khám phá thêm! QLead đã gửi thêm N khách hàng cho bạn." (or "Bạn đã khám phá đủ cơ hội để nhận lượt mới!" when searching reopens). Goat hops twice, not with reduced motion; in-memory only, so refresh/navigation never replays. After a batch the cohort grows (16/20 → 16/30) and the panel simply follows the server.
 
-Review counting copy matches the backend: "Xem bài Facebook" or Đã liên hệ / Quan tâm / Không quan tâm / Không phù hợp;
-opening the detail ("Đã xem") does not count. The browser re-reads `GET /api/profiles/:id/scan` ~0.9 s after a
-source-open (keepalive) or one of those statuses is accepted, and when the tab becomes visible again.
-
-Admin /admin/users detail: per-need line "N lượt tìm từ khi áp dụng · đã xử lý r/d lead (p%, cần k) · đang giữ h" and
-pill "Chờ khách xử lý lead" when `searchingPausedByUsagePolicy`. Percent is floored so 79.9% never shows as 80%.
-
-## Files
-`web/lib/engagement-gate.ts`, `web/components/engagement-gate.tsx|.css` (new); small hooks in profiles-page.tsx,
-lead-results.tsx, dashboard.tsx, admin-users.tsx, lib/admin-users.ts, lib/lead-state.ts, lib/feedback-client.ts,
-lib/profile-status.ts, lib/profile-scan.ts. No Codex backend file changed.
+## Admin
+Customer detail gets a "Mức khám phá lead" block: Lead toàn thời gian · Đã giao theo chính sách · Đã khám phá (p%) · Đang chờ gửi, plus a sentence: how many needs wait, that only leads after each need's policy baseline count (old leads stay visible), what "khám phá" means, and that this is usage, not lead quality. Each need line adds "N lượt tìm từ khi áp dụng · đã khám phá r/d lead (p%, cần k) · chờ gửi h"; pill "Chờ khách khám phá". The customer table is unchanged. The exact baseline timestamp is not in the admin API (only `policyActive`).
 
 ## Verification
-`web/e2e/engagement-gate-e2e.mts` on DB `muse_bridge_test_gate` (= muse_bridge_test_hot + 026), dev on 3081: **8/8**.
-Real `distributeProfileLeads` for 3 scans (20 delivered, 36 held, 0/16), real PATCH statuses and a real
-"Xem bài Facebook" click (Facebook answered locally) → 10 released in place, panel moves to 16/24; a need in its first
-two scans shows nothing; 390 px without horizontal scroll. Admin view checked by typecheck only (no admin session in E2E).
+`web/e2e/engagement-gate-e2e.mts` on DB `muse_bridge_test_gate` (muse_bridge_test_hot + 026) against a **production build** (`next build --webpack` + `next start`, port 3081): **14/14**. Covers 1440/768/390 (no horizontal scroll), usage_gated without a job, Today line without countdown, CTA lands on the right need + unread tab and survives refresh, statuses count / "seen" does not, the same Facebook source twice counts once (server 15), reaching 16/20 releases the real batch in place with the real number and no replay after refresh, first-two-scans and zero-lead needs show nothing, two needs keep independent progress, pause and suspension win, keyboard + progressbar name, admin block equals the admin API. `tsc --noEmit` 0. Not covered by automation: quiet-hours combination (time-dependent; precedence by code review).
+
+Performance: no server-side work added to page renders. The card/list add one `GET /api/profiles/:id/scan` after hydration; Today adds one per enabled need (≤10), all off the critical path.

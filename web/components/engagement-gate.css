@@ -1,28 +1,38 @@
-/* Waiting for the customer to handle sent leads: warm gold (an invitation, not an error), one progress bar, one CTA. */
-.eg-panel { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 12px; margin: 14px 0 0; padding: 14px 16px; border: 1px solid #F0DDB0; border-radius: var(--radius-sm); background: #FFF9EC; }
+/* Engagement progress: calm and compact (emerald tint, one bar, one CTA). Deliberately not a yellow/brown warning card. */
+.eg-panel { display: grid; gap: 6px; margin: 14px 0 0; padding: 12px 14px; border: 1px solid var(--green-100); border-radius: var(--radius-sm); background: var(--green-50); }
 .eg-panel.is-list { margin: 0 0 14px; }
-.eg-icon { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--gold-100); color: var(--gold-ink); }
-.eg-body { display: grid; gap: 4px; min-width: 0; }
+.eg-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
 .eg-title { color: var(--ink); font-weight: 700; font-size: 15px; line-height: 1.4; }
-.eg-detail { color: var(--ink-2); font-size: 14px; line-height: 1.5; }
-.eg-progress { display: grid; gap: 4px; margin-top: 6px; }
-.eg-bar { position: relative; height: 8px; max-width: 360px; border-radius: 999px; background: #F1E4C4; overflow: hidden; }
-.eg-bar span { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--gold-500); transition: width .5s var(--ease); }
-.eg-count { color: var(--ink-2); font-size: 13px; }
-.eg-count b { color: var(--ink); font-variant-numeric: tabular-nums; }
-.eg-count span { color: var(--muted); }
-.eg-how { margin-top: 2px; font-size: 13px; color: var(--muted); }
-.eg-how summary { cursor: pointer; width: fit-content; color: var(--gold-ink); font-weight: 600; }
-.eg-how p { margin-top: 4px; color: var(--ink-2); font-size: 13px; line-height: 1.5; }
-.eg-cta { grid-column: 2; justify-self: start; white-space: nowrap; }
-.eg-released { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; padding: 10px 14px; border-radius: var(--radius-sm); background: var(--green-50); color: var(--green-800); font-size: 14px; font-weight: 600; }
+.eg-pending { padding: 1px 8px; border-radius: 999px; background: var(--surface); border: 1px solid var(--green-100); color: var(--green-800); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.eg-line { color: var(--ink-2); font-size: 14px; line-height: 1.5; }
+.eg-line b { color: var(--ink); font-weight: 600; }
+.eg-progress { display: flex; align-items: center; gap: 10px; }
+.eg-bar { position: relative; flex: 1; max-width: 320px; height: 6px; border-radius: 999px; background: #D5EADF; }
+.eg-fill { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--green-600); transition: width .5s var(--ease); }
+.eg-target { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--green-800); }
+.eg-pct { color: var(--muted); font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.eg-pct b { color: var(--ink); }
+.eg-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.eg-how { font-size: 13px; color: var(--muted); }
+.eg-how summary { cursor: pointer; width: fit-content; color: var(--green-800); font-weight: 600; }
+.eg-how summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+.eg-how p { margin-top: 4px; max-width: 520px; color: var(--ink-2); font-size: 13px; line-height: 1.5; }
+.eg-released { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; padding: 8px 10px 8px 8px; border: 1px solid var(--green-100); border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--shadow-sm); }
+.eg-released p { flex: 1; min-width: 0; color: var(--ink-2); font-size: 14px; line-height: 1.45; }
+.eg-released b { color: var(--green-800); }
+.eg-released-goat { flex: none; display: inline-grid; place-items: center; }
+.eg-released.is-hop .eg-released-goat { animation: eg-hop .7s var(--ease) 2; }
+.eg-close { flex: none; width: 28px; height: 28px; font-size: 18px; line-height: 1; }
 .pf-card .eg-released { margin: 14px 0 0; }
-.eg-today { display: grid; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; }
-.eg-today li { display: flex; align-items: baseline; gap: 8px; padding: 8px 12px; border-radius: var(--radius-sm); background: #FFF9EC; color: var(--ink-2); font-size: 14px; line-height: 1.45; }
-.eg-today li > svg { flex: none; color: var(--gold-ink); align-self: center; }
-.eg-today li > span { flex: 1; min-width: 0; }
+@keyframes eg-hop { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-6px); } }
+.eg-today { display: grid; gap: 4px; margin: 10px 0 0; padding: 0; list-style: none; }
+.eg-today li { display: flex; align-items: baseline; gap: 8px; color: var(--ink-2); font-size: 14px; line-height: 1.45; }
+.eg-today li > span:nth-child(2) { flex: 1; min-width: 0; }
 .eg-today b { color: var(--ink); }
+.eg-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--green-600); transform: translateY(-1px); }
 .eg-today .text-link { flex: none; font-weight: 600; }
-
-@media (max-width: 420px) { .eg-cta { grid-column: 1 / -1; } }
-@media (prefers-reduced-motion: reduce) { .eg-bar span { transition: none; } }
+.pf-monitor.is-wait { color: var(--green-800); }
+.pf-monitor.is-wait::before { background: var(--surface); box-shadow: inset 0 0 0 2px var(--green-600), 0 0 0 3px var(--green-100); }
+.admin-engagement { margin-top: 4px; }
+.admin-engagement .stat-grid { margin: 8px 0; }
+@media (prefers-reduced-motion: reduce) { .eg-fill { transition: none; } .eg-released.is-hop .eg-released-goat { animation: none; } }

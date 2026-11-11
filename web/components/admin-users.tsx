@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { apiErrorText, engagementLine, frequencyText, MONITORING_LABEL, profileEffect, USERS_PAGE_SIZE, type AdminUserDetail, type AdminUserPage, type AdminUserRow, type MonitoringChange, type UserDeletionImpact } from '@/lib/admin-users';
+import { apiErrorText, engagementLine, engagementSummary, frequencyText, MONITORING_LABEL, profileEffect, USERS_PAGE_SIZE, type AdminUserDetail, type AdminUserPage, type AdminUserRow, type MonitoringChange, type UserDeletionImpact } from '@/lib/admin-users';
 import { deviceText, LOGIN_METHOD_LABEL, SESSION_STATE_LABEL, type LoginHistoryFilter, type LoginHistoryPage } from '@/lib/login-history';
 import { Icon } from './visuals';
 
@@ -213,6 +213,7 @@ function UserDetail({ userId, currentAdminId, onClose, onChanged, onDeleted }: {
   const d = detail;
   const profiles = d?.profiles.filter(p => p.profileStatus === 'active') ?? [];
   const removed = (d?.profiles.length ?? 0) - profiles.length;
+  const engagement = engagementSummary(profiles);
   const enabled = profiles.filter(p => p.enabled).length;
 
   return <div className="modal-backdrop user-drawer-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !confirm && !deleting) onClose(); }}>
@@ -259,6 +260,17 @@ function UserDetail({ userId, currentAdminId, onClose, onChanged, onDeleted }: {
             <div><dt>Chờ / đang chạy</dt><dd>{d.pendingJobCount} / {d.claimedJobCount}</dd></div>
           </dl>
           {d.status === 'suspended' && d.pendingJobCount > 0 && <p className="muted-text small">Lượt đang chờ được giữ lại nhưng không được giao xử lý trong lúc ngưng.</p>}
+
+          {engagement && <section className="admin-engagement" aria-labelledby="engagement-title">
+            <h3 className="sub-h" id="engagement-title">Mức khám phá lead</h3>
+            <dl className="stat-grid user-stats">
+              <div><dt>Lead toàn thời gian</dt><dd>{num.format(d.leadCount)}</dd></div>
+              <div><dt>Đã giao theo chính sách</dt><dd>{num.format(engagement.delivered)}</dd></div>
+              <div><dt>Đã khám phá</dt><dd>{num.format(engagement.reviewed)} <small>({engagement.delivered ? `${engagement.percent}%` : '–'})</small></dd></div>
+              <div><dt>Đang chờ gửi</dt><dd>{num.format(engagement.pending)}</dd></div>
+            </dl>
+            <p className="muted-text small">{engagement.waiting ? `${engagement.waiting}/${engagement.needs} nhu cầu đang chờ khách khám phá thêm (dưới 80% sau 3 lượt tìm) nên chưa quét hay gửi thêm. ` : 'Không nhu cầu nào đang chờ khách. '}Chỉ tính lead giao sau mốc áp dụng chính sách của từng nhu cầu; lead cũ vẫn hiển thị cho khách nhưng không vào tỷ lệ. Khám phá = mở bài Facebook hoặc tự phân loại lead. Đây là mức sử dụng, không phải chất lượng lead.</p>
+          </section>}
 
           <section aria-labelledby="profiles-title">
             <h3 className="sub-h" id="profiles-title">Nhu cầu theo dõi</h3>

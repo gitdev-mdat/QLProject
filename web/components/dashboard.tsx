@@ -104,7 +104,10 @@ function ScanHistoryPanel({ profiles, legacy, scans, totals, suspended }: { prof
     return () => window.clearInterval(timer);
   }, []);
   const monitoring = profiles.filter(profile => profile.enabled);
-  const onSchedule = monitoring.filter(profile => profile.state === 'active' || profile.state === 'pending_first_scan');
+  // Needs waiting for the customer to explore their leads are not searched: they never drive a countdown or a "late" note.
+  const [waitingIds, setWaitingIds] = useState<string[]>([]);
+  const onSchedule = monitoring.filter(profile => (profile.state === 'active' || profile.state === 'pending_first_scan') && !waitingIds.includes(profile.id));
+  const allWaiting = monitoring.length > 0 && monitoring.every(profile => waitingIds.includes(profile.id));
   const frequencyMs = onSchedule.length ? Math.min(...onSchedule.map(profile => profile.frequencyMinutes)) * 60_000 : 0;
   const next = frequencyMs && now ? Math.ceil(now / frequencyMs) * frequencyMs : null;
   const remaining = next !== null ? next - now : null;
@@ -133,8 +136,8 @@ function ScanHistoryPanel({ profiles, legacy, scans, totals, suspended }: { prof
         {monitoring.length > MONITOR_PREVIEW && <li><Link className="monitor-more" href="/app/bo-loc">+ {monitoring.length - MONITOR_PREVIEW} nhu cầu khác</Link></li>}
       </ul>}
     </div>
-    <EngagementTodayLine profiles={monitoring.map(({ id, name }) => ({ id, name }))}/>
-    {monitoring.length > 0 && <div className={`scan-next ${remaining === null && now && !quiet ? 'is-late' : ''} ${quiet ? 'is-quiet' : ''}`}>
+    <EngagementTodayLine profiles={monitoring.map(({ id, name }) => ({ id, name }))} onWaiting={setWaitingIds}/>
+    {monitoring.length > 0 && !allWaiting && <div className={`scan-next ${remaining === null && now && !quiet ? 'is-late' : ''} ${quiet ? 'is-quiet' : ''}`}>
       {quiet
         ? <QuietHoursNote/>
         : resumesAt
