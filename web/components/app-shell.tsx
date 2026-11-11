@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Brand, Icon } from './visuals';
 import { PwaIcon } from './pwa-icons';
-import { InstallHint, PwaRuntime } from './pwa-runtime';
+import { PwaRuntime } from './pwa-runtime';
 import { releaseSubscriptionOnLogout } from '@/lib/push-client';
 import { FeedbackEntry, FeedbackInvite } from './customer-feedback';
 import '@/lib/install-prompt';
@@ -128,7 +128,7 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
     setPending(href);
   };
   const user = useContext(SessionContext);
-  return <FrameContext.Provider value={true}><PwaRuntime/><ShellChrome active={active} onNav={onNav}>{path === '/app' && <InstallHint/>}{children}</ShellChrome>
+  return <FrameContext.Provider value={true}><PwaRuntime/><ShellChrome active={active} onNav={onNav}>{children}</ShellChrome>
     {/* The one-time feedback invitation: the server decides, and it appears only at a calm moment (components/customer-feedback.tsx). */}
     <FeedbackInvite owner={user?.pushOwner ?? null} suspended={user?.leadMonitoringStatus === 'suspended'}/></FrameContext.Provider>;
 }

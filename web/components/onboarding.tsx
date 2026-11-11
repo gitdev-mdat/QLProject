@@ -127,7 +127,7 @@ export function Onboarding({ userId, displayName }: { userId: string; displayNam
           <button type="button" className="intent-option is-custom" aria-pressed={custom} onClick={() => choose(CUSTOM)}>
             <span className="intent-check" aria-hidden="true"><Icon name="edit" size={15}/></span>
             <b>Ngành khác? Tự mô tả khách hàng</b>
-            <span>Bạn kinh doanh ngành nào cũng được. Hãy mô tả khách hàng mà bạn muốn tìm.</span>
+            <span>Ngành nào cũng được. Hãy mô tả công việc bạn đang kinh doanh và nhóm khách hàng bạn muốn tìm.</span>
           </button>
         </div>
         {choice && <div className="field onboarding-describe">

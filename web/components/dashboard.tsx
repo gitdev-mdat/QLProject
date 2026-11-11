@@ -9,8 +9,7 @@ import { frequencyLabel, PROFILE_STATE_LABEL, type LegacySummary, type SearchPro
 import { AppShell, useMonitoringSuspended } from './app-shell';
 import { Icon } from './visuals';
 import { GoatMascot } from './goat-mascot';
-import { LatestDeliveryBand, LeadListItem } from './lead-results';
-import { latestDelivery } from '@/lib/lead-delivery';
+import { LeadListItem } from './lead-results';
 import { FirstScanView } from './first-scan';
 import { DiscoveryNotice } from './discovery-notice';
 import type { FirstScan } from '@/lib/first-scan';
@@ -18,6 +17,11 @@ import { useLeadWorkflow, useNow } from '@/lib/lead-state';
 import type { WorkflowMap } from '@/lib/lead-workflow';
 import { recentActivity, scanTime, shortScanTime } from '@/lib/scan-history';
 import { QuietScansRow, ScanRow } from './scan-outcome';
+import { HotLeadBand, useHotNow } from './hot-lead';
+import { QuietHoursNote } from './quiet-hours';
+import { InstallHint } from './pwa-runtime';
+import { hotLeads } from '@/lib/hot-lead';
+import { isSearchQuietHours, nextAllowedScanAt } from '../../src/quiet-hours';
 
 export function Dashboard({ records, profiles, legacy, scans, scanTotals, firstRun, discovery, workflow: initialWorkflow, rankingNow }: { records: Lead[]; profiles: SearchProfile[]; legacy: LegacySummary | null; scans: ScanRun[]; scanTotals: ScanTotals; firstRun: FirstScan | null; discovery: FirstScan | null; workflow: WorkflowMap; rankingNow: number }) {
   const now = useNow();
@@ -27,8 +31,8 @@ export function Dashboard({ records, profiles, legacy, scans, scanTotals, firstR
   const contacted = records.filter(lead => workflow.get(lead.id).status === "contacted").length;
   const interested = records.filter(lead => workflow.get(lead.id).status === "interested").length;
   const suspended = useMonitoringSuspended();
-  // The newest bounded delivery leads Today with one "start here" line; the full list keeps every older lead.
-  const latest = latestDelivery(records);
+  const hotNow = useHotNow(records, now);
+  const hot = hotLeads(records, hotNow);
   const today = now ? new Intl.DateTimeFormat('vi-VN', { weekday: 'long', day: 'numeric', month: 'numeric', timeZone: 'Asia/Ho_Chi_Minh' }).format(now) : '';
 
   return <AppShell active="Hôm nay">
@@ -43,7 +47,9 @@ export function Dashboard({ records, profiles, legacy, scans, scanTotals, firstR
     {/* Until the first scan finishes, its real status leads the page instead of zero counts and an empty list. */}
     {firstRun ? <FirstScanView initial={firstRun} compact/> : <>
     {discovery && <DiscoveryNotice initial={discovery} place="today"/>}
-    {latest && <LatestDeliveryBand latest={latest} workflow={workflow} now={now} compact/>}
+    <HotLeadBand leads={hot} now={hotNow} compact/>
+    {/* Installing is suggested only once there are real leads; a Hot Lead band carries its own install line. */}
+    {records.length > 0 && hot.length === 0 && <InstallHint/>}
     <dl className="summary-row" aria-label="Tóm tắt">
       <div><dt>Chưa xem</dt><dd>{unseen.length}</dd></div>
       <div><dt>Đã liên hệ</dt><dd>{contacted}</dd></div>
@@ -59,7 +65,7 @@ export function Dashboard({ records, profiles, legacy, scans, scanTotals, firstR
           ? <div className="empty-state compact"><GoatMascot size="sm"/><h3>Chưa có lead nào</h3><p>Nhu cầu của bạn đã được lưu. Khi QLead tìm thấy bài phù hợp, lead sẽ xuất hiện ở đây.</p><Link className="btn btn-outline" href="/app/bo-loc">Xem nhu cầu theo dõi</Link></div>
           : unseen.length === 0
             ? <div className="empty-state compact"><GoatMascot size="sm"/><h3>Bạn đã xem hết lead</h3><p>Lead mới sẽ xuất hiện ở đây sau các lượt quét tiếp theo.</p><Link className="btn btn-outline" href="/app/bai-viet">Xem lại danh sách</Link></div>
-            : <ul className="lead-list">{unseen.slice(0, 5).map(lead => <LeadListItem key={lead.id} lead={lead} now={now} workflow={workflow}/>)}</ul>}
+            : <ul className="lead-list">{unseen.slice(0, 5).map(lead => <LeadListItem key={lead.id} lead={lead} now={now} workflow={workflow} hotNow={hotNow}/>)}</ul>}
         {unseen.length > 5 && <Link className="panel-foot-link" href="/app/bai-viet">Còn {unseen.length - 5} lead chưa xem <Icon name="arrow" size={16}/></Link>}
       </section>
 
@@ -101,6 +107,9 @@ function ScanHistoryPanel({ profiles, legacy, scans, totals, suspended }: { prof
   const frequencyMs = onSchedule.length ? Math.min(...onSchedule.map(profile => profile.frequencyMinutes)) * 60_000 : 0;
   const next = frequencyMs && now ? Math.ceil(now / frequencyMs) * frequencyMs : null;
   const remaining = next !== null ? next - now : null;
+  // Overnight pause (00:30–06:30 Vietnam time, enforced by the backend): no countdown into it and no "late" warning.
+  const quiet = now ? isSearchQuietHours(new Date(now)) : false;
+  const resumesAt = next !== null ? nextAllowedScanAt(new Date(next)) : null;
   const lastSuccess = monitoring.map(profile => profile.lastSuccessAt).filter(Boolean).sort().at(-1) ?? null;
   const recent = recentActivity(scans);
   const day = totals.last24h;
@@ -123,8 +132,12 @@ function ScanHistoryPanel({ profiles, legacy, scans, totals, suspended }: { prof
         {monitoring.length > MONITOR_PREVIEW && <li><Link className="monitor-more" href="/app/bo-loc">+ {monitoring.length - MONITOR_PREVIEW} nhu cầu khác</Link></li>}
       </ul>}
     </div>
-    {monitoring.length > 0 && <div className={`scan-next ${remaining === null && now ? 'is-late' : ''}`}>
-      {remaining !== null && next !== null
+    {monitoring.length > 0 && <div className={`scan-next ${remaining === null && now && !quiet ? 'is-late' : ''} ${quiet ? 'is-quiet' : ''}`}>
+      {quiet
+        ? <QuietHoursNote/>
+        : resumesAt
+        ? <><span className="scan-next-label">Lượt quét tiếp theo</span><span className="scan-next-at">QLead tạm nghỉ ban đêm từ 00:30, sẽ tìm tiếp từ 06:30.</span></>
+        : remaining !== null && next !== null
         ? <>
           <span className="scan-next-label">Lượt quét dự kiến tiếp theo</span>
           <b className="scan-countdown">{clock(remaining)}</b>

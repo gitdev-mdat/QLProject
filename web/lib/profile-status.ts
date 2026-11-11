@@ -26,7 +26,18 @@ export type ProfileStatus = {
 
 type Clock = (iso: string) => string;
 
-export function profileStatus(profile: SearchProfile, scan: ProfileScan | null, suspended: boolean, time: Clock): ProfileStatus {
+/** Overnight pause copy (00:30–06:30 Vietnam time; the backend holds new searches, a running one may finish). */
+const QUIET_TITLE = 'QLead đang tạm nghỉ ban đêm';
+const QUIET_DETAIL = 'Việc tìm khách hàng mới sẽ tiếp tục từ 06:30. Bạn vẫn xem lead và sửa nhu cầu bình thường.';
+
+export function profileStatus(profile: SearchProfile, scan: ProfileScan | null, suspended: boolean, time: Clock, quiet = false): ProfileStatus {
+  const status = baseStatus(profile, scan, suspended, time, quiet);
+  // Overnight, a finished or idle need keeps its result but its "what next" line says when searching resumes.
+  if (quiet && !suspended && profile.enabled && !status.live && status.title !== QUIET_TITLE) return { ...status, detail: 'QLead đang tạm nghỉ ban đêm. Việc tìm khách hàng mới sẽ tiếp tục từ 06:30.' };
+  return status;
+}
+
+function baseStatus(profile: SearchProfile, scan: ProfileScan | null, suspended: boolean, time: Clock, quiet: boolean): ProfileStatus {
   const base = { live: false, freshness: null } as const;
   // The customer's own pause/draft setting is shown as usual; it is what applies again after an Admin reactivation.
   if (!profile.enabled) return profile.state === 'draft'
@@ -35,6 +46,11 @@ export function profileStatus(profile: SearchProfile, scan: ProfileScan | null, 
   // Account-level hold: stated once on the page, so the card itself has nothing to warn about (and never shows "late").
   if (suspended && scan?.state !== 'running') return { ...base, tone: 'off', title: 'Tìm lead mới đang tạm dừng', detail: 'Nhu cầu này vẫn bật và sẽ tự tiếp tục khi tài khoản được kích hoạt lại.' };
 
+  // A search that is waiting overnight is held by the backend until 06:30, not late and not stuck.
+  if (quiet && (!scan || scan.state === 'queued' || scan.state === 'delayed')) return {
+    ...base, freshness: scan ? (scan.version < profile.version ? 'older' : 'latest') : null, tone: 'off', title: QUIET_TITLE,
+    detail: scan ? 'Lượt tìm đã được giữ và sẽ bắt đầu từ 06:30. Bạn vẫn xem lead và sửa nhu cầu bình thường.' : QUIET_DETAIL,
+  };
   if (scan?.kind === 'followup') return followupStatus(profile, scan);
   if (scan) {
     const freshness = scan.version < profile.version ? 'older' : 'latest';
@@ -98,11 +114,13 @@ function followupStatus(profile: SearchProfile, scan: ProfileScan): ProfileStatu
 /** What "Tìm lại ngay" can do right now, so a click never pretends to start a search that cannot start. */
 export type RescanButton = { show: boolean; disabled: boolean; label: string; hint?: string };
 
-export function rescanButton(profile: SearchProfile, scan: ProfileScan | null, suspended: boolean, busy: boolean, waitUntil: number | null, now: number): RescanButton {
+export function rescanButton(profile: SearchProfile, scan: ProfileScan | null, suspended: boolean, busy: boolean, waitUntil: number | null, now: number, quiet = false): RescanButton {
   if (!profile.enabled || suspended) return { show: false, disabled: true, label: 'Tìm lại ngay' };
   if (busy) return { show: true, disabled: true, label: 'Đang gửi…' };
   // While a search is waiting or running the status stage explains it; a disabled button would only add noise.
   if (scan && SCAN_OPEN.includes(scan.state)) return { show: false, disabled: true, label: 'Tìm lại ngay' };
+  // Overnight the backend keeps the request for 06:30; the button says exactly that instead of "ngay".
+  if (quiet) return { show: true, disabled: false, label: 'Tìm lại lúc 06:30', hint: 'QLead đang tạm nghỉ ban đêm. Lượt tìm sẽ bắt đầu từ 06:30.' };
   if (waitUntil && waitUntil > now) {
     const minutes = Math.max(1, Math.ceil((waitUntil - now) / 60_000));
     return { show: true, disabled: true, label: `Tìm lại sau ${minutes} phút`, hint: 'Vừa tìm xong với mô tả này.' };
@@ -112,6 +130,9 @@ export function rescanButton(profile: SearchProfile, scan: ProfileScan | null, s
 
 /** A short line after "Tìm lại ngay" or "Lưu và tìm lại" when the request did not simply start a new search. */
 export function requestNote(request: ScanRequestOutcome): { text: string; tone: 'ok' | 'warn' } | null {
+  if ((request.outcome === 'queued' || request.outcome === 'existing') && request.quietHoursActive) {
+    return { text: 'QLead đang tạm nghỉ ban đêm. Lượt tìm đã được giữ và sẽ bắt đầu từ 06:30.', tone: 'ok' };
+  }
   switch (request.outcome) {
     case 'queued': return null;
     case 'existing': return { text: 'Nhu cầu này đã có một lượt tìm, QLead không tạo thêm.', tone: 'ok' };

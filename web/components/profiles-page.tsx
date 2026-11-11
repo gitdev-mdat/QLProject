@@ -11,6 +11,7 @@ import { frequencyLabel, locationLabel, NO_LOCATION_OPTION, PROFILE_FREQUENCIES,
 import { profileStatus, requestNote, rescanButton, type ProfileStatus } from '@/lib/profile-status';
 import { AppShell, useMonitoringSuspended } from './app-shell';
 import { GoatMascot } from './goat-mascot';
+import { useQuietHours } from './quiet-hours';
 import { Icon } from './visuals';
 
 type Sent = { ok: true; data: { version?: number; scan?: ScanRequestOutcome | null } } | { ok: false; error: string };
@@ -93,10 +94,10 @@ function ProfileForm({ profile, onDone, onSaved }: { profile?: SearchProfile; on
       <button type="button" className="icon-btn" onClick={onDone} aria-label="Đóng"><Icon name="back" size={16}/></button>
     </div>
 
-    <label className="field field-primary">Bạn muốn tìm khách hàng nào?
+    <label className="field field-primary">Bạn kinh doanh gì và muốn tìm khách hàng nào?
       <textarea className="text-area" rows={3} maxLength={1000} value={draft.description} onChange={event => describe(event.target.value)} required
-        placeholder="Ví dụ: Quán F&B sắp khai trương hoặc đang tuyển nhân viên để chuẩn bị khai trương."/>
-      <small>Nêu loại khách và dấu hiệu bạn quan tâm. Nêu khu vực nếu chỉ muốn tìm ở đó.</small>
+        placeholder="Ví dụ: Tôi đang bán phần mềm quản lý, tính tiền và muốn tìm các quán F&B sắp khai trương."/>
+      <small>Nói rõ bạn bán sản phẩm, dịch vụ gì và nhóm khách hàng bạn muốn tìm. Nêu khu vực nếu chỉ muốn tìm ở đó.</small>
     </label>
     {!profile && <div className="example-chips"><span>Mẫu:</span>{EXAMPLES.map(example => <button type="button" key={example} onClick={() => describe(example)}>{example}</button>)}</div>}
 
@@ -310,8 +311,9 @@ function ProfileCard({ profile, saved, onEdit }: { profile: SearchProfile; saved
     await refresh();
   }
 
-  const status = profileStatus(profile, scan, suspended, shortTime);
-  const button = rescanButton(profile, scan, suspended, busy === 'scan', waitUntil, now);
+  const quiet = useQuietHours();
+  const status = profileStatus(profile, scan, suspended, shortTime, quiet);
+  const button = rescanButton(profile, scan, suspended, busy === 'scan', waitUntil, now, quiet);
   // While the account is on hold an enabled need keeps its own "on" setting (grey, since nothing is searched right now).
   const monitoring = suspended && profile.enabled ? { label: 'Đang bật', tone: 'off' } : profile.enabled ? { label: 'Đang theo dõi', tone: 'on' } : profile.state === 'draft' ? { label: 'Bản nháp', tone: 'off' } : { label: 'Tạm dừng', tone: 'off' };
   // A finished scan of an older save can be followed by one of the latest save (the cooldown only covers the same save).
@@ -375,7 +377,7 @@ export function ProfilesPage({ profiles, legacy, startCreating = false }: { prof
     {profiles.length === 0 && editing !== 'new' && <section className="panel profiles-empty">
       <GoatMascot size={legacy ? 'sm' : 'md'}/>
       <div><h2>Bạn muốn tìm khách hàng nào?</h2>
-        <p>Mô tả bằng lời của bạn, ví dụ “quán cafe sắp khai trương ở TP.HCM”. QLead sẽ tự tìm bài đăng phù hợp trên Facebook và báo khi có khách hàng mới.</p>
+        <p>Hãy mô tả công việc bạn đang kinh doanh và nhóm khách hàng bạn muốn tìm. Ví dụ: “Tôi đang bán phần mềm quản lý, tính tiền và muốn tìm các quán F&amp;B sắp khai trương.” QLead sẽ tự tìm bài đăng phù hợp trên Facebook và báo khi có khách hàng mới.</p>
         <button type="button" className="btn btn-primary" onClick={() => setEditing('new')}>Tạo nhu cầu đầu tiên</button></div>
     </section>}
 

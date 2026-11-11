@@ -1,0 +1,6 @@
+/* Overnight pause: a calm, small status (night blue-grey, no warning colours, no progress bar). */
+.quiet-note { display: flex; align-items: flex-start; gap: 8px; margin: 0; color: var(--ink-2, #344); font-size: 14px; line-height: 1.45; }
+.quiet-note b { display: block; color: #35406B; }
+.quiet-note.is-compact b { display: inline; margin-right: 4px; }
+.quiet-moon { flex: none; display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: #E9ECF6; color: #4A5A92; }
+.scan-next.is-quiet { background: #F4F5FA; border-color: #DEE2EF; }
