@@ -232,7 +232,7 @@ try {
     await pa.goto(`${BASE}/app/bo-loc`);
     await pa.getByRole('button', { name: 'Tạo nhu cầu mới' }).click();
     const form = pa.locator('.profile-form');
-    await form.getByLabel('Bạn muốn tìm khách hàng nào?').fill('Quán cafe, trà sữa sắp khai trương ở TP.HCM');
+    await form.getByLabel('Bạn kinh doanh gì và muốn tìm khách hàng nào?').fill('Quán cafe, trà sữa sắp khai trương ở TP.HCM');
     assert((await form.getByLabel('Khu vực', { exact: true }).inputValue()) === 'TP.HCM', 'location taken from the description');
     assert(await form.locator('.search-preview .keyword-chips li').count() > 0, 'search phrases previewed');
     await form.getByLabel('Tên nhu cầu').fill('Cafe trà sữa TP.HCM');
