@@ -9,9 +9,20 @@ export type LeadSource =
   | { kind: 'profile'; profileId: string; profileName: string; version: number | null; keywords: string[]; location: string | null; discoveredAt: string | null }
   | { kind: 'legacy'; discoveredAt: string | null };
 
+export type HotLeadAssessment = {
+  profileId: string;
+  status: 'hot' | 'historical' | 'standard';
+  reasonVi: string | null;
+  evidence: string | null;
+  publishedAt: string | null;
+  assessedAt: string | null;
+  expiresAt: string | null;
+};
+
 /** A lead plus every search that found the same Facebook post; the earliest discovery is the lead itself. */
 export type Lead = LeadRecord & {
   sources: LeadSource[];
+  hotAssessments: HotLeadAssessment[];
   deliveredAt: string | null;
   eligibility: { basis: 'source_linked_search'; relevance: 'selected_by_search'; independentlyVerified: false };
 };

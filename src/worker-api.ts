@@ -6,7 +6,9 @@ import { resultSchema } from './validation.js';
 import { preparePosts, upsertPosts, type PreparedPost } from './ingest.js';
 import { countSourceLinkedPostsForRun } from './lead-eligibility.js';
 import { claimJobs, enqueueInitialFollowup, lockJob, markCompleted, markFailed, type Worker } from './jobs.js';
-import { enqueueNewLeadNotification } from './push-notifications.js';
+import { enqueueHotLeadNotification, enqueueNewLeadNotification } from './push-notifications.js';
+import { distributeProfileLeads } from './lead-distribution.js';
+import { quietHoursState } from './quiet-hours.js';
 
 /**
  * Shared Muse worker API. A worker authenticates with its own credential (muse_workers), which never grants access to
@@ -79,7 +81,8 @@ export async function workerRoutes(app: FastifyInstance, options: { onPushNotifi
       FROM worker_handoffs WHERE (source_worker_id = $1 OR destination_worker_id = $1) AND status IN ('preparing', 'draining', 'awaiting_worker_start', 'verifying') LIMIT 1`, [worker.id]);
     return { name: worker.name, status: worker.status, authorized_sources: worker.authorized_sources, max_jobs_per_claim: worker.max_jobs_per_claim, lease_minutes: worker.lease_minutes,
       claimed_jobs: counts.claimed_jobs, expired_claims: counts.expired_claims,
-      queue: { claimable_jobs: worker.status === 'active' ? counts.claimable_jobs : 0, retry_jobs: counts.retry_jobs, oldest_pending_slot: counts.oldest_pending_slot },
+      queue: { claimable_jobs: worker.status === 'active' && !quietHoursState().active ? counts.claimable_jobs : 0, retry_jobs: counts.retry_jobs, oldest_pending_slot: counts.oldest_pending_slot },
+      quiet_hours: quietHoursState(),
       handoff: handoff ?? null };
   });
 
@@ -95,7 +98,7 @@ export async function workerRoutes(app: FastifyInstance, options: { onPushNotifi
       const jobs = await claimJobs(client, worker, parsed.data.max_jobs ?? worker.max_jobs_per_claim, parsed.data.search_profile_id);
       await client.query('COMMIT');
       req.log.info({ worker_id: worker.id, claimed_jobs: jobs.map(job => ({ job_id: job.job_id, scan_id: job.scan_id, attempt_no: job.attempt_no, configuration_version: job.configuration_version, lease_expires_at: job.lease_expires_at })) }, 'Worker jobs claimed');
-      return { worker_status: worker.status, jobs, server_time: new Date().toISOString() };
+      return { worker_status: worker.status, jobs, quiet_hours: quietHoursState(), server_time: new Date().toISOString() };
     } catch (error: any) {
       await client.query('ROLLBACK').catch(() => undefined);
       req.log.error({ err: { code: error?.code, message: error?.message } }, 'Job claim failed');
@@ -166,10 +169,22 @@ export async function workerRoutes(app: FastifyInstance, options: { onPushNotifi
       const sourceCounts = await countSourceLinkedPostsForRun(client, job.search_profile_id, job.configuration_version, run.received_at);
       const followupQueued = job.kind === 'initial' && status !== 'failed' && sourceCounts.sourceLinkedPosts <= 1
         ? await enqueueInitialFollowup(client, job.search_profile_id, job.configuration_version, payload.keywords_used) : false;
-      const pushOutboxId = status !== 'failed' && sourceCounts.sourceLinkedPosts > 0
-        ? await enqueueNewLeadNotification(client, { scanRunId: run.id, profileId: job.search_profile_id, leadCount: sourceCounts.sourceLinkedPosts, leadId: sourceCounts.singlePostId }) : null;
+      const { rows: [owner] } = await client.query<{ user_id: string }>('SELECT user_id FROM agent_connections WHERE id=$1', [job.search_profile_id]);
+      const distribution = status !== 'failed' && owner
+        ? await distributeProfileLeads(client, owner.user_id, job.search_profile_id) : null;
+      const pushOutboxIds: string[] = [];
+      if (distribution?.hotPostIds.length) {
+        for (const leadId of distribution.hotPostIds) {
+          const id = await enqueueHotLeadNotification(client, { scanRunId: run.id, profileId: job.search_profile_id, leadId });
+          if (id) pushOutboxIds.push(id);
+        }
+      } else if (distribution?.deliveredPostIds.length) {
+        const id = await enqueueNewLeadNotification(client, { scanRunId: run.id, profileId: job.search_profile_id,
+          leadCount: distribution.deliveredPostIds.length, leadId: distribution.deliveredPostIds.length === 1 ? distribution.deliveredPostIds[0] : null });
+        if (id) pushOutboxIds.push(id);
+      }
       await client.query('COMMIT');
-      if (pushOutboxId && options.onPushNotificationQueued) {
+      if (options.onPushNotificationQueued) for (const pushOutboxId of pushOutboxIds) {
         try { options.onPushNotificationQueued(pushOutboxId); }
         catch { req.log.warn({ outbox_id: pushOutboxId }, 'Push drain scheduling failed; the durable outbox will be retried by cron'); }
       }

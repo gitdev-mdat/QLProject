@@ -21,6 +21,8 @@ const migrationNames = [
   '009_search_profile_details.sql', '010_user_accounts.sql', '011_initial_search_jobs.sql', '012_natural_language_search.sql',
   '013_account_lead_monitoring.sql', '014_admin_user_deletion_audit.sql', '015_initial_discovery_followup.sql',
   '016_add_summary_vi_to_facebook_posts.sql', '017_push_notifications.sql', '018_account_notifications.sql',
+  '019_customer_feedback.sql', '020_login_events.sql', '021_lead_distribution.sql', '022_landing_preview.sql',
+  '023_landing_showcase_pins.sql', '024_seo_attribution.sql', '025_hot_leads_quiet_hours.sql',
 ];
 const realAgentIds = ['a366abd8-4e93-46dc-be80-bbf3df2af06d', 'e84ffff9-fb61-4887-a19a-6fc452a1f66c'];
 const token = randomBytes(32).toString('base64url');
@@ -116,6 +118,8 @@ test('worker result commits deduplicated push outbox and delivery retries on iso
     workerId = (await pool.query(`INSERT INTO muse_workers(name,credential_hash,status,authorized_sources,max_jobs_per_claim,lease_minutes)
       VALUES ('Synthetic Push Worker',$1,'active','["social.search"]',2,20) RETURNING id`, [sha(workerToken)])).rows[0].id;
     const makeJob = async (searchProfileId: string, slot: Date, kind: 'initial' | 'scheduled' = 'scheduled') => {
+      // Keep this push integration fixture independent of wall-clock cycle boundaries; every scan has its own eligible batch.
+      await pool.query(`UPDATE lead_distribution_cycles SET cycle_key=cycle_key || ':push-fixture' WHERE search_profile_id=$1`, [searchProfileId]);
       const { rows: [job] } = await pool.query(`INSERT INTO search_jobs(search_profile_id,configuration_version,scan_id,scheduled_for,available_at,required_sources,kind)
         VALUES ($1,1,$2,$3,now()-interval '1 hour','["social.search"]',$4) RETURNING id`, [searchProfileId, `push-${randomBytes(8).toString('hex')}`, slot, kind]);
       const claim = await app.inject({ method: 'POST', url: '/api/worker/jobs/claim', headers: auth, payload: { search_profile_id: searchProfileId, max_jobs: 1 } });
@@ -199,6 +203,31 @@ test('worker result commits deduplicated push outbox and delivery retries on iso
     await pool.query("UPDATE push_notification_deliveries SET available_at=now() WHERE outbox_id=$1 AND status='pending'", [seventhOutboxId]);
     const recovered = await drainPushNotifications({ outboxId: seventhOutboxId, sender: async () => ({ statusCode: 201 }) });
     assert.equal(recovered.sent, 1);
+
+    // An explicit, recent request that matches the user's profile gets a distinct alert after its delivery commits.
+    await pool.query(`UPDATE lead_distribution_cycles SET cycle_key=cycle_key || ':hot-fixture' WHERE search_profile_id=$1`, [profileId]);
+    const hotJob = await makeJob(profileId, new Date(Date.now() - 10 * 60 * 60_000));
+    const hotUrl = 'https://facebook.com/groups/push-test/posts/hot';
+    const hotPayload = scanResults(hotJob, [hotUrl]);
+    hotPayload.posts[0]!.content = 'Chủ quán đang cần tìm synthetic phần mềm quản lý ngay.';
+    hotPayload.posts[0]!.published_at = new Date().toISOString();
+    const hotResult = await app.inject({ method: 'POST', url: `/api/worker/jobs/${hotJob.job_id}/results`, headers: auth, payload: hotPayload });
+    assert.equal(hotResult.statusCode, 200, hotResult.body);
+    const hotEvent = await pool.query(`SELECT o.id,o.notification_kind,o.lead_id FROM push_notification_outbox o JOIN scan_runs r ON r.id=o.scan_run_id WHERE r.search_job_id=$1`, [hotJob.job_id]);
+    assert.equal(hotEvent.rows.length, 1);
+    assert.equal(hotEvent.rows[0]!.notification_kind, 'hot_lead');
+    const hotAssessment = await pool.query(`SELECT d.state,d.hot_at_discovery,d.hot_reason_vi FROM profile_lead_deliveries d WHERE d.post_id=$1`, [hotEvent.rows[0]!.lead_id]);
+    assert.deepEqual(hotAssessment.rows[0], { state: 'delivered', hot_at_discovery: true, hot_reason_vi: hotAssessment.rows[0]?.hot_reason_vi });
+    assert.match(hotAssessment.rows[0]!.hot_reason_vi, /dang can tim/);
+    await submit(hotJob, [hotUrl]);
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM push_notification_outbox WHERE user_id=$1 AND notification_kind='hot_lead'`, [userId])).rows[0]!.n, 1,
+      'duplicate result acknowledgement does not repeat a Hot Lead notification');
+    delivered.length = 0;
+    const hotDrain = await drainPushNotifications({ outboxId: hotEvent.rows[0]!.id, sender: async (subscription, payload) => {
+      delivered.push({ endpoint: subscription.endpoint, payload }); return { statusCode: 201 };
+    } });
+    assert.equal(hotDrain.sent, 1, 'hot alerts bypass ordinary lead cooldown and are sent to each remaining active device');
+    assert.ok(delivered.every(item => item.payload.kind === 'hot_lead' && item.payload.url === `/app/bai-viet/${hotEvent.rows[0]!.lead_id}`));
 
     const remainingEndpoint = qleadEndpoints[1]!;
     assert.equal(await sendTestPush({ userId, sessionId, endpoint: remainingEndpoint }, async (_subscription, payload) => {

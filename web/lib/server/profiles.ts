@@ -29,7 +29,7 @@ const runLeadCount = (profile: string, received: string, version: string, alias 
         AND psc.configuration_version = ${version}))`;
 
 /** Latest non-cancelled job of the profile with its recorded run, for the progress panel. */
-const LATEST_JOB = `LEFT JOIN LATERAL (SELECT j.kind, j.configuration_version, j.status, j.attempts, j.created_at, j.lease_expires_at,
+const LATEST_JOB = `LEFT JOIN LATERAL (SELECT j.kind, j.configuration_version, j.status, j.attempts, j.created_at, j.scheduled_for, j.lease_expires_at,
       (SELECT claimed_at FROM search_job_attempts WHERE id = j.current_attempt_id) AS claimed_at,
       r.status AS run_status, r.scanned_at AS run_at, r.new_posts, r.total_found,
       ${runLeadCount('r.agent_connection_id', 'r.received_at', 'r.configuration_version')} AS source_linked_new_posts
@@ -64,7 +64,7 @@ export async function listProfilesForUser(userId: string, now = Date.now()): Pro
       EXISTS (SELECT 1 FROM search_jobs WHERE search_profile_id = ac.id AND status IN ('blocked', 'needs_reauthorization')) AS blocked,
       (SELECT count(DISTINCT fp.normalized_url)::int FROM facebook_posts fp WHERE fp.agent_connection_id = ac.id AND ${sourceLinkedPostSql('fp')}) AS lead_count,
       job.kind, job.configuration_version, job.status, job.attempts, job.created_at AS job_created_at, job.lease_expires_at, job.claimed_at,
-      job.run_status, job.run_at, job.source_linked_new_posts AS new_posts, job.total_found
+      job.run_status, job.run_at, job.source_linked_new_posts AS new_posts, job.total_found, job.scheduled_for
     FROM agent_connections ac JOIN users u ON u.id = ac.user_id
     JOIN LATERAL (SELECT * FROM scan_configs WHERE agent_connection_id = ac.id ORDER BY version DESC LIMIT 1) sc ON true
     LEFT JOIN LATERAL (SELECT sr.scanned_at, sr.status, sr.total_found,
@@ -192,6 +192,9 @@ type Change =
 function toOutcome(request: Awaited<ReturnType<typeof requestManualJob>>): ScanRequestOutcome | undefined {
   if (request.outcome === 'not_found') return undefined;
   if (request.outcome === 'cooldown') return { outcome: 'cooldown', retryAfterSeconds: request.retryAfterSeconds, lastFinishedAt: request.lastFinishedAt };
+  if ((request.outcome === 'queued' || request.outcome === 'existing') && request.nextAllowedScanAt) return { outcome: request.outcome,
+    quietHoursActive: true, nextAllowedScanAt: request.nextAllowedScanAt };
+  if (request.outcome === 'queued' || request.outcome === 'existing') return { outcome: request.outcome };
   return { outcome: request.outcome };
 }
 

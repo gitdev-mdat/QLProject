@@ -55,8 +55,8 @@ export async function recordMonitoringNotification(client: PoolClient, input: { 
     SELECT id FROM account_notifications WHERE user_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2)`, [input.userId, NOTIFICATION_HISTORY_LIMIT]);
   const { rows: [outbox] } = await client.query<{ id: string }>(`
     WITH inserted_event AS (
-      INSERT INTO push_notification_outbox (account_notification_id, user_id, lead_count, preference_revision, monitoring_changed_at)
-      SELECT $1, u.id, 0, pref.revision, u.lead_monitoring_changed_at
+      INSERT INTO push_notification_outbox (account_notification_id, user_id, lead_count, preference_revision, monitoring_changed_at, notification_kind)
+      SELECT $1, u.id, 0, pref.revision, u.lead_monitoring_changed_at, 'account_status'
       FROM users u
       JOIN push_notification_preferences pref ON pref.user_id = u.id AND pref.enabled = true
       WHERE u.id = $2 AND EXISTS (

@@ -14,16 +14,16 @@ export type PushPlatform = 'ios' | 'android' | 'desktop' | 'other';
 
 export type PushPayload = {
   v: 1;
-  kind: 'new_leads' | 'test' | 'account_status';
+  kind: 'new_leads' | 'hot_lead' | 'test' | 'account_status';
   title: string;
   body: string;
   url: string;
-  tag: 'new-leads' | 'push-test' | 'account-status';
+  tag: string;
   count?: number;
 };
 
 type VapidConfig = { publicKey: string; privateKey: string; subject: string };
-type PushTopic = 'new-leads' | 'push-test' | 'account-status';
+type PushTopic = 'new-leads' | 'hot-lead' | 'push-test' | 'account-status';
 export type PushSender = (subscription: PushSubscriptionInput, payload: PushPayload, topic: PushTopic) => Promise<{ statusCode: number }>;
 type DeliveryRow = {
   delivery_id: string;
@@ -36,6 +36,7 @@ type DeliveryRow = {
   preference_revision: string;
   monitoring_changed_at: Date;
   lead_id: string | null;
+  notification_kind: 'new_leads' | 'hot_lead' | 'account_status';
   /** Set for account notifications (suspension / reactivation); null for new-lead rows. */
   account_kind: AccountNotificationKind | null;
   subscription_ciphertext: string | null;
@@ -168,6 +169,14 @@ export function newLeadsPayload(count: number, leadId?: string | null): PushPayl
   return payload;
 }
 
+export function hotLeadPayload(leadId: string): PushPayload {
+  const safeLeadUrl = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(leadId)
+    ? `/app/bai-viet/${leadId}` : '/app/bai-viet';
+  return { v: 1, kind: 'hot_lead', title: 'QLead vừa phát hiện Hot Lead!',
+    body: 'Một khách hàng đang có nhu cầu rõ ràng và bài đăng còn rất mới. Xem ngay để tiếp cận sớm.',
+    url: safeLeadUrl, tag: `hot-lead-${leadId}` };
+}
+
 /**
  * Account status pushes say only what happened. The reason (if any) is shown in the app, never on the lock screen, and a
  * newer status replaces an older one on the device under the same tag.
@@ -239,7 +248,7 @@ export async function enqueueNewLeadNotification(client: PoolClient, input: { sc
               LIMIT 1
             )
         )
-      ON CONFLICT (scan_run_id) DO NOTHING
+      ON CONFLICT DO NOTHING
       RETURNING id, user_id
     ), created_deliveries AS (
       INSERT INTO push_notification_deliveries (outbox_id, subscription_id, session_id)
@@ -264,6 +273,37 @@ export async function enqueueNewLeadNotification(client: PoolClient, input: { sc
     )
     SELECT e.id FROM inserted_event e WHERE EXISTS (SELECT 1 FROM created_deliveries) LIMIT 1
   `, [input.scanRunId, input.profileId, input.leadCount, input.leadCount === 1 ? input.leadId ?? null : null]);
+  return event?.id ?? null;
+}
+
+/** Hot alerts are keyed by the canonical Facebook URL so retries and another profile cannot alert twice. */
+export async function enqueueHotLeadNotification(client: PoolClient, input: { scanRunId: string; profileId: string; leadId: string }): Promise<string | null> {
+  const { rows: [event] } = await client.query<{ id: string }>(`
+    WITH inserted_event AS (
+      INSERT INTO push_notification_outbox (scan_run_id, user_id, search_profile_id, lead_count, lead_id, preference_revision, monitoring_changed_at, notification_kind, notification_key)
+      SELECT $1, ac.user_id, ac.id, 1, fp.id, pref.revision, u.lead_monitoring_changed_at, 'hot_lead', fp.normalized_url
+      FROM agent_connections ac JOIN users u ON u.id=ac.user_id AND u.lead_monitoring_status='active'
+      JOIN facebook_posts fp ON fp.id=$3 AND fp.agent_connection_id=ac.id
+      JOIN profile_lead_deliveries d ON d.search_profile_id=ac.id AND d.post_id=fp.id AND d.state='delivered'
+        AND d.hot_at_discovery AND d.hot_expires_at > now() AND d.hot_reason_vi IS NOT NULL
+      JOIN push_notification_preferences pref ON pref.user_id=u.id AND pref.enabled=true
+      WHERE ac.id=$2 AND EXISTS (
+        SELECT 1 FROM push_subscriptions ps JOIN web_sessions ws ON ws.id=ps.session_id AND ws.user_id=ps.user_id
+        WHERE ps.user_id=u.id AND (ps.expiration_time IS NULL OR ps.expiration_time>now()) AND ws.revoked_at IS NULL AND ws.expires_at>now()
+      )
+      ON CONFLICT DO NOTHING RETURNING id, user_id
+    ), created_deliveries AS (
+      INSERT INTO push_notification_deliveries(outbox_id, subscription_id, session_id)
+      SELECT e.id, ps.id, ps.session_id FROM inserted_event e
+      JOIN push_subscriptions ps ON ps.user_id=e.user_id
+      JOIN web_sessions ws ON ws.id=ps.session_id AND ws.user_id=ps.user_id
+      WHERE (ps.expiration_time IS NULL OR ps.expiration_time>now()) AND ws.revoked_at IS NULL AND ws.expires_at>now()
+        AND ps.origin=(SELECT candidate.origin FROM push_subscriptions candidate JOIN web_sessions cws ON cws.id=candidate.session_id AND cws.user_id=candidate.user_id
+          WHERE candidate.user_id=ps.user_id AND (candidate.expiration_time IS NULL OR candidate.expiration_time>now()) AND cws.revoked_at IS NULL AND cws.expires_at>now()
+          ORDER BY CASE WHEN candidate.origin='https://qlead.vn' THEN 0 ELSE 1 END, candidate.created_at DESC, candidate.id DESC LIMIT 1)
+      ON CONFLICT (outbox_id, subscription_id) DO NOTHING RETURNING outbox_id
+    ) SELECT e.id FROM inserted_event e WHERE EXISTS (SELECT 1 FROM created_deliveries) LIMIT 1
+  `, [input.scanRunId, input.profileId, input.leadId]);
   return event?.id ?? null;
 }
 
@@ -297,7 +337,7 @@ export async function drainPushNotifications(options: { outboxId?: string; limit
       await client.query(`UPDATE push_notification_preferences SET dispatch_lease_token=$2, dispatch_lease_until=now()+($3::int * interval '1 second'), updated_at=now() WHERE user_id=$1`, [user.user_id, leaseToken, DELIVERY_LEASE_SECONDS]);
       const { rows: deliveryRows } = await client.query<DeliveryRow>(`
         SELECT d.id AS delivery_id, d.outbox_id, d.subscription_id, d.session_id, d.status, d.attempts,
-          o.lead_count, o.lead_id, o.preference_revision, o.monitoring_changed_at, n.kind AS account_kind,
+          o.lead_count, o.lead_id, o.notification_kind, o.preference_revision, o.monitoring_changed_at, n.kind AS account_kind,
           ps.subscription_ciphertext, ps.user_id AS subscription_user_id, ps.session_id AS subscription_session_id,
           ps.expiration_time AS subscription_expiration_time, ps.origin AS subscription_origin,
           (ws.id IS NOT NULL AND ws.revoked_at IS NULL AND ws.expires_at > now()) AS session_valid,
@@ -343,7 +383,7 @@ export async function drainPushNotifications(options: { outboxId?: string; limit
           // New-lead pushes need an active account; an account notice is valid while it still describes the current status.
           || (!row.account_kind && !row.user_active) || !row.monitoring_matches || !row.preference_enabled || row.current_revision !== row.preference_revision || !row.origin_is_current) {
           stale.push(row);
-        } else if (hasCooldown && row.attempts === 0 && !row.account_kind) {
+        } else if (hasCooldown && row.attempts === 0 && row.notification_kind === 'new_leads' && !row.account_kind) {
           freshDeferred.push(row);
         } else {
           eligible.push(row);
@@ -361,7 +401,7 @@ export async function drainPushNotifications(options: { outboxId?: string; limit
       if (eligible.length) {
         await client.query(`UPDATE push_notification_deliveries SET status='processing', attempts=attempts+1, lease_expires_at=now()+($2::int * interval '1 second'), updated_at=now() WHERE id=ANY($1::uuid[])`, [eligible.map(row => row.delivery_id), DELIVERY_LEASE_SECONDS]);
         // Only new-lead pushes start the 15-minute new-lead cooldown; an account notice never delays or is delayed by it.
-        if (!hasCooldown && eligible.some(row => !row.account_kind)) await client.query(`UPDATE push_notification_preferences SET last_new_lead_push_at=now(), updated_at=now() WHERE user_id=$1`, [user.user_id]);
+        if (!hasCooldown && eligible.some(row => row.notification_kind === 'new_leads' && !row.account_kind)) await client.query(`UPDATE push_notification_preferences SET last_new_lead_push_at=now(), updated_at=now() WHERE user_id=$1`, [user.user_id]);
         batches.push({ userId: user.user_id, leaseToken, lastPushAt: user.last_new_lead_push_at, deliveries: eligible });
       } else {
         await client.query(`UPDATE push_notification_preferences SET dispatch_lease_token=NULL, dispatch_lease_until=NULL WHERE user_id=$1 AND dispatch_lease_token=$2`, [user.user_id, leaseToken]);
@@ -379,7 +419,8 @@ export async function drainPushNotifications(options: { outboxId?: string; limit
     for (const row of batch.deliveries) {
       if (!row.subscription_id) continue;
       // New leads for one device are summed into one push; each account notice is its own push.
-      const key = row.account_kind ? `${row.subscription_id}:account:${row.delivery_id}` : row.subscription_id;
+      const key = row.account_kind ? `${row.subscription_id}:account:${row.delivery_id}`
+        : row.notification_kind === 'hot_lead' ? `${row.subscription_id}:hot:${row.delivery_id}` : row.subscription_id;
       const current = bySubscription.get(key) ?? [];
       current.push(row);
       bySubscription.set(key, current);
@@ -393,9 +434,12 @@ export async function drainPushNotifications(options: { outboxId?: string; limit
         const accountKind = rows[0]!.account_kind;
         const count = rows.reduce((sum, row) => sum + row.lead_count, 0);
         const leadId = rows.length === 1 && count === 1 ? rows[0]!.lead_id : null;
+        const hot = rows[0]!.notification_kind === 'hot_lead';
         const result = accountKind
           ? await (options.sender ?? sendPush)(subscription, accountStatusPayload(accountKind), 'account-status')
-          : await (options.sender ?? sendPush)(subscription, newLeadsPayload(count, leadId), 'new-leads');
+          : hot && leadId
+            ? await (options.sender ?? sendPush)(subscription, hotLeadPayload(leadId), 'hot-lead')
+            : await (options.sender ?? sendPush)(subscription, newLeadsPayload(count, leadId), 'new-leads');
         await pool.query(`UPDATE push_notification_deliveries SET status='sent', push_status_code=$2, delivered_at=now(), lease_expires_at=NULL, updated_at=now() WHERE id=ANY($1::uuid[])`, [ids, result.statusCode]);
         await pool.query(`UPDATE push_subscriptions SET last_success_at=now(), last_failure_at=NULL, failure_count=0, updated_at=now() WHERE id=$1`, [rows[0]!.subscription_id]);
         totals.sent++;

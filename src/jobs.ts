@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg';
 import { planEarlyFollowup } from './search-plan.js';
+import { isSearchQuietHours, nextAllowedScanAt } from './quiet-hours.js';
 
 /**
  * Shared-worker job lifecycle. PostgreSQL is the source of truth: ownership comes from search_jobs.search_profile_id,
@@ -29,7 +30,9 @@ export const FOLLOWUP_SCAN_BOOST_MINUTES = 5;
  * profiles that already had a job in this slot. A first scan or a customer-requested scan also holds off the routine
  * slot for half an interval, so a profile is not scanned twice within seconds around a slot boundary.
  */
-export async function enqueueDueJobs(client: PoolClient, profileId?: string): Promise<number> {
+export async function enqueueDueJobs(client: PoolClient, profileId?: string, at = new Date()): Promise<number> {
+  // Resume at the current slot after quiet hours; deliberately do not synthesize every missed overnight slot.
+  if (isSearchQuietHours(at)) return 0;
   const { rowCount } = await client.query(`INSERT INTO search_jobs (search_profile_id, configuration_version, scan_id, scheduled_for, required_sources)
     SELECT ac.id, sc.version, 'job-' || gen_random_uuid(), slot.start, sc.sources
     FROM agent_connections ac
@@ -49,20 +52,20 @@ export async function enqueueDueJobs(client: PoolClient, profileId?: string): Pr
  * the open-job and one-initial-job indexes turn repeats into no-ops. Workers claim initial jobs before routine
  * slots; each profile gets at most one, so they cannot starve the recurring queue.
  */
-export async function enqueueInitialJob(client: PoolClient, profileId: string): Promise<boolean> {
+export async function enqueueInitialJob(client: PoolClient, profileId: string, at = new Date()): Promise<boolean> {
   const { rowCount } = await client.query(`INSERT INTO search_jobs (search_profile_id, configuration_version, scan_id, scheduled_for, required_sources, kind)
-    SELECT ac.id, sc.version, 'job-' || gen_random_uuid(), now(), sc.sources, 'initial'
+    SELECT ac.id, sc.version, 'job-' || gen_random_uuid(), coalesce($2::timestamptz, now()), sc.sources, 'initial'
     FROM agent_connections ac
     JOIN users u ON u.id = ac.user_id AND u.lead_monitoring_status = 'active'
     JOIN LATERAL (SELECT version, enabled, sources FROM scan_configs WHERE agent_connection_id = ac.id ORDER BY version DESC LIMIT 1) sc ON true
     WHERE ac.id = $1 AND ac.kind = 'search_profile' AND ac.status = 'active' AND sc.enabled
       AND NOT EXISTS (SELECT 1 FROM scan_runs WHERE agent_connection_id = ac.id)
-    ON CONFLICT DO NOTHING`, [profileId]);
+    ON CONFLICT DO NOTHING`, [profileId, nextAllowedScanAt(at)]);
   return (rowCount ?? 0) > 0;
 }
 
 /** Queues at most one complementary follow-up for a successful, sparse initial scan. Caller holds profile lock. */
-export async function enqueueInitialFollowup(client: PoolClient, profileId: string, version: number, exploredQueries: string[] = []): Promise<boolean> {
+export async function enqueueInitialFollowup(client: PoolClient, profileId: string, version: number, exploredQueries: string[] = [], at = new Date()): Promise<boolean> {
   const { rows: [config] } = await client.query<{ description: string | null; keywords: string[]; keywords_source: string; sources: string[]; enabled: boolean; monitoring_status: string }>(`SELECT sc.description, sc.keywords, sc.keywords_source, sc.sources, sc.enabled, u.lead_monitoring_status AS monitoring_status
     FROM scan_configs sc JOIN agent_connections ac ON ac.id = sc.agent_connection_id JOIN users u ON u.id = ac.user_id
     WHERE sc.agent_connection_id = $1 AND sc.version = $2 AND ac.status = 'active' AND ac.kind = 'search_profile'
@@ -70,10 +73,12 @@ export async function enqueueInitialFollowup(client: PoolClient, profileId: stri
   if (!config || !config.enabled || config.monitoring_status !== 'active' || !config.description) return false;
   const keywords = planEarlyFollowup(config.description, exploredQueries.length ? exploredQueries : config.keywords ?? []);
   if (!keywords.length) return false;
+  const planned = new Date(at.getTime() + 3 * 60_000);
+  const schedule = isSearchQuietHours(planned) ? nextAllowedScanAt(planned) ?? planned : planned;
   const { rowCount } = await client.query(`INSERT INTO search_jobs (search_profile_id, configuration_version, scan_id, scheduled_for, required_sources, kind)
-    SELECT $1, $2, 'job-' || gen_random_uuid(), now() + interval '3 minutes', $3, 'followup'
+    SELECT $1, $2, 'job-' || gen_random_uuid(), $4, $3, 'followup'
     WHERE NOT EXISTS (SELECT 1 FROM search_jobs WHERE search_profile_id = $1 AND status IN ('pending', 'claimed', 'blocked', 'needs_reauthorization'))
-    ON CONFLICT DO NOTHING`, [profileId, version, JSON.stringify(config.sources)]);
+    ON CONFLICT DO NOTHING`, [profileId, version, JSON.stringify(config.sources), schedule]);
   return (rowCount ?? 0) > 0;
 }
 
@@ -120,7 +125,9 @@ export async function reconcileSourceAuthorization(client: PoolClient, profileId
 }
 
 /** Atomically assigns due work, bounded by both the request size and this worker's live-lease capacity. */
-export async function claimJobs(client: PoolClient, worker: Worker, requested: number, profileId?: string): Promise<ClaimedJob[]> {
+export async function claimJobs(client: PoolClient, worker: Worker, requested: number, profileId?: string, at = new Date()): Promise<ClaimedJob[]> {
+  // This is the enforced execution boundary. Leave pending/retry rows untouched for the 06:30 resume.
+  if (isSearchQuietHours(at)) return [];
   // Serialize claims for one worker so simultaneous polls cannot exceed its live lease capacity.
   const { rows: [currentWorker] } = await client.query<Worker>(`SELECT id, name, status, authorized_sources, max_jobs_per_claim, lease_minutes
     FROM muse_workers WHERE id = $1 FOR UPDATE`, [worker.id]);
@@ -190,14 +197,14 @@ export async function supersedeQueuedJobs(client: PoolClient, profileId: string,
   return rows.length;
 }
 
-async function insertManualJob(client: PoolClient, profileId: string, userId: string | null): Promise<string | undefined> {
+async function insertManualJob(client: PoolClient, profileId: string, userId: string | null, at = new Date()): Promise<string | undefined> {
   const { rows: [job] } = await client.query<{ id: string }>(`INSERT INTO search_jobs (search_profile_id, configuration_version, scan_id, scheduled_for, required_sources, kind, requested_by_user_id)
-    SELECT ac.id, sc.version, 'job-' || gen_random_uuid(), now(), sc.sources, 'manual', $2
+    SELECT ac.id, sc.version, 'job-' || gen_random_uuid(), coalesce($3::timestamptz, now()), sc.sources, 'manual', $2
     FROM agent_connections ac
     JOIN users u ON u.id = ac.user_id AND u.lead_monitoring_status = 'active'
     JOIN LATERAL (SELECT version, enabled, sources FROM scan_configs WHERE agent_connection_id = ac.id ORDER BY version DESC LIMIT 1) sc ON true
     WHERE ac.id = $1 AND ac.kind = 'search_profile' AND ac.status = 'active' AND sc.enabled
-    ON CONFLICT DO NOTHING RETURNING id`, [profileId, userId]);
+    ON CONFLICT DO NOTHING RETURNING id`, [profileId, userId, nextAllowedScanAt(at)]);
   return job?.id;
 }
 
@@ -207,7 +214,7 @@ export const MANUAL_SCAN_COOLDOWN_MINUTES = 15;
 export const MANUAL_SCAN_DAILY_LIMIT = 10;
 
 export type ScanRequest =
-  | { outcome: 'queued' | 'existing'; jobId: string }
+  | { outcome: 'queued' | 'existing'; jobId: string; nextAllowedScanAt?: string }
   | { outcome: 'cooldown'; retryAfterSeconds: number; lastFinishedAt: string }
   | { outcome: 'daily_limit' | 'paused' | 'suspended' | 'not_found' };
 
@@ -217,7 +224,9 @@ export type ScanRequest =
  * the request returns that job instead of adding work, and the open-job index backs this up. Nothing here contacts a
  * worker: the new pending job is what the public wake signal reports as eligible work.
  */
-export async function requestManualJob(client: PoolClient, profileId: string, userId: string): Promise<ScanRequest> {
+export async function requestManualJob(client: PoolClient, profileId: string, userId: string, at = new Date()): Promise<ScanRequest> {
+  const nextScanAt = nextAllowedScanAt(at)?.toISOString() ?? null;
+  const quietFields = nextScanAt ? { nextAllowedScanAt: nextScanAt } : {};
   const { rows: [config] } = await client.query<{ version: number; enabled: boolean; monitoring_status: string }>(`SELECT sc.version, sc.enabled, u.lead_monitoring_status AS monitoring_status FROM agent_connections ac
     JOIN users u ON u.id = ac.user_id
     JOIN LATERAL (SELECT version, enabled FROM scan_configs WHERE agent_connection_id = ac.id ORDER BY version DESC LIMIT 1) sc ON true
@@ -228,7 +237,7 @@ export async function requestManualJob(client: PoolClient, profileId: string, us
   const open = async () => (await client.query<{ id: string }>(`SELECT id FROM search_jobs WHERE search_profile_id = $1
     AND status IN ('pending', 'claimed', 'blocked', 'needs_reauthorization') LIMIT 1`, [profileId])).rows[0];
   const existing = await open();
-  if (existing) return { outcome: 'existing', jobId: existing.id };
+  if (existing) return { outcome: 'existing', jobId: existing.id, ...quietFields };
   const { rows: [recent] } = await client.query<{ finished_at: Date; wait: number }>(`SELECT completed_at AS finished_at,
       ceil(extract(epoch FROM completed_at + make_interval(mins => $3) - now()))::int AS wait
     FROM search_jobs WHERE search_profile_id = $1 AND configuration_version = $2 AND status IN ('completed', 'failed')
@@ -238,10 +247,10 @@ export async function requestManualJob(client: PoolClient, profileId: string, us
   const { rows: [usage] } = await client.query<{ n: number }>(`SELECT count(*)::int AS n FROM search_jobs
     WHERE kind = 'manual' AND requested_by_user_id = $1 AND status <> 'cancelled' AND created_at > now() - interval '24 hours'`, [userId]);
   if (usage!.n >= MANUAL_SCAN_DAILY_LIMIT) return { outcome: 'daily_limit' };
-  const jobId = await insertManualJob(client, profileId, userId);
-  if (jobId) return { outcome: 'queued', jobId };
+  const jobId = await insertManualJob(client, profileId, userId, at);
+  if (jobId) return { outcome: 'queued', jobId, ...quietFields };
   const raced = await open();
-  return raced ? { outcome: 'existing', jobId: raced.id } : { outcome: 'not_found' };
+  return raced ? { outcome: 'existing', jobId: raced.id, ...quietFields } : { outcome: 'not_found' };
 }
 
 export type JobRow = { id: string; search_profile_id: string; configuration_version: number; scan_id: string; kind: ClaimedJob['kind']; status: string; attempts: number; max_attempts: number; claimed_by_worker_id: string | null; current_attempt_id: string | null; attempt_no: number | null; lease_valid: boolean };
