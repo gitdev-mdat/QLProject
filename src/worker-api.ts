@@ -5,9 +5,10 @@ import { pool } from './db.js';
 import { resultSchema } from './validation.js';
 import { preparePosts, upsertPosts, type PreparedPost } from './ingest.js';
 import { countSourceLinkedPostsForRun } from './lead-eligibility.js';
-import { claimJobs, enqueueInitialFollowup, lockJob, markCompleted, markFailed, type Worker } from './jobs.js';
+import { cancelQueuedJobsForEngagementGate, claimJobs, enqueueInitialFollowup, lockJob, markCompleted, markFailed, type Worker } from './jobs.js';
 import { enqueueHotLeadNotification, enqueueNewLeadNotification } from './push-notifications.js';
 import { distributeProfileLeads } from './lead-distribution.js';
+import { getLeadEngagementProgress } from './lead-engagement.js';
 import { quietHoursState } from './quiet-hours.js';
 
 /**
@@ -118,6 +119,12 @@ export async function workerRoutes(app: FastifyInstance, options: { onPushNotifi
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      // Keep the account/profile/job lock order aligned with engagement reviews and cross-profile URL deduplication.
+      const { rows: [ownerForLock] } = await client.query<{ user_id: string; profile_id: string }>(`SELECT ac.user_id, ac.id AS profile_id
+        FROM search_jobs j JOIN agent_connections ac ON ac.id = j.search_profile_id WHERE j.id = $1`, [jobId]);
+      if (!ownerForLock) { await client.query('ROLLBACK'); return reply.code(404).send(err('job_not_found', 'No such job.')); }
+      await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [ownerForLock.user_id]);
+      await client.query('SELECT id FROM agent_connections WHERE id = $1 FOR UPDATE', [ownerForLock.profile_id]);
       const job = await lockJob(client, jobId);
       if (!job) { await client.query('ROLLBACK'); return reply.code(404).send(err('job_not_found', 'No such job.')); }
       if (job.status === 'completed') {
@@ -153,7 +160,6 @@ export async function workerRoutes(app: FastifyInstance, options: { onPushNotifi
         req.log.warn({ worker_id: worker.id, job_id: job.id, expected_scan_id: job.scan_id, received_scan_id: payload.scan_id, expected_configuration_version: job.configuration_version, received_configuration_version: payload.configuration_version, attempt_id: job.current_attempt_id }, 'Worker result rejected: job identity mismatch');
         return reply.code(400).send(err('job_mismatch', 'scan_id and configuration_version must be the values issued with this job.'));
       }
-      await client.query('SELECT id FROM agent_connections WHERE id = $1 FOR UPDATE', [job.search_profile_id]);
       const { inserted, updated } = await upsertPosts(client, job.search_profile_id, job.configuration_version, posts);
       const insertedUrls = inserted;
       const usableNewPosts = new Set(posts.filter(post => insertedUrls.has(post.normalized)
@@ -171,7 +177,12 @@ export async function workerRoutes(app: FastifyInstance, options: { onPushNotifi
         ? await enqueueInitialFollowup(client, job.search_profile_id, job.configuration_version, payload.keywords_used) : false;
       const { rows: [owner] } = await client.query<{ user_id: string }>('SELECT user_id FROM agent_connections WHERE id=$1', [job.search_profile_id]);
       const distribution = status !== 'failed' && owner
-        ? await distributeProfileLeads(client, owner.user_id, job.search_profile_id) : null;
+        ? await distributeProfileLeads(client, owner.user_id, job.search_profile_id, `scan:${job.id}`) : null;
+      const engagement = status !== 'failed' && owner
+        ? await getLeadEngagementProgress(client, owner.user_id, job.search_profile_id) : null;
+      if (engagement?.policyActive && !engagement.mayStartNewScan) {
+        await cancelQueuedJobsForEngagementGate(client, job.search_profile_id);
+      }
       const pushOutboxIds: string[] = [];
       if (distribution?.hotPostIds.length) {
         for (const leadId of distribution.hotPostIds) {
@@ -188,7 +199,7 @@ export async function workerRoutes(app: FastifyInstance, options: { onPushNotifi
         try { options.onPushNotificationQueued(pushOutboxId); }
         catch { req.log.warn({ outbox_id: pushOutboxId }, 'Push drain scheduling failed; the durable outbox will be retried by cron'); }
       }
-      req.log.info({ worker_id: worker.id, job_id: job.id, scan_id: payload.scan_id, attempt_id: job.current_attempt_id, attempt_no: job.attempt_no, configuration_version: job.configuration_version, result_status: status, received_posts: payload.posts.length, inserted_posts: inserted.size, updated_posts: updated.size, usable_new_posts: usableNewPosts, source_linked_new_posts: sourceCounts.sourceLinkedPosts, metadata_complete_new_posts: sourceCounts.metadataCompletePosts, early_followup_queued: followupQueued, http_status: 200 }, 'Worker results accepted');
+      req.log.info({ worker_id: worker.id, job_id: job.id, scan_id: payload.scan_id, attempt_id: job.current_attempt_id, attempt_no: job.attempt_no, configuration_version: job.configuration_version, result_status: status, received_posts: payload.posts.length, inserted_posts: inserted.size, updated_posts: updated.size, usable_new_posts: usableNewPosts, source_linked_new_posts: sourceCounts.sourceLinkedPosts, metadata_complete_new_posts: sourceCounts.metadataCompletePosts, early_followup_queued: followupQueued, engagement_gate_state: engagement?.gateState, engagement_delivered: distribution?.delivered ?? 0, engagement_pending: engagement?.pendingCount, http_status: 200 }, 'Worker results accepted');
       return ackFrom(job.id, run, followupQueued, sourceCounts);
     } catch (error: any) {
       await client.query('ROLLBACK').catch(() => undefined);

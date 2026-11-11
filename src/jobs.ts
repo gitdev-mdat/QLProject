@@ -1,6 +1,7 @@
 import type { PoolClient } from 'pg';
 import { planEarlyFollowup } from './search-plan.js';
 import { isSearchQuietHours, nextAllowedScanAt } from './quiet-hours.js';
+import { getLeadEngagementProgress, profileMaySearchSql } from './lead-engagement.js';
 
 /**
  * Shared-worker job lifecycle. PostgreSQL is the source of truth: ownership comes from search_jobs.search_profile_id,
@@ -41,6 +42,7 @@ export async function enqueueDueJobs(client: PoolClient, profileId?: string, at 
     CROSS JOIN LATERAL (SELECT to_timestamp(floor(extract(epoch FROM now()) / (sc.frequency_minutes * 60)) * sc.frequency_minutes * 60) AS start) slot
     WHERE ac.kind = 'search_profile' AND ac.status = 'active' AND sc.enabled
       AND ($1::uuid IS NULL OR ac.id = $1)
+      AND ${profileMaySearchSql('ac.id')}
       AND NOT EXISTS (SELECT 1 FROM search_jobs j WHERE j.search_profile_id = ac.id AND j.status <> 'cancelled'
         AND (j.scheduled_for >= slot.start OR (j.kind IN ('initial', 'manual') AND j.scheduled_for > now() - make_interval(secs => sc.frequency_minutes * 30))))
     ON CONFLICT DO NOTHING`, [profileId ?? null]);
@@ -62,6 +64,13 @@ export async function enqueueInitialJob(client: PoolClient, profileId: string, a
       AND NOT EXISTS (SELECT 1 FROM scan_runs WHERE agent_connection_id = ac.id)
     ON CONFLICT DO NOTHING`, [profileId, nextAllowedScanAt(at)]);
   return (rowCount ?? 0) > 0;
+}
+
+/** Clear queued work after a completed scan closes the usage gate; valid in-flight leases remain untouched. */
+export async function cancelQueuedJobsForEngagementGate(client: PoolClient, profileId: string): Promise<number> {
+  const { rowCount } = await client.query(`UPDATE search_jobs SET status = 'cancelled', last_error = 'usage_gate', updated_at = now(), completed_at = now()
+    WHERE search_profile_id = $1 AND status IN ('pending', 'blocked')`, [profileId]);
+  return rowCount ?? 0;
 }
 
 /** Queues at most one complementary follow-up for a successful, sparse initial scan. Caller holds profile lock. */
@@ -120,6 +129,7 @@ export async function reconcileSourceAuthorization(client: PoolClient, profileId
     FROM agent_connections ac JOIN users u ON u.id = ac.user_id
     WHERE j.status = 'blocked' AND j.last_error = 'no_authorized_worker'
       AND j.search_profile_id = ac.id AND u.lead_monitoring_status = 'active'
+      AND ${profileMaySearchSql('ac.id')}
       AND ($1::uuid IS NULL OR j.search_profile_id = $1)
       AND EXISTS (SELECT 1 FROM muse_workers w WHERE w.status = 'active' AND w.credential_status = 'active' AND w.authorized_sources @> j.required_sources)`, [profileId ?? null]);
 }
@@ -144,16 +154,27 @@ export async function claimJobs(client: PoolClient, worker: Worker, requested: n
   const availableSlots = Math.max(0, worker.max_jobs_per_claim - (active?.count ?? 0));
   const limit = Math.min(Math.max(1, Math.min(requested, worker.max_jobs_per_claim)), availableSlots);
   if (limit === 0) return [];
-  const { rows: jobs } = await client.query<{ id: string; attempts: number; kind: ClaimedJob['kind'] }>(`SELECT j.id, j.attempts, j.kind FROM search_jobs j
+  const { rows: candidates } = await client.query<{ id: string; profile_id: string; user_id: string }>(`SELECT j.id, ac.id AS profile_id, ac.user_id FROM search_jobs j
     JOIN agent_connections ac ON ac.id = j.search_profile_id
     JOIN users u ON u.id = ac.user_id
     WHERE j.status = 'pending' AND j.scheduled_for <= now() AND j.available_at <= now() AND $1::jsonb @> j.required_sources
       AND u.lead_monitoring_status = 'active'
+      AND ${profileMaySearchSql('ac.id')}
       AND ($3::uuid IS NULL OR j.search_profile_id = $3)
     ORDER BY (j.scheduled_for - CASE WHEN j.kind IN ('initial', 'manual') THEN make_interval(mins => ${PRIORITY_SCAN_BOOST_MINUTES}) WHEN j.kind = 'followup' THEN make_interval(mins => ${FOLLOWUP_SCAN_BOOST_MINUTES}) ELSE interval '0 minutes' END),
-      j.scheduled_for, j.created_at, j.search_profile_id, j.id LIMIT $2 FOR UPDATE OF j, u SKIP LOCKED`, [JSON.stringify(worker.authorized_sources), limit, profileId ?? null]);
+      j.scheduled_for, j.created_at, j.search_profile_id, j.id LIMIT $2`, [JSON.stringify(worker.authorized_sources), limit, profileId ?? null]);
   const claimed: ClaimedJob[] = [];
-  for (const job of jobs) {
+  for (const candidate of candidates) {
+    // Account -> profile -> job matches result ingestion and review transactions, preventing lock-order deadlocks.
+    await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [candidate.user_id]);
+    await client.query('SELECT id FROM agent_connections WHERE id = $1 FOR UPDATE', [candidate.profile_id]);
+    const { rows: [job] } = await client.query<{ id: string; attempts: number; kind: ClaimedJob['kind'] }>(`SELECT j.id, j.attempts, j.kind FROM search_jobs j
+      JOIN agent_connections ac ON ac.id = j.search_profile_id JOIN users u ON u.id = ac.user_id
+      WHERE j.id = $1 AND j.status = 'pending' AND j.scheduled_for <= now() AND j.available_at <= now()
+        AND $2::jsonb @> j.required_sources AND u.lead_monitoring_status = 'active'
+        AND ${profileMaySearchSql('ac.id')} FOR UPDATE OF j SKIP LOCKED`,
+    [candidate.id, JSON.stringify(worker.authorized_sources)]);
+    if (!job) continue;
     // attempt_no numbers every assignment; `attempts` counts only those that may end in failure (released ones are refunded).
     const { rows: [attempt] } = await client.query<{ id: string; attempt_no: number; lease_expires_at: Date }>(`INSERT INTO search_job_attempts (job_id, worker_id, attempt_no, lease_expires_at)
       SELECT $1, $2, coalesce(max(attempt_no), 0) + 1, now() + make_interval(mins => $3) FROM search_job_attempts WHERE job_id = $1
@@ -204,6 +225,7 @@ async function insertManualJob(client: PoolClient, profileId: string, userId: st
     JOIN users u ON u.id = ac.user_id AND u.lead_monitoring_status = 'active'
     JOIN LATERAL (SELECT version, enabled, sources FROM scan_configs WHERE agent_connection_id = ac.id ORDER BY version DESC LIMIT 1) sc ON true
     WHERE ac.id = $1 AND ac.kind = 'search_profile' AND ac.status = 'active' AND sc.enabled
+      AND ${profileMaySearchSql('ac.id')}
     ON CONFLICT DO NOTHING RETURNING id`, [profileId, userId, nextAllowedScanAt(at)]);
   return job?.id;
 }
@@ -216,7 +238,7 @@ export const MANUAL_SCAN_DAILY_LIMIT = 10;
 export type ScanRequest =
   | { outcome: 'queued' | 'existing'; jobId: string; nextAllowedScanAt?: string }
   | { outcome: 'cooldown'; retryAfterSeconds: number; lastFinishedAt: string }
-  | { outcome: 'daily_limit' | 'paused' | 'suspended' | 'not_found' };
+  | { outcome: 'daily_limit' | 'paused' | 'suspended' | 'usage_gated' | 'not_found' };
 
 /**
  * Queues a scan the customer asked for, with the profile's latest configuration. The caller must hold the profile
@@ -234,6 +256,8 @@ export async function requestManualJob(client: PoolClient, profileId: string, us
   if (!config) return { outcome: 'not_found' };
   if (config.monitoring_status !== 'active') return { outcome: 'suspended' };
   if (!config.enabled) return { outcome: 'paused' };
+  const engagement = await getLeadEngagementProgress(client, userId, profileId);
+  if (engagement?.policyActive && !engagement.mayStartNewScan) return { outcome: 'usage_gated' };
   const open = async () => (await client.query<{ id: string }>(`SELECT id FROM search_jobs WHERE search_profile_id = $1
     AND status IN ('pending', 'claimed', 'blocked', 'needs_reauthorization') LIMIT 1`, [profileId])).rows[0];
   const existing = await open();
