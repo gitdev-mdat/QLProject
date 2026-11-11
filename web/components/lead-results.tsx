@@ -7,7 +7,7 @@ import { copyText, displayArea, exactTime, isRecent, leadName, readLead, relativ
 import { leadSearchText, leadText, looksEnglish } from '@/lib/lead-text';
 import { CUSTOMER_STATUSES, statusHint, statusLabel, type LeadStatus, type WorkflowMap } from '@/lib/lead-workflow';
 import { activeHot, hotLeads } from '@/lib/hot-lead';
-import { HotCallout, HotLeadBand, HotTag, useHotNow } from './hot-lead';
+import { HotLeadBand, HotTag, useHotNow } from './hot-lead';
 import { useLeadWorkflow, useNow, type LeadWorkflowApi } from '@/lib/lead-state';
 import { LEGACY_FILTER, LEGACY_SOURCE_LABEL, matchesSourceFilter, sourceName, type Lead } from '@/lib/lead-source';
 import { compareLeadByPostedAt, type LeadDateOrder } from '@/lib/lead-order';
@@ -222,8 +222,8 @@ export function LeadDetail({ lead, now, workflow, headingLevel = 2, profileId }:
   // Two columns: the post on the left, what the salesperson did with it on the right.
   return <article className={`lead-detail ${text ? '' : 'is-no-text'}`} aria-label={`Lead: ${leadName(lead)}`}>
     <div className="lead-detail-main">
-      <HotCallout lead={lead} now={now} profileId={profileId}/>
       <header className="lead-detail-head">
+        {activeHot(lead, now, profileId) && <HotTag/>}
         <Heading className={`lead-detail-author ${lead.author ? '' : 'is-fallback'}`}>{leadName(lead)}</Heading>
         <p className="lead-detail-sub">{['Facebook', source].filter(Boolean).join(' · ')}{lead.published_at && <> · <time dateTime={lead.published_at} title={exactTime(lead.published_at)}>Đăng {relativeTime(lead.published_at, now)}</time></>}</p>
         <ReadingTags reading={reading} limit={4}/>

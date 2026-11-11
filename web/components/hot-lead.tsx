@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { reportSourceOpen } from '@/lib/feedback-client';
 import type { HotLeadAssessment, Lead } from '@/lib/lead-source';
-import { activeHot, claimCelebration, hotReason, hotUntil, prefersReducedMotion, wasHot } from '@/lib/hot-lead';
+import { activeHot, claimCelebration, hotReason, prefersReducedMotion } from '@/lib/hot-lead';
 import { exactTime, leadName, relativeTime } from '@/lib/lead-format';
 import { isStandalone } from '@/lib/pwa';
 import { Icon } from './visuals';
@@ -33,20 +33,6 @@ function HotMark() {
 function HotPosted({ lead, now }: { lead: Lead; now: number }) {
   if (!lead.published_at) return <span className="hot-posted is-unknown">Chưa rõ giờ đăng</span>;
   return <time className="hot-posted" dateTime={lead.published_at} title={`Đăng lúc ${exactTime(lead.published_at)}`}>Đăng {relativeTime(lead.published_at, now).toLocaleLowerCase('vi')}</time>;
-}
-
-/** Shown at the top of a lead's detail: why it is Hot and until when it is worth acting first. */
-export function HotCallout({ lead, now, profileId }: { lead: Lead; now: number; profileId?: string }) {
-  const hot = activeHot(lead, now, profileId);
-  const past = hot ? null : wasHot(lead, now, profileId);
-  if (past) return <p className="hot-past"><HotMark/>Từng là Hot Lead khi QLead tìm thấy. Bài không còn trong khung giờ cần liên hệ sớm.</p>;
-  if (!hot) return null;
-  const until = hotUntil(hot);
-  return <section className="hot-callout" aria-label="Hot Lead">
-    <div className="hot-callout-head"><HotTag/><b>Khách hàng đang có nhu cầu rõ ràng</b></div>
-    <p className="hot-callout-reason">{hotReason(hot)}</p>
-    <p className="hot-callout-meta"><HotPosted lead={lead} now={now}/>{until && <span>Nên liên hệ trước {until}</span>}</p>
-  </section>;
 }
 
 /**

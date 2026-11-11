@@ -12,7 +12,7 @@
   {
     "name": "S1 list tag + detail shows reason, publish time, FB action",
     "pass": true,
-    "detail": "Hot Lead Khách hàng đang có nhu cầu rõ ràng Bài đăng còn mới, nêu nhu cầu “dang can tim” và khớp hồ sơ tìm kiếm (phần mềm bán hàng). Đăng 15"
+    "detail": "Hot Lead Quán Mộc 1 Facebook · Đăng 15 phút trước Sắp mở cửa"
   },
   {
     "name": "S2+S4 several Hot Leads: band shows 3 + link, chip filters, no-author Hot renders",
@@ -27,17 +27,17 @@
   {
     "name": "S5 Hot Lead without publish time says \"Chưa rõ giờ đăng\"",
     "pass": true,
-    "detail": "Hot Lead Khách hàng đang có nhu cầu rõ ràng Bài đăng còn mới, nêu nhu cầu “dang can tim” v"
+    "detail": "Đăng lúc: Chưa rõ giờ đăng"
   },
   {
     "name": "S6 Hot label disappears at expiresAt on an open page, then reads as past Hot",
     "pass": true,
-    "detail": "Từng là Hot Lead khi QLead tìm thấy. Bài không còn trong khung giờ cần liên hệ sớm."
+    "detail": "expired: no tag in detail"
   },
   {
     "name": "S7 sw.js shows a distinct Hot notification and its click opens the lead",
     "pass": true,
-    "detail": "/mo?den=%2Fapp%2Fbai-viet%2F7577458d-cbd5-423a-90fc-afdcc4534857"
+    "detail": "/mo?den=%2Fapp%2Fbai-viet%2F2de89d99-31de-459c-b0c3-e0d70c1ac395"
   },
   {
     "name": "S8 Hot Lead visible with push unavailable; no permission request on load",
@@ -117,7 +117,7 @@
   {
     "name": "S19 Today → list navigation time (dev build, indicative)",
     "pass": true,
-    "detail": "932 / 413 / 891 ms"
+    "detail": "930 / 893 / 398 ms"
   },
   {
     "name": "S20 another account cannot see a Hot Lead",

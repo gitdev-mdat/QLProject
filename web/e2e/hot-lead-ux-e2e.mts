@@ -124,10 +124,10 @@ async function main() {
     assert(await page.locator('tr:not(.is-hot) .hot-tag').count() === 0, 'ordinary rows untagged');
     await shot(page, 'list-one-hot-1440');
     await page.goto(`${BASE}/app/bai-viet/${oneHot.id}`); await settle(page);
-    const callout = page.locator('.hot-callout');
-    await callout.waitFor();
-    const text = await callout.innerText();
-    assert(/Khách hàng đang có nhu cầu rõ ràng/.test(text) && /Bài đăng còn mới/.test(text) && /Đăng \d+ phút trước/.test(text) && /Nên liên hệ trước \d\d:\d\d/.test(text), text);
+    await page.locator('.lead-detail-head .hot-tag').waitFor();
+    const text = await page.locator('.lead-detail-head').innerText();
+    // Thi (2026-11-11): in the detail a clean tag is enough, no explanation box.
+    assert(/Hot Lead/.test(text) && /Đăng \d+ phút trước/.test(text) && !/Bài đăng còn mới/.test(text) && await page.locator('.hot-callout').count() === 0, text);
     assert(await page.getByRole('link', { name: /Xem bài Facebook/ }).count() >= 1, 'FB link');
     assert(await page.getByRole('radio', { name: 'Không quan tâm' }).count() === 1, 'status picker kept');
     await shot(page, 'detail-hot-1440');
@@ -169,13 +169,13 @@ async function main() {
     await q('UPDATE facebook_posts SET published_at = NULL WHERE id = $1', [oneHot.id]);
     const { context, page } = await as(one);
     await page.goto(`${BASE}/app/bai-viet/${oneHot.id}`); await settle(page);
-    const t = await page.locator('.hot-callout, .hot-past').first().innerText().catch(() => '');
+    const t = await page.locator('.lead-facts').innerText();
     await context.close();
     const [row] = await q("SELECT published_at FROM facebook_posts WHERE id=$1", [oneHot.id]);
     await q("UPDATE facebook_posts SET published_at = now() - interval '15 minutes' WHERE id = $1", [oneHot.id]);
     assert(row.published_at === null, 'reset');
-    assert(!t || /Chưa rõ giờ đăng/.test(t) || /Từng là Hot Lead/.test(t), t);
-    return t ? t.replace(/\s+/g, ' ').slice(0, 90) : 'server dropped Hot (no publish time)';
+    assert(/Chưa rõ giờ đăng/.test(t), t);
+    return 'Đăng lúc: Chưa rõ giờ đăng';
   });
 
   // 6. Expiry: on an open page (client clock passes expiresAt) and after the server window ends.
@@ -191,10 +191,11 @@ async function main() {
     await q("UPDATE profile_lead_deliveries SET hot_expires_at = now() - interval '1 minute' WHERE post_id = $1", [oneHot.id]);
     const second = await as(one);
     await second.page.goto(`${BASE}/app/bai-viet/${oneHot.id}`); await settle(second.page);
-    const past = await second.page.locator('.hot-past').innerText();
+    const tags = await second.page.locator('.hot-tag').count();
     await second.context.close();
     await q("UPDATE profile_lead_deliveries SET hot_expires_at = now() + interval '90 minutes' WHERE post_id = $1", [oneHot.id]);
-    return past;
+    assert(tags === 0, 'expired lead still tagged');
+    return 'expired: no tag in detail';
   });
 
   // 7. Notification click: the SW builds a Hot notification with its own tag and opens /mo → the right lead.
@@ -216,7 +217,7 @@ async function main() {
     assert(opened === `/mo?den=${encodeURIComponent(`/app/bai-viet/${oneHot.id}`)}`, opened);
     const { context, page } = await as(one);
     await page.goto(`${BASE}${opened}`); await page.waitForURL(new RegExp(oneHot.id)); await settle(page);
-    assert(await page.locator('.hot-callout').count() === 1, 'lands on Hot lead');
+    assert(await page.locator('.lead-detail-head .hot-tag').count() === 1, 'lands on Hot lead');
     await context.close();
     return opened;
   });

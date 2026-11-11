@@ -15,13 +15,6 @@ export function activeHot(lead: Lead, now: number, profileId?: string): HotLeadA
   return live[0];
 }
 
-/** A Hot Lead whose urgent window has ended (server status `historical`, or `hot` past its expiry on an open page). */
-export function wasHot(lead: Lead, now: number, profileId?: string): HotLeadAssessment | null {
-  if (activeHot(lead, now, profileId)) return null;
-  const scoped = (lead.hotAssessments ?? []).filter(item => !profileId || item.profileId === profileId);
-  return scoped.find(item => item.status === 'historical' || item.status === 'hot') ?? null;
-}
-
 export function hotLeads(leads: Lead[], now: number, profileId?: string): Lead[] {
   return leads.filter(lead => activeHot(lead, now, profileId))
     .sort((a, b) => time(b.published_at) - time(a.published_at));
@@ -32,12 +25,6 @@ const time = (value: string | null | undefined) => (value ? new Date(value).getT
 /** The server's reason, or a plain fallback when an older record carries no reason text. */
 export function hotReason(assessment: HotLeadAssessment): string {
   return assessment.reasonVi?.trim() || 'Bài đăng còn rất mới và nêu rõ nhu cầu khớp với nhu cầu tìm kiếm của bạn.';
-}
-
-/** "Ưu tiên liên hệ trước 14:35" — the end of the server's urgent window, in Vietnam time. */
-export function hotUntil(assessment: HotLeadAssessment): string | null {
-  if (!assessment.expiresAt) return null;
-  return new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date(assessment.expiresAt));
 }
 
 /**
