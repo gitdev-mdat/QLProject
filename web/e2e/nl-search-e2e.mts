@@ -121,7 +121,7 @@ try {
     const form = pa.locator('.profile-form');
     assert(await form.getByRole('heading', { name: 'Sửa nhu cầu tìm kiếm' }).isVisible(), 'form title');
     assert(!(await form.getByLabel('Cụm tìm kiếm riêng').isVisible().catch(() => false)), 'manual keyword field is not part of the normal form');
-    await form.getByLabel('Bạn muốn tìm khách hàng nào?').fill(D1);
+    await form.getByLabel('Bạn kinh doanh gì và muốn tìm khách hàng nào?').fill(D1);
     const chips = await form.locator('.search-preview .keyword-chips li').allInnerTexts();
     assert(JSON.stringify(chips) === JSON.stringify(planFromDescription(D1).queries), `preview ${chips.join('|')}`);
     assert(await form.getByText(/QLead tạo lại cụm tìm kiếm từ mô tả mới/).isVisible(), 'old manual phrases are replaced visibly, not silently kept');
@@ -146,7 +146,7 @@ try {
   await check('8-12 a different category + "Lưu và tìm lại" queues exactly one job on the new version', async () => {
     await card(pa).getByRole('button', { name: 'Sửa' }).click();
     const form = pa.locator('.profile-form');
-    await form.getByLabel('Bạn muốn tìm khách hàng nào?').fill(D2);
+    await form.getByLabel('Bạn kinh doanh gì và muốn tìm khách hàng nào?').fill(D2);
     assert((await form.getByLabel('Khu vực', { exact: true }).inputValue()) === 'Đà Lạt', 'explicit place becomes the area');
     await form.getByRole('button', { name: 'Dùng tên này' }).click();
     assert((await form.getByLabel('Tên nhu cầu').inputValue()) === planFromDescription(D2).name, 'name follows the new intent when the customer accepts it');
