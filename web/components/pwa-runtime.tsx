@@ -8,7 +8,7 @@ import { detectPlatform, isStandalone, localFlag } from '@/lib/pwa';
 import { PushError, registerServiceWorker, syncSubscription } from '@/lib/push-client';
 import { usePushOwner } from './app-shell';
 
-const DISMISSED_KEY = 'qlead.installHint.dismissed';
+export const DISMISSED_KEY = 'qlead.installHint.dismissed';
 const VISITS_KEY = 'qlead.visits';
 const VISIT_COUNTED_KEY = 'qlead.visitCounted';
 
@@ -63,7 +63,7 @@ export function InstallHint() {
   const dismiss = () => { localFlag.set(DISMISSED_KEY, new Date().toISOString()); setEligible(null); };
   return <aside className="install-hint" aria-label="Cài QLead trên điện thoại">
     <img src="/icons/icon-192.png" alt="" width={36} height={36}/>
-    <div className="install-hint-text"><b>Cài QLead trên điện thoại</b><span>Mở nhanh QLead và nhận thông báo khi có khách hàng tiềm năng mới.</span></div>
+    <div className="install-hint-text"><b>Đừng bỏ lỡ khách hàng mới</b><span>Cài QLead trên điện thoại để được thông báo khi có khách hàng tiềm năng cần tiếp cận sớm.</span></div>
     <div className="install-hint-actions">
       {/* Android: the browser's own install dialog. iPhone: a short sheet with the Share → Thêm vào MH chính steps. */}
       <InstallButton className="btn btn-primary btn-sm" onOutcome={outcome => { if (outcome === 'accepted') setEligible(null); }}><PwaIcon name="download" size={16}/>Cài QLead</InstallButton>

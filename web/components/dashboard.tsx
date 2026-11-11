@@ -18,6 +18,11 @@ import { useLeadWorkflow, useNow } from '@/lib/lead-state';
 import type { WorkflowMap } from '@/lib/lead-workflow';
 import { recentActivity, scanTime, shortScanTime } from '@/lib/scan-history';
 import { QuietScansRow, ScanRow } from './scan-outcome';
+import { HotLeadBand } from './hot-lead';
+import { QuietHoursNote } from './quiet-hours';
+import { InstallHint } from './pwa-runtime';
+import { hotLeads } from '@/lib/hot-lead';
+import { isSearchQuietHours, nextAllowedScanAt } from '../../src/quiet-hours';
 
 export function Dashboard({ records, profiles, legacy, scans, scanTotals, firstRun, discovery, workflow: initialWorkflow, rankingNow }: { records: Lead[]; profiles: SearchProfile[]; legacy: LegacySummary | null; scans: ScanRun[]; scanTotals: ScanTotals; firstRun: FirstScan | null; discovery: FirstScan | null; workflow: WorkflowMap; rankingNow: number }) {
   const now = useNow();
@@ -29,6 +34,7 @@ export function Dashboard({ records, profiles, legacy, scans, scanTotals, firstR
   const suspended = useMonitoringSuspended();
   // The newest bounded delivery leads Today with one "start here" line; the full list keeps every older lead.
   const latest = latestDelivery(records);
+  const hot = hotLeads(records, now);
   const today = now ? new Intl.DateTimeFormat('vi-VN', { weekday: 'long', day: 'numeric', month: 'numeric', timeZone: 'Asia/Ho_Chi_Minh' }).format(now) : '';
 
   return <AppShell active="Hôm nay">
@@ -43,6 +49,9 @@ export function Dashboard({ records, profiles, legacy, scans, scanTotals, firstR
     {/* Until the first scan finishes, its real status leads the page instead of zero counts and an empty list. */}
     {firstRun ? <FirstScanView initial={firstRun} compact/> : <>
     {discovery && <DiscoveryNotice initial={discovery} place="today"/>}
+    <HotLeadBand leads={hot} now={now} compact/>
+    {/* Installing is suggested only once there are real leads; a Hot Lead band carries its own install line. */}
+    {records.length > 0 && hot.length === 0 && <InstallHint/>}
     {latest && <LatestDeliveryBand latest={latest} workflow={workflow} now={now} compact/>}
     <dl className="summary-row" aria-label="Tóm tắt">
       <div><dt>Chưa xem</dt><dd>{unseen.length}</dd></div>
@@ -101,6 +110,9 @@ function ScanHistoryPanel({ profiles, legacy, scans, totals, suspended }: { prof
   const frequencyMs = onSchedule.length ? Math.min(...onSchedule.map(profile => profile.frequencyMinutes)) * 60_000 : 0;
   const next = frequencyMs && now ? Math.ceil(now / frequencyMs) * frequencyMs : null;
   const remaining = next !== null ? next - now : null;
+  // Overnight pause (00:30–06:30 Vietnam time, enforced by the backend): no countdown into it and no "late" warning.
+  const quiet = now ? isSearchQuietHours(new Date(now)) : false;
+  const resumesAt = next !== null ? nextAllowedScanAt(new Date(next)) : null;
   const lastSuccess = monitoring.map(profile => profile.lastSuccessAt).filter(Boolean).sort().at(-1) ?? null;
   const recent = recentActivity(scans);
   const day = totals.last24h;
@@ -123,8 +135,12 @@ function ScanHistoryPanel({ profiles, legacy, scans, totals, suspended }: { prof
         {monitoring.length > MONITOR_PREVIEW && <li><Link className="monitor-more" href="/app/bo-loc">+ {monitoring.length - MONITOR_PREVIEW} nhu cầu khác</Link></li>}
       </ul>}
     </div>
-    {monitoring.length > 0 && <div className={`scan-next ${remaining === null && now ? 'is-late' : ''}`}>
-      {remaining !== null && next !== null
+    {monitoring.length > 0 && <div className={`scan-next ${remaining === null && now && !quiet ? 'is-late' : ''} ${quiet ? 'is-quiet' : ''}`}>
+      {quiet
+        ? <QuietHoursNote/>
+        : resumesAt
+        ? <><span className="scan-next-label">Lượt quét tiếp theo</span><span className="scan-next-at">QLead tạm nghỉ ban đêm từ 00:30, sẽ tìm tiếp từ 06:30.</span></>
+        : remaining !== null && next !== null
         ? <>
           <span className="scan-next-label">Lượt quét dự kiến tiếp theo</span>
           <b className="scan-countdown">{clock(remaining)}</b>

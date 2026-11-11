@@ -11,6 +11,7 @@ import { frequencyLabel, locationLabel, NO_LOCATION_OPTION, PROFILE_FREQUENCIES,
 import { profileStatus, requestNote, rescanButton, type ProfileStatus } from '@/lib/profile-status';
 import { AppShell, useMonitoringSuspended } from './app-shell';
 import { GoatMascot } from './goat-mascot';
+import { useQuietHours } from './quiet-hours';
 import { Icon } from './visuals';
 
 type Sent = { ok: true; data: { version?: number; scan?: ScanRequestOutcome | null } } | { ok: false; error: string };
@@ -310,8 +311,9 @@ function ProfileCard({ profile, saved, onEdit }: { profile: SearchProfile; saved
     await refresh();
   }
 
-  const status = profileStatus(profile, scan, suspended, shortTime);
-  const button = rescanButton(profile, scan, suspended, busy === 'scan', waitUntil, now);
+  const quiet = useQuietHours();
+  const status = profileStatus(profile, scan, suspended, shortTime, quiet);
+  const button = rescanButton(profile, scan, suspended, busy === 'scan', waitUntil, now, quiet);
   // While the account is on hold an enabled need keeps its own "on" setting (grey, since nothing is searched right now).
   const monitoring = suspended && profile.enabled ? { label: 'Đang bật', tone: 'off' } : profile.enabled ? { label: 'Đang theo dõi', tone: 'on' } : profile.state === 'draft' ? { label: 'Bản nháp', tone: 'off' } : { label: 'Tạm dừng', tone: 'off' };
   // A finished scan of an older save can be followed by one of the latest save (the cooldown only covers the same save).

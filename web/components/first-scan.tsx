@@ -10,11 +10,12 @@ import { deliveryClock, heldBackLine, type DeliverySummary } from '@/lib/lead-de
 import { frequencyLabel, locationLabel } from '@/lib/profile-state';
 import { AppShell } from './app-shell';
 import { GoatMascot } from './goat-mascot';
+import { useQuietHours } from './quiet-hours';
 import { Icon } from './visuals';
 import './first-search-ux.css';
 
 /** What the first-scan view says while the first search is open, derived from the stored state plus elapsed time. */
-type Phase = 'saved' | 'queued' | 'waiting_worker' | 'not_ready' | 'retrying' | 'running' | 'running_long' | 'delayed' | 'failed' | 'paused';
+type Phase = 'saved' | 'queued' | 'waiting_worker' | 'not_ready' | 'retrying' | 'running' | 'running_long' | 'delayed' | 'failed' | 'paused' | 'quiet';
 
 /**
  * What the whole view shows. `open`/`failed`/`paused`: the first search itself. `found`: leads exist and can be opened
@@ -45,6 +46,7 @@ const COPY: Record<Phase, { eyebrow: string; title: string; text: string }> = {
   running_long: { eyebrow: 'Đang tìm', title: 'QLead đang tìm khách hàng phù hợp', text: 'Lượt tìm đang lâu hơn thường lệ, có thể do nhiều bài cần xem. QLead vẫn đang tìm và sẽ hiện kết quả ngay khi xong.' },
   delayed: { eyebrow: 'Đã lưu nhu cầu', title: 'Lượt tìm đang chờ lâu hơn bình thường', text: 'Đây không phải lỗi của bạn và bạn không cần tạo lại nhu cầu. QLead vẫn giữ yêu cầu và sẽ tìm ngay khi hệ thống tìm kiếm sẵn sàng.' },
   failed: { eyebrow: 'Lượt tìm đầu tiên', title: 'Lượt tìm đầu tiên chưa hoàn tất', text: 'Lượt tìm này gặp sự cố và chưa có kết quả. QLead sẽ thử lại ở lượt theo dõi kế tiếp theo lịch của bạn; nhu cầu đã lưu vẫn được giữ.' },
+  quiet: { eyebrow: 'Đã lưu nhu cầu', title: 'QLead đang tạm nghỉ ban đêm', text: 'Việc tìm khách hàng mới sẽ tiếp tục từ 06:30 và lượt tìm đầu tiên của bạn sẽ bắt đầu khi đó. Nhu cầu đã được lưu, bạn có thể đóng trang.' },
   paused: { eyebrow: 'Đã lưu nhu cầu', title: 'Đã tạm dừng theo dõi', text: 'Nhu cầu đã lưu nhưng đang tạm dừng, nên QLead chưa tìm bài mới. Bật lại khi bạn sẵn sàng.' },
 };
 
@@ -67,6 +69,7 @@ function timingOf(scan: FirstScan, phase: Phase, now: number): { lead: string; t
   const leave = 'Bạn có thể rời trang: tiến trình được lưu và kết quả sẽ tự vào danh sách lead.';
   switch (phase) {
     case 'saved': return { lead: 'Đã lưu nhu cầu', text: leave };
+    case 'quiet': return { lead: scan.queuedAt ? `Đã lưu lúc ${at(scan.queuedAt)}` : 'Đã lưu nhu cầu', text: 'Kết quả sẽ tự vào danh sách lead sau khi QLead tìm xong.' };
     case 'queued': return { lead: `Đã lưu lúc ${at(scan.queuedAt)}${since(scan.queuedAt).replace(' · ', ' · đã chờ ')}`, text: leave };
     case 'waiting_worker': return { lead: `Đã chờ ${now && scan.queuedAt ? elapsedLabel(now - new Date(scan.queuedAt).getTime()) : ''} (từ ${at(scan.queuedAt)})`, text: leave };
     case 'delayed': return { lead: scan.queuedAt ? `Đã chờ ${now ? elapsedLabel(now - new Date(scan.queuedAt).getTime()) : ''} (từ ${at(scan.queuedAt)})` : 'Đang chờ', text: leave, tone: 'slow' };
@@ -88,12 +91,14 @@ const LOOKING_TITLE: Record<MoreState, string> = {
 };
 const MORE_STEP_NOTE: Record<MoreState, string> = { planned: 'Sắp tìm', waiting: 'Sắp tìm', running: 'Đang tìm', retrying: 'Sắp thử lại' };
 
-export function phaseOf(scan: FirstScan, now: number): Phase {
+export function phaseOf(scan: FirstScan, now: number, quiet = false): Phase {
   // `now` is 0 until mounted: render the server's view first, then refine by elapsed time on the client.
   const since = (value: string | null) => (now && value ? now - new Date(value).getTime() : 0);
   // Without a verified, active search service a queued search cannot start: say so instead of "sắp bắt đầu".
   // `searchReady: null` means "cannot be observed" and is never shown as a problem.
   if ((scan.state === 'waiting' || scan.state === 'delayed') && scan.searchReady === false) return 'not_ready';
+  // Overnight (00:30–06:30) the backend holds new searches until 06:30: a calm pause, never "slow" or "stuck".
+  if (quiet && (scan.state === 'waiting' || scan.state === 'delayed')) return 'quiet';
   // A search that was claimed before and is waiting again is a retry, not a first wait.
   if ((scan.state === 'waiting' || scan.state === 'delayed') && scan.discovery?.initialStatus === 'retrying') return 'retrying';
   switch (scan.state) {
@@ -419,7 +424,8 @@ export function FirstScanView({ initial, compact = false }: { initial: FirstScan
   const mode = modeOf(scan, view);
   const open = discoveryOpen(scan);
   const now = useTicking(open);
-  const phase = phaseOf(scan, now);
+  const quiet = useQuietHours();
+  const phase = phaseOf(scan, now, quiet);
   const finished = mode === 'found' || mode === 'empty';
   // The success number is what the customer was actually given (at most one bounded batch), never what the search saw.
   const delivered = useDelivered(scan.profile.id, mode === 'found', `${view.totalLeads ?? ''}:${view.moreFinishedAt ?? ''}`);
@@ -454,7 +460,9 @@ export function FirstScanView({ initial, compact = false }: { initial: FirstScan
     title = LOOKING_TITLE[more];
     text = 'Lượt đầu chưa thấy bài đăng phù hợp. QLead sẽ thử thêm một lượt với vài cách tìm khác cho nhu cầu này, nhưng chưa chắc sẽ có thêm lead.';
     const waitingLong = more !== 'running' && view.moreQueuedAt && now && now - new Date(view.moreQueuedAt).getTime() > MORE_SLOW_MS;
-    estimate = waitingLong
+    estimate = quiet && more !== 'running'
+      ? { lead: 'QLead đang tạm nghỉ ban đêm.', text: 'Lượt tìm thêm sẽ chạy từ 06:30. Nếu có lead mới, QLead sẽ đưa vào danh sách.' }
+      : waitingLong
       ? { lead: 'Lượt tìm thêm đang chờ lâu hơn thường lệ.', text: 'Yêu cầu vẫn được giữ, bạn không cần làm gì thêm. Nếu có lead mới, QLead sẽ đưa vào danh sách.', tone: 'slow' }
       : { lead: 'Bạn không cần chờ ở trang này.', text: 'Nếu có lead mới, QLead sẽ đưa vào danh sách và cập nhật trang này.' };
   } else {

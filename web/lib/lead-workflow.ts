@@ -14,6 +14,18 @@ export const statusLabel: Record<LeadStatus, string> = {
   not_interested: 'Không quan tâm',
 };
 
+/**
+ * Order the customer sees in the status picker, filters and counts: the working states first, then the two ways of
+ * closing a lead, kept next to each other so the difference is read side by side.
+ */
+export const CUSTOMER_STATUSES = ['new', 'seen', 'contacted', 'interested', 'not_interested', 'not_fit'] as const satisfies readonly LeadStatus[];
+
+/** One plain line that tells the two closing statuses apart (shown under the picker and as a tooltip). */
+export const statusHint: Partial<Record<LeadStatus, string>> = {
+  not_interested: 'Đúng nhóm khách, nhưng bạn không muốn theo đuổi lúc này.',
+  not_fit: 'Không đúng nhóm khách bạn cần tìm.',
+};
+
 export type LeadNote = { id: string; body: string; createdAt: string };
 export type LeadWorkflow = { status: LeadStatus; updatedAt: string | null; notes: LeadNote[] };
 export type WorkflowMap = Record<string, LeadWorkflow>;
