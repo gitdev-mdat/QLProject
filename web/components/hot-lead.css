@@ -58,3 +58,8 @@
 
 .toggle-chips .hot-chip { border-color: var(--hot-line); color: var(--hot-ink); }
 .toggle-chips .hot-chip[aria-pressed='true'] { background: var(--hot-100); border-color: var(--hot-500); color: var(--hot-ink); }
+
+/* Narrow screens: the tag must never push a card wider than the screen. */
+.lead-item-main, .lead-item-top, .hot-band, .hot-row, .hot-row-main { min-width: 0; }
+.lead-item.is-hot .lead-item-author { display: inline-flex; align-items: center; gap: 0; }
+@media (max-width: 480px) { .lead-item.is-hot .lead-item-top { flex-wrap: wrap; row-gap: 4px; } }

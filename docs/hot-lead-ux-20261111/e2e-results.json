@@ -1,0 +1,127 @@
+[
+  {
+    "name": "Backend: Codex classifier marked only fresh intent posts Hot",
+    "pass": true,
+    "detail": "one=1 Hot/3, many=4 Hot/5, zero=0/3"
+  },
+  {
+    "name": "S1 one Hot Lead on Today + celebration once",
+    "pass": true,
+    "detail": "celebrated on first view only"
+  },
+  {
+    "name": "S1 list tag + detail shows reason, publish time, FB action",
+    "pass": true,
+    "detail": "Hot Lead Khách hàng đang có nhu cầu rõ ràng Bài đăng còn mới, nêu nhu cầu “dang can tim” và khớp hồ sơ tìm kiếm (phần mềm bán hàng). Đăng 15"
+  },
+  {
+    "name": "S2+S4 several Hot Leads: band shows 3 + link, chip filters, no-author Hot renders",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "S3 zero Hot Leads: nothing Hot is shown",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "S5 Hot Lead without publish time says \"Chưa rõ giờ đăng\"",
+    "pass": true,
+    "detail": "Hot Lead Khách hàng đang có nhu cầu rõ ràng Bài đăng còn mới, nêu nhu cầu “dang can tim” v"
+  },
+  {
+    "name": "S6 Hot label disappears at expiresAt on an open page, then reads as past Hot",
+    "pass": true,
+    "detail": "Từng là Hot Lead khi QLead tìm thấy. Bài không còn trong khung giờ cần liên hệ sớm."
+  },
+  {
+    "name": "S7 sw.js shows a distinct Hot notification and its click opens the lead",
+    "pass": true,
+    "detail": "/mo?den=%2Fapp%2Fbai-viet%2F7577458d-cbd5-423a-90fc-afdcc4534857"
+  },
+  {
+    "name": "S8 Hot Lead visible with push unavailable; no permission request on load",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "S9 install line hidden when running as installed app",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "S10 iPhone Safari: \"Cài QLead\" opens Add-to-Home-Screen steps (390px)",
+    "pass": true,
+    "detail": "real iOS install/push NOT verified (desktop emulation only)"
+  },
+  {
+    "name": "S11 quiet hours at 00:29 VN → normal",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "S11 quiet hours at 00:30 VN → paused",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "S11 quiet hours at 06:29 VN → paused",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "S11 quiet hours at 06:30 VN → normal",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "S12 \"Tìm lại\" during quiet hours explains the 06:30 hold",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "S13 suspended account during quiet hours shows the hold, not quiet copy",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "S14–16 Không quan tâm is separate from Không phù hợp and persists",
+    "pass": true,
+    "detail": "DB status not_interested; tabs 1 / 1"
+  },
+  {
+    "name": "S17 profile form uses the \"bạn kinh doanh gì\" guidance",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "S18 reduced motion: no animation, greeting kept",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "R 390px Today, list, detail without horizontal scroll",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "R 768px Today, list, detail without horizontal scroll",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "R 1440px Today, list, detail without horizontal scroll",
+    "pass": true,
+    "detail": ""
+  },
+  {
+    "name": "S19 Today → list navigation time (dev build, indicative)",
+    "pass": true,
+    "detail": "932 / 413 / 891 ms"
+  },
+  {
+    "name": "S20 another account cannot see a Hot Lead",
+    "pass": true,
+    "detail": "page 200, API 200"
+  }
+]

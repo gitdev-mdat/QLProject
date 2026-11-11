@@ -31,6 +31,13 @@ const QUIET_TITLE = 'QLead đang tạm nghỉ ban đêm';
 const QUIET_DETAIL = 'Việc tìm khách hàng mới sẽ tiếp tục từ 06:30. Bạn vẫn xem lead và sửa nhu cầu bình thường.';
 
 export function profileStatus(profile: SearchProfile, scan: ProfileScan | null, suspended: boolean, time: Clock, quiet = false): ProfileStatus {
+  const status = baseStatus(profile, scan, suspended, time, quiet);
+  // Overnight, a finished or idle need keeps its result but its "what next" line says when searching resumes.
+  if (quiet && !suspended && profile.enabled && !status.live && status.title !== QUIET_TITLE) return { ...status, detail: 'QLead đang tạm nghỉ ban đêm. Việc tìm khách hàng mới sẽ tiếp tục từ 06:30.' };
+  return status;
+}
+
+function baseStatus(profile: SearchProfile, scan: ProfileScan | null, suspended: boolean, time: Clock, quiet: boolean): ProfileStatus {
   const base = { live: false, freshness: null } as const;
   // The customer's own pause/draft setting is shown as usual; it is what applies again after an Admin reactivation.
   if (!profile.enabled) return profile.state === 'draft'

@@ -142,3 +142,24 @@ function HotInstallLine() {
     </div>
   </div>;
 }
+
+/**
+ * The clock used for Hot labels. Pages read `now` once on mount; this re-renders exactly when the next server-given
+ * `expiresAt` passes, so an expired Hot Lead turns ordinary on an open page without any per-second ticking.
+ */
+export function useHotNow(leads: Lead[], now: number): number {
+  const [bumped, setBumped] = useState(0);
+  const current = Math.max(now, bumped);
+  const next = current ? leads.flatMap(lead => lead.hotAssessments ?? [])
+    .filter(item => item.status === 'hot' && item.expiresAt)
+    .map(item => new Date(item.expiresAt!).getTime())
+    .filter(at => at > current)
+    .sort((a, b) => a - b)[0] : undefined;
+  useEffect(() => {
+    if (!next) return;
+    // setTimeout caps at ~24.8 days; Hot windows are hours, so one timer per upcoming expiry is enough.
+    const timer = window.setTimeout(() => setBumped(Date.now()), Math.min(next - Date.now() + 250, 2 ** 31 - 1));
+    return () => window.clearTimeout(timer);
+  }, [next]);
+  return current;
+}

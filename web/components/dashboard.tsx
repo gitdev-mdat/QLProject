@@ -18,7 +18,7 @@ import { useLeadWorkflow, useNow } from '@/lib/lead-state';
 import type { WorkflowMap } from '@/lib/lead-workflow';
 import { recentActivity, scanTime, shortScanTime } from '@/lib/scan-history';
 import { QuietScansRow, ScanRow } from './scan-outcome';
-import { HotLeadBand } from './hot-lead';
+import { HotLeadBand, useHotNow } from './hot-lead';
 import { QuietHoursNote } from './quiet-hours';
 import { InstallHint } from './pwa-runtime';
 import { hotLeads } from '@/lib/hot-lead';
@@ -34,7 +34,8 @@ export function Dashboard({ records, profiles, legacy, scans, scanTotals, firstR
   const suspended = useMonitoringSuspended();
   // The newest bounded delivery leads Today with one "start here" line; the full list keeps every older lead.
   const latest = latestDelivery(records);
-  const hot = hotLeads(records, now);
+  const hotNow = useHotNow(records, now);
+  const hot = hotLeads(records, hotNow);
   const today = now ? new Intl.DateTimeFormat('vi-VN', { weekday: 'long', day: 'numeric', month: 'numeric', timeZone: 'Asia/Ho_Chi_Minh' }).format(now) : '';
 
   return <AppShell active="Hôm nay">
@@ -49,7 +50,7 @@ export function Dashboard({ records, profiles, legacy, scans, scanTotals, firstR
     {/* Until the first scan finishes, its real status leads the page instead of zero counts and an empty list. */}
     {firstRun ? <FirstScanView initial={firstRun} compact/> : <>
     {discovery && <DiscoveryNotice initial={discovery} place="today"/>}
-    <HotLeadBand leads={hot} now={now} compact/>
+    <HotLeadBand leads={hot} now={hotNow} compact/>
     {/* Installing is suggested only once there are real leads; a Hot Lead band carries its own install line. */}
     {records.length > 0 && hot.length === 0 && <InstallHint/>}
     {latest && <LatestDeliveryBand latest={latest} workflow={workflow} now={now} compact/>}
@@ -68,7 +69,7 @@ export function Dashboard({ records, profiles, legacy, scans, scanTotals, firstR
           ? <div className="empty-state compact"><GoatMascot size="sm"/><h3>Chưa có lead nào</h3><p>Nhu cầu của bạn đã được lưu. Khi QLead tìm thấy bài phù hợp, lead sẽ xuất hiện ở đây.</p><Link className="btn btn-outline" href="/app/bo-loc">Xem nhu cầu theo dõi</Link></div>
           : unseen.length === 0
             ? <div className="empty-state compact"><GoatMascot size="sm"/><h3>Bạn đã xem hết lead</h3><p>Lead mới sẽ xuất hiện ở đây sau các lượt quét tiếp theo.</p><Link className="btn btn-outline" href="/app/bai-viet">Xem lại danh sách</Link></div>
-            : <ul className="lead-list">{unseen.slice(0, 5).map(lead => <LeadListItem key={lead.id} lead={lead} now={now} workflow={workflow}/>)}</ul>}
+            : <ul className="lead-list">{unseen.slice(0, 5).map(lead => <LeadListItem key={lead.id} lead={lead} now={now} workflow={workflow} hotNow={hotNow}/>)}</ul>}
         {unseen.length > 5 && <Link className="panel-foot-link" href="/app/bai-viet">Còn {unseen.length - 5} lead chưa xem <Icon name="arrow" size={16}/></Link>}
       </section>
 
