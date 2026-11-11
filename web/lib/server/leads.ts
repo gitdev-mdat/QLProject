@@ -1,7 +1,5 @@
 import 'server-only';
-import type { PoolClient } from 'pg';
 import { toLeadRecord, type StoredFacebookPost } from '../../../src/lead-data';
-import { distributeProfileLeads } from '../../../src/lead-distribution';
 import type { HotLeadAssessment, Lead, LeadSource } from '../lead-source';
 import { compareLeadByPostedAt } from '../lead-order';
 import { completeLeadMetadataSql, sourceLinkedPostSql } from '../../../src/lead-eligibility';
@@ -100,35 +98,14 @@ export type LeadDistributionSummary = {
 /** Upper bound for one scoped list. A single search profile is far below this; the total says when it is not. */
 export const SCOPED_LEAD_LIMIT = 2000;
 
-async function withTx<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
-  const client = await db().connect();
-  try { await client.query('BEGIN'); const value = await fn(client); await client.query('COMMIT'); return value; }
-  catch (error) { await client.query('ROLLBACK').catch(() => undefined); throw error; }
-  finally { client.release(); }
-}
-
-async function deliverWaitingLeads(userId: string, scope: LeadScope): Promise<void> {
-  await withTx(async client => {
-    const params: unknown[] = [userId];
-    const filter = scope.kind === 'profile' ? 'AND ac.id = $2 AND ac.kind = \'search_profile\'' : scope.kind === 'legacy' ? 'AND false' : "AND ac.kind = 'search_profile'";
-    if (scope.kind === 'profile') params.push(scope.profileId);
-    const { rows } = await client.query<{ id: string }>(`SELECT ac.id FROM agent_connections ac JOIN users u ON u.id = ac.user_id
-      JOIN LATERAL (SELECT enabled FROM scan_configs WHERE agent_connection_id = ac.id ORDER BY version DESC LIMIT 1) sc ON true
-      WHERE ac.user_id = $1 AND ac.kind = 'search_profile' AND ac.status = 'active' AND sc.enabled AND u.lead_monitoring_status = 'active' ${filter}
-      ORDER BY ac.id`, params);
-    for (const profile of rows) await distributeProfileLeads(client, userId, profile.id);
-  });
-}
-
 async function deliverySummary(userId: string, scope: LeadScope): Promise<LeadDistributionSummary> {
   const params: unknown[] = [userId];
   let filter = '';
   if (scope.kind === 'profile') { params.push(scope.profileId); filter = 'AND ac.id = $2'; }
   if (scope.kind === 'legacy') filter = "AND ac.kind <> 'search_profile'";
   const { rows: [row] } = await db().query(`SELECT
-      coalesce(sum(settings.max_leads_per_scan), 0)::int AS max_leads_per_cycle,
-      coalesce(sum(CASE WHEN c.cycle_key = floor(extract(epoch FROM now()) / (sc.frequency_minutes * 60))::bigint::text THEN
-        (SELECT count(*) FROM profile_lead_deliveries d WHERE d.search_profile_id = ac.id AND d.delivery_cycle_id = c.id AND d.state = 'delivered') ELSE 0 END), 0)::int AS delivered_this_cycle,
+      coalesce(sum(least(settings.max_leads_per_scan, 10)), 0)::int AS max_leads_per_cycle,
+      coalesce(sum((SELECT count(*) FROM profile_lead_deliveries d WHERE d.search_profile_id = ac.id AND d.delivery_cycle_id = c.id AND d.state = 'delivered')), 0)::int AS delivered_this_cycle,
       coalesce(sum((SELECT count(*) FROM profile_lead_deliveries d WHERE d.search_profile_id = ac.id AND d.state = 'queued')), 0)::int AS queued,
       min(to_timestamp((floor(extract(epoch FROM now()) / (sc.frequency_minutes * 60)) + 1) * sc.frequency_minutes * 60)) AS next_cycle_at,
       bool_or(j.status = 'claimed' AND j.lease_expires_at > now()) AS worker_claimed,
@@ -164,7 +141,6 @@ export async function listLeadPageForUser(userId: string, scope: LeadScope, limi
     return { leads: [], total: 0, delivery: { status: 'ready', maxLeadsPerCycle: 0, deliveredThisCycle: 0, queued: 0, nextCycleAt: null, workerClaimed: false, currentSearchStatus: null,
       worker: { configuredActive: false, lastAuthenticatedAt: null, lastClaimAt: null, connectionVerifiedAt: null }, quietHours: quietHoursState() } };
   }
-  await deliverWaitingLeads(userId, scope);
   const params: unknown[] = [userId, limit];
   let scopeSql = '';
   if (scope.kind === 'profile') {

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { deriveProfileState, PROFILE_FREQUENCIES, type LegacySummary, type SearchProfile } from '../profile-state';
 import { deriveProfileScan, type ProfileScan, type ScanRequestOutcome, type ScanRow } from '../profile-scan';
 import { enqueueInitialJob, requestManualJob, supersedeQueuedJobs } from '../../../src/jobs';
+import { getLeadEngagementProgress } from '../../../src/lead-engagement';
 import { planFromDescription } from '../../../src/search-plan';
 import { sourceLinkedPostSql } from '../../../src/lead-eligibility';
 import { db } from './db';
@@ -100,6 +101,14 @@ export async function getProfileScan(userId: string, profileId: string, now = Da
     WHERE ac.id = $1 AND ac.user_id = $2 AND ac.kind = 'search_profile' AND ac.status = 'active'`, [profileId, userId]);
   if (!row) return null;
   return { scan: row.lead_monitoring_status === 'suspended' && row.status !== 'claimed' && !row.run_at ? null : scanFrom(row, now, true), version: row.current_version, leadCount: row.lead_count };
+}
+
+/** Server-owned progress contract for the engagement gate, independent of the latest scan's state. */
+export async function getProfileLeadEngagement(userId: string, profileId: string) {
+  if (!UUID.test(profileId)) return null;
+  const client = await db().connect();
+  try { return await getLeadEngagementProgress(client, userId, profileId); }
+  finally { client.release(); }
 }
 
 /** Older integrations: leads and scans that exist without any search profile. Null when there are none. */

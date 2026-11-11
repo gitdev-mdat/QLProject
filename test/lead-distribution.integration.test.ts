@@ -33,15 +33,15 @@ test('database delivery is capped, idempotent under concurrent refresh, tenant-s
   await client.query(`INSERT INTO facebook_post_search_configs(agent_connection_id, normalized_url, configuration_version)
     SELECT $1, normalized_url, 1 FROM facebook_posts WHERE agent_connection_id = $1`, [profile.id]);
 
-  async function distribute(userId: string, profileId: string) {
+  async function distribute(userId: string, profileId: string, cycleKey: string) {
     const tx = await pool.connect();
-    try { await tx.query('BEGIN'); const result = await distributeProfileLeads(tx, userId, profileId); await tx.query('COMMIT'); return result; }
+    try { await tx.query('BEGIN'); const result = await distributeProfileLeads(tx, userId, profileId, cycleKey); await tx.query('COMMIT'); return result; }
     catch (error) { await tx.query('ROLLBACK'); throw error; }
     finally { tx.release(); }
   }
 
   try {
-    const [first, retry] = await Promise.all([distribute(user.id, profile.id), distribute(user.id, profile.id)]);
+    const [first, retry] = await Promise.all([distribute(user.id, profile.id, 'scan:first'), distribute(user.id, profile.id, 'scan:first')]);
     assert.equal(first?.delivered, 10);
     assert.equal(retry?.delivered, 10, 'duplicate calls return the original cycle result');
     assert.equal(retry?.maxLeads, 10);
@@ -58,8 +58,7 @@ test('database delivery is capped, idempotent under concurrent refresh, tenant-s
     await client.query(`INSERT INTO facebook_posts(agent_connection_id, normalized_url, original_url, title, content, author, published_at, collected_via)
       VALUES ($1,$2,$2,'New opening','Quán cà phê sắp khai trương, đang cần tìm nhà cung cấp ngay.','Business page',now(),'qlead_shared_worker')`, [profile.id, better]);
     await client.query('INSERT INTO facebook_post_search_configs(agent_connection_id, normalized_url, configuration_version) VALUES ($1,$2,1)', [profile.id, better]);
-    await client.query(`UPDATE lead_distribution_cycles SET cycle_key = cycle_key || ':fixture_previous' WHERE search_profile_id = $1`, [profile.id]);
-    const second = await distribute(user.id, profile.id);
+    const second = await distribute(user.id, profile.id, 'scan:second');
     assert.equal(second?.delivered, 10);
     const hotId = (await client.query<{ id: string }>(`SELECT fp.id FROM facebook_posts fp WHERE fp.agent_connection_id=$1 AND fp.normalized_url=$2`, [profile.id, better])).rows[0]?.id;
     assert.ok(hotId && second?.hotPostIds.includes(hotId), 'recent explicit request is classified Hot for this matching profile');
@@ -68,17 +67,15 @@ test('database delivery is capped, idempotent under concurrent refresh, tenant-s
     assert.equal(newLead.state, 'delivered');
 
     // No new scan is needed for the next queued batch; duplicate page reads in the new window still share one cap.
-    await client.query(`UPDATE lead_distribution_cycles SET cycle_key = cycle_key || ':fixture_previous' WHERE search_profile_id = $1`, [profile.id]);
-    const backlogOnly = await distribute(user.id, profile.id);
+    const backlogOnly = await distribute(user.id, profile.id, 'scan:third');
     assert.equal(backlogOnly?.delivered, 10);
     assert.equal(backlogOnly?.queued, 31);
 
     // The limit is data-configured, so a future package can change it without changing account storage semantics.
     await client.query('UPDATE lead_distribution_settings SET max_leads_per_scan = 20 WHERE search_profile_id = $1', [profile.id]);
-    await client.query(`UPDATE lead_distribution_cycles SET cycle_key = cycle_key || ':fixture_previous' WHERE search_profile_id = $1`, [profile.id]);
-    const upgradedLimit = await distribute(user.id, profile.id);
-    assert.equal(upgradedLimit?.maxLeads, 20);
-    assert.equal(upgradedLimit?.delivered, 20);
+    const upgradedLimit = await distribute(user.id, profile.id, 'scan:fourth');
+    assert.equal(upgradedLimit?.maxLeads, 10, 'the backend cap cannot be raised above ten by changing settings');
+    assert.equal(upgradedLimit?.delivered, 10);
 
     // A second tenant may independently receive the same public permalink; a suspended account cannot.
     const { rows: [otherUser] } = await client.query(`INSERT INTO users(display_name) VALUES ('Other tenant fixture') RETURNING id`);
@@ -89,9 +86,9 @@ test('database delivery is capped, idempotent under concurrent refresh, tenant-s
     await client.query(`INSERT INTO facebook_posts(agent_connection_id,normalized_url,original_url,title,content,author,published_at,collected_via)
       VALUES ($1,$2,$2,'Other tenant','Quán cà phê sắp khai trương.','Page',now(),'qlead_shared_worker')`, [otherProfile.id, better]);
     await client.query(`INSERT INTO facebook_post_search_configs(agent_connection_id,normalized_url,configuration_version) VALUES ($1,$2,1)`, [otherProfile.id, better]);
-    assert.equal((await distribute(otherUser.id, otherProfile.id))?.delivered, 1);
+    assert.equal((await distribute(otherUser.id, otherProfile.id, 'scan:other'))?.delivered, 1);
     await client.query(`UPDATE users SET lead_monitoring_status='suspended' WHERE id=$1`, [otherUser.id]);
-    assert.equal(await distribute(otherUser.id, otherProfile.id), null);
+    assert.equal(await distribute(otherUser.id, otherProfile.id, 'scan:suspended'), null);
     await client.query(`DELETE FROM users WHERE id=ANY($1::uuid[])`, [[user.id, otherUser.id]]);
   } finally {
     await client.query(`DELETE FROM users WHERE id=$1`, [user.id]).catch(() => undefined);

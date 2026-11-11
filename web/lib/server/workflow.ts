@@ -1,6 +1,8 @@
 import 'server-only';
 import { db } from './db';
 import { getLeadForUser } from './leads';
+import { withTx } from './admin';
+import { recordLeadReview } from '../../../src/lead-engagement';
 import type { LeadNote, LeadStatus, WorkflowMap } from '../lead-workflow';
 
 /** Status and notes for the given posts, for this user only. Posts without a row are 'new'. */
@@ -20,13 +22,17 @@ export async function getWorkflowForUser(userId: string, postIds: string[]): Pro
 /** Ownership is checked through the same tenant-scoped query the pages use; returns false if not owned. */
 export async function setLeadStatus(userId: string, postId: string, status: LeadStatus, onlyIfNew = false): Promise<boolean> {
   if (!await getLeadForUser(userId, postId)) return false;
-  if (onlyIfNew) {
-    await db().query(`INSERT INTO lead_states(user_id, post_id, status) VALUES ($1, $2, $3) ON CONFLICT (user_id, post_id) DO NOTHING`, [userId, postId, status]);
-  } else {
-    await db().query(`INSERT INTO lead_states(user_id, post_id, status) VALUES ($1, $2, $3)
-      ON CONFLICT (user_id, post_id) DO UPDATE SET status = EXCLUDED.status, updated_at = now()`, [userId, postId, status]);
-  }
-  return true;
+  return withTx(async client => {
+    await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [userId]);
+    if (onlyIfNew) {
+      await client.query(`INSERT INTO lead_states(user_id, post_id, status) VALUES ($1, $2, $3) ON CONFLICT (user_id, post_id) DO NOTHING`, [userId, postId, status]);
+    } else {
+      await client.query(`INSERT INTO lead_states(user_id, post_id, status) VALUES ($1, $2, $3)
+        ON CONFLICT (user_id, post_id) DO UPDATE SET status = EXCLUDED.status, updated_at = now()`, [userId, postId, status]);
+    }
+    if (['contacted', 'interested', 'not_interested', 'not_fit'].includes(status)) await recordLeadReview(client, userId, postId, 'manual_status');
+    return true;
+  });
 }
 
 export async function addLeadNote(userId: string, postId: string, body: string): Promise<LeadNote | null> {
