@@ -141,7 +141,7 @@ export async function distributeProfileLeads(client: PoolClient, userId: string,
   // Keep ordinary batches idempotent. A newly available Hot Lead may fill unused slots in this cycle, but never exceed
   // its existing cap or displace something already delivered.
   if (!remaining || (alreadyDelivered > 0 && Number(hotQueue?.count ?? 0) === 0)) {
-    return { cycleKey: slot.cycle_key, maxLeads: profile.max_leads_per_scan, delivered: alreadyDelivered, queued: Number(cycleState?.queued ?? 0),
+    return { cycleKey, maxLeads: profile.max_leads_per_scan, delivered: alreadyDelivered, queued: Number(cycleState?.queued ?? 0),
       expired: expired ?? 0, nextCycleAt: new Date(slot.next_cycle_at).toISOString(), deliveredPostIds: [], hotPostIds: [] };
   }
 
