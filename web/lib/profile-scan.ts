@@ -1,4 +1,5 @@
 import { quietHoursState } from '../../src/quiet-hours';
+import { USAGE_GATED_NOTE } from './engagement-gate';
 
 /**
  * Customer-facing progress of the latest scan of one search profile, derived on the server from search_jobs and
@@ -80,6 +81,6 @@ export function scanRequestMessage(request: ScanRequestOutcome): string {
     case 'daily_limit': return 'Hôm nay bạn đã dùng hết lượt tìm lại. Lịch theo dõi tự động vẫn chạy bình thường.';
     case 'paused': return 'Nhu cầu đang tạm dừng. Bật lại theo dõi để tìm.';
     case 'suspended': return 'Tính năng tìm lead của tài khoản đang tạm dừng. Lượt tìm mới chưa được tạo.';
-    case 'usage_gated': return '';
+    case 'usage_gated': return USAGE_GATED_NOTE;
   }
 }

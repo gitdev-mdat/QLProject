@@ -1,5 +1,6 @@
 import { frequencyLabel, type SearchProfile } from './profile-state';
 import { SCAN_OPEN, type ProfileScan, type ScanRequestOutcome } from './profile-scan';
+import { USAGE_GATED_NOTE } from './engagement-gate';
 
 /**
  * One plain-language answer per search-profile card to "what is QLead doing for this need right now?", derived only
@@ -140,6 +141,6 @@ export function requestNote(request: ScanRequestOutcome): { text: string; tone: 
     case 'daily_limit': return { text: 'Hôm nay bạn đã dùng hết lượt tìm lại. QLead vẫn tự tìm theo lịch.', tone: 'warn' };
     case 'paused': return { text: 'Nhu cầu đang tạm dừng. Bật lại theo dõi để tìm.', tone: 'warn' };
     case 'suspended': return { text: 'Tài khoản đang tạm ngưng tìm khách mới nên chưa tìm lại được.', tone: 'warn' };
-    case 'usage_gated': return null;
+    case 'usage_gated': return { text: USAGE_GATED_NOTE, tone: 'warn' };
   }
 }

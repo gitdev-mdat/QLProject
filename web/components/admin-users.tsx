@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { apiErrorText, frequencyText, MONITORING_LABEL, profileEffect, USERS_PAGE_SIZE, type AdminUserDetail, type AdminUserPage, type AdminUserRow, type MonitoringChange, type UserDeletionImpact } from '@/lib/admin-users';
+import { apiErrorText, engagementLine, engagementSummary, frequencyText, MONITORING_LABEL, profileEffect, USERS_PAGE_SIZE, type AdminUserDetail, type AdminUserPage, type AdminUserRow, type MonitoringChange, type UserDeletionImpact } from '@/lib/admin-users';
 import { deviceText, LOGIN_METHOD_LABEL, SESSION_STATE_LABEL, type LoginHistoryFilter, type LoginHistoryPage } from '@/lib/login-history';
 import { Icon } from './visuals';
 
@@ -213,6 +213,7 @@ function UserDetail({ userId, currentAdminId, onClose, onChanged, onDeleted }: {
   const d = detail;
   const profiles = d?.profiles.filter(p => p.profileStatus === 'active') ?? [];
   const removed = (d?.profiles.length ?? 0) - profiles.length;
+  const engagement = engagementSummary(profiles);
   const enabled = profiles.filter(p => p.enabled).length;
 
   return <div className="modal-backdrop user-drawer-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !confirm && !deleting) onClose(); }}>
@@ -260,6 +261,17 @@ function UserDetail({ userId, currentAdminId, onClose, onChanged, onDeleted }: {
           </dl>
           {d.status === 'suspended' && d.pendingJobCount > 0 && <p className="muted-text small">Lượt đang chờ được giữ lại nhưng không được giao xử lý trong lúc ngưng.</p>}
 
+          {engagement && <section className="admin-engagement" aria-labelledby="engagement-title">
+            <h3 className="sub-h" id="engagement-title">Mức khám phá lead</h3>
+            <dl className="stat-grid user-stats">
+              <div><dt>Lead toàn thời gian</dt><dd>{num.format(d.leadCount)}</dd></div>
+              <div><dt>Đã giao theo chính sách</dt><dd>{num.format(engagement.delivered)}</dd></div>
+              <div><dt>Đã khám phá</dt><dd>{num.format(engagement.reviewed)} <small>({engagement.delivered ? `${engagement.percent}%` : '–'})</small></dd></div>
+              <div><dt>Đang chờ gửi</dt><dd>{num.format(engagement.pending)}</dd></div>
+            </dl>
+            <p className="muted-text small">{engagement.waiting ? `${engagement.waiting}/${engagement.needs} nhu cầu đang chờ khách khám phá thêm (dưới 80% sau 3 lượt tìm) nên chưa quét hay gửi thêm. ` : 'Không nhu cầu nào đang chờ khách. '}Chỉ tính lead giao sau mốc áp dụng chính sách của từng nhu cầu; lead cũ vẫn hiển thị cho khách nhưng không vào tỷ lệ. Khám phá = mở bài Facebook hoặc tự phân loại lead. Đây là mức sử dụng, không phải chất lượng lead.</p>
+          </section>}
+
           <section aria-labelledby="profiles-title">
             <h3 className="sub-h" id="profiles-title">Nhu cầu theo dõi</h3>
             {d.status === 'suspended' && profiles.length > 0 && <p className="info-box warn"><Icon name="info" size={16}/><span>Cả {profiles.length} nhu cầu dưới đây đang bị loại khỏi lượt quét mới vì tài khoản ngưng tìm lead. Cài đặt bật/tạm dừng của khách được giữ nguyên.</span></p>}
@@ -269,6 +281,7 @@ function UserDetail({ userId, currentAdminId, onClose, onChanged, onDeleted }: {
                 <div className="user-profile-top"><b>{p.name}</b><span className={`pill prof-pill is-${effect.tone}`}>{effect.label}</span></div>
                 {p.description && <p className="user-profile-desc">“{p.description}”</p>}
                 <p className="user-profile-meta">{p.enabled ? 'Khách bật' : 'Khách tạm dừng'} · {frequencyText(p.frequencyMinutes)} · {num.format(p.leadCount)} lead · quét gần nhất {at(p.lastScanAt)}</p>
+                {engagementLine(p) && <p className="user-profile-meta">{engagementLine(p)}</p>}
                 <p className="user-profile-note">{effect.note}</p>
               </li>;
             })}</ul>}

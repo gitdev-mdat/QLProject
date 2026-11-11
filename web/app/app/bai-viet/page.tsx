@@ -36,5 +36,5 @@ export default async function PostsPage({ searchParams }: { searchParams: Promis
   const view = firstScan ? discoveryView(firstScan) : null;
   const relevant = source === 'all' || source === firstScan?.profile.id;
   const notice = firstScan && view && relevant && (view.stage === 'more' || view.moreFinishedAt) ? <DiscoveryNotice initial={firstScan} place="list"/> : null;
-  return <LeadResultsPage key={source} records={records} total={total} workflow={workflow} profiles={profiles.map(({ id, name }) => ({ id, name }))} hasLegacy={Boolean(legacy?.leadCount)} source={source} notice={notice} delivery={delivery} latestOnly={params['luot'] === 'moi'} hotOnly={params['hot'] === '1'}/>;
+  return <LeadResultsPage key={source} records={records} total={total} workflow={workflow} profiles={profiles.map(({ id, name }) => ({ id, name }))} hasLegacy={Boolean(legacy?.leadCount)} source={source} notice={notice} delivery={delivery} latestOnly={params['luot'] === 'moi'} hotOnly={params['hot'] === '1'} unreadFirst={params['chua-xem'] === '1'}/>;
 }
