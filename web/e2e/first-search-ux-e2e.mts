@@ -295,9 +295,10 @@ try {
     const [{ n }] = await q("SELECT count(*)::int AS n FROM profile_lead_deliveries WHERE search_profile_id = $1 AND state = 'delivered'", [h.profile]);
     assert(n === 47, `delivered rows ${n}`);
   });
-  await check('F2 Today shows one "start here" line for the new delivery', async () => {
+  // Thi (2026-11-11): Today no longer repeats the delivery band; the lead list keeps it.
+  await check('F2 Today has no separate delivery band', async () => {
     await widths(browser, h, '/app', 'f2-today-latest', async p => {
-      assert(/10 khách hàng mới trong lượt gửi gần nhất/.test(await text(p, '.latest-delivery')), 'today band');
+      assert(await p.locator('.latest-delivery').count() === 0, 'today band still shown');
     });
   });
   await check('F3 missing content: one quiet line, no repeated chip; phone labelled as from the post', async () => {

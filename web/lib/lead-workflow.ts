@@ -1,6 +1,8 @@
 /** Follow-up states a salesperson moves a lead through. Shared by server and client. */
+// Existing customer filter options stay stable until the assigned UX integration is updated.
 export const LEAD_STATUSES = ['new', 'seen', 'contacted', 'interested', 'not_fit'] as const;
-export type LeadStatus = typeof LEAD_STATUSES[number];
+export const LEAD_STATUS_VALUES = [...LEAD_STATUSES, 'not_interested'] as const;
+export type LeadStatus = typeof LEAD_STATUS_VALUES[number];
 
 export const statusLabel: Record<LeadStatus, string> = {
   // 'new' means the user has not opened the lead yet (it becomes 'seen' on open); it says nothing about post age.
@@ -9,6 +11,19 @@ export const statusLabel: Record<LeadStatus, string> = {
   contacted: 'Đã liên hệ',
   interested: 'Quan tâm',
   not_fit: 'Không phù hợp',
+  not_interested: 'Không quan tâm',
+};
+
+/**
+ * Order the customer sees in the status picker, filters and counts: the working states first, then the two ways of
+ * closing a lead, kept next to each other so the difference is read side by side.
+ */
+export const CUSTOMER_STATUSES = ['new', 'seen', 'contacted', 'interested', 'not_interested', 'not_fit'] as const satisfies readonly LeadStatus[];
+
+/** One plain line that tells the two closing statuses apart (shown under the picker and as a tooltip). */
+export const statusHint: Partial<Record<LeadStatus, string>> = {
+  not_interested: 'Đúng nhóm khách, nhưng bạn không muốn theo đuổi lúc này.',
+  not_fit: 'Không đúng nhóm khách bạn cần tìm.',
 };
 
 export type LeadNote = { id: string; body: string; createdAt: string };

@@ -2,10 +2,11 @@ import 'server-only';
 import type { PoolClient } from 'pg';
 import { toLeadRecord, type StoredFacebookPost } from '../../../src/lead-data';
 import { distributeProfileLeads } from '../../../src/lead-distribution';
-import type { Lead, LeadSource } from '../lead-source';
+import type { HotLeadAssessment, Lead, LeadSource } from '../lead-source';
 import { compareLeadByPostedAt } from '../lead-order';
 import { completeLeadMetadataSql, sourceLinkedPostSql } from '../../../src/lead-eligibility';
 import { db } from './db';
+import { quietHoursState } from '../../../src/quiet-hours';
 
 /**
  * Tenant scoping: every query joins agent_connections and filters on its user_id, so a user only ever reads
@@ -14,6 +15,14 @@ import { db } from './db';
 const POST_SELECT = `SELECT fp.id, fp.author, fp.title, fp.content, fp.summary_vi, fp.published_at, fp.original_url, fp.normalized_url,
     fp.first_seen_at AS discovered_at, (SELECT min(d.delivered_at) FROM profile_lead_deliveries d WHERE d.post_id = fp.id AND d.state = 'delivered') AS delivered_at,
     fp.source_type, fp.collected_via, fp.platform, ac.name AS agent_name,
+    (SELECT jsonb_agg(jsonb_build_object('profileId', d.search_profile_id, 'status',
+        CASE WHEN d.hot_at_discovery AND d.hot_expires_at > now() AND fp.published_at IS NOT NULL
+          AND fp.published_at <= now() AND fp.published_at > now() - interval '2 hours' THEN 'hot'
+          WHEN d.hot_at_discovery THEN 'historical' ELSE 'standard' END,
+        'reasonVi', d.hot_reason_vi, 'evidence', d.hot_evidence,
+        'publishedAt', fp.published_at, 'assessedAt', d.hot_assessed_at, 'expiresAt', d.hot_expires_at)
+      ORDER BY d.search_profile_id)
+      FROM profile_lead_deliveries d WHERE d.post_id=fp.id AND d.state='delivered') AS hot_assessments,
     ac.id AS connection_id, ac.kind AS connection_kind,
     COALESCE(jsonb_agg(jsonb_build_object('version',sc.version,'enabled',sc.enabled,'keywords',sc.keywords,
       'location',sc.location,'sources',sc.sources,'frequency_minutes',sc.frequency_minutes)
@@ -27,7 +36,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const GROUP_BY = 'GROUP BY fp.id, ac.id';
 
-type Row = StoredFacebookPost & { id: string; normalized_url: string; connection_id: string; connection_kind: 'legacy_agent' | 'search_profile' };
+type Row = StoredFacebookPost & { id: string; normalized_url: string; connection_id: string; connection_kind: 'legacy_agent' | 'search_profile'; hot_assessments?: HotLeadAssessment[] | null };
 
 function sourceOf(row: Row): LeadSource {
   const discoveredAt = row.discovered_at ? new Date(row.discovered_at).toISOString() : null;
@@ -58,7 +67,10 @@ function groupByPost(rows: Row[]): Lead[] {
     const firstValue = (field: 'author' | 'title' | 'content' | 'summary_vi') => sorted.find(row => row[field]?.trim())?.[field] ?? null;
     const record = toLeadRecord({ ...sorted[0], author: firstValue('author'), title: firstValue('title'), content: firstValue('content'), summary_vi: firstValue('summary_vi'), published_at: originalPostTime(group) });
     const deliveredAt = sorted.map(row => row.delivered_at).filter(Boolean).map(value => new Date(value!).toISOString()).sort()[0] ?? null;
-    return { ...record, agent_name: null, sources: sorted.map(sourceOf), deliveredAt, eligibility: { basis: 'source_linked_search' as const, relevance: 'selected_by_search' as const, independentlyVerified: false as const } };
+    const hotAssessments = sorted.flatMap(row => row.hot_assessments ?? []);
+    const uniqueAssessments = [...new Map(hotAssessments.map(assessment => [assessment.profileId, assessment])).values()];
+    return { ...record, agent_name: null, sources: sorted.map(sourceOf), deliveredAt, hotAssessments: uniqueAssessments,
+      eligibility: { basis: 'source_linked_search' as const, relevance: 'selected_by_search' as const, independentlyVerified: false as const } };
   });
 }
 
@@ -82,6 +94,7 @@ export type LeadDistributionSummary = {
   workerClaimed: boolean;
   currentSearchStatus: 'queued' | 'running' | 'retrying' | 'completed' | 'failed' | null;
   worker: { configuredActive: boolean; lastAuthenticatedAt: string | null; lastClaimAt: string | null; connectionVerifiedAt: string | null };
+  quietHours: ReturnType<typeof quietHoursState>;
 };
 
 /** Upper bound for one scoped list. A single search profile is far below this; the total says when it is not. */
@@ -143,20 +156,20 @@ async function deliverySummary(userId: string, scope: LeadScope): Promise<LeadDi
       : row?.retrying ? 'retrying' : searching ? 'queued' : row?.latest_failed ? 'failed' : row?.latest_completed ? 'completed' : null,
     worker: { configuredActive: Boolean(worker?.configured_active), lastAuthenticatedAt: worker?.last_authenticated_at ? new Date(worker.last_authenticated_at).toISOString() : null,
       lastClaimAt: worker?.last_claim_at ? new Date(worker.last_claim_at).toISOString() : null,
-      connectionVerifiedAt: worker?.connection_verified_at ? new Date(worker.connection_verified_at).toISOString() : null } };
+      connectionVerifiedAt: worker?.connection_verified_at ? new Date(worker.connection_verified_at).toISOString() : null }, quietHours: quietHoursState() };
 }
 
 export async function listLeadPageForUser(userId: string, scope: LeadScope, limit = 200): Promise<LeadPage> {
   if (scope.kind === 'profile' && !UUID.test(scope.profileId)) {
     return { leads: [], total: 0, delivery: { status: 'ready', maxLeadsPerCycle: 0, deliveredThisCycle: 0, queued: 0, nextCycleAt: null, workerClaimed: false, currentSearchStatus: null,
-      worker: { configuredActive: false, lastAuthenticatedAt: null, lastClaimAt: null, connectionVerifiedAt: null } } };
+      worker: { configuredActive: false, lastAuthenticatedAt: null, lastClaimAt: null, connectionVerifiedAt: null }, quietHours: quietHoursState() } };
   }
   await deliverWaitingLeads(userId, scope);
   const params: unknown[] = [userId, limit];
   let scopeSql = '';
   if (scope.kind === 'profile') {
     if (!UUID.test(scope.profileId)) return { leads: [], total: 0, delivery: { status: 'ready', maxLeadsPerCycle: 0, deliveredThisCycle: 0, queued: 0, nextCycleAt: null, workerClaimed: false, currentSearchStatus: null,
-      worker: { configuredActive: false, lastAuthenticatedAt: null, lastClaimAt: null, connectionVerifiedAt: null } } };
+      worker: { configuredActive: false, lastAuthenticatedAt: null, lastClaimAt: null, connectionVerifiedAt: null }, quietHours: quietHoursState() } };
     params.push(scope.profileId);
     scopeSql = `AND EXISTS (SELECT 1 FROM facebook_posts sp JOIN agent_connections sac ON sac.id = sp.agent_connection_id
           WHERE sac.id = $3 AND sac.user_id = $1 AND sac.kind = 'search_profile' AND sp.normalized_url = fp.normalized_url AND ${sourceLinkedPostSql('sp')}
@@ -205,7 +218,10 @@ export async function getLeadForUser(userId: string, postId: string): Promise<Le
   const ordered = [self, ...others].sort((x, y) => time(x) - time(y));
   const firstValue = (field: 'author' | 'title' | 'content' | 'summary_vi') => ordered.find(row => row[field]?.trim())?.[field] ?? null;
   const record = toLeadRecord({ ...self, author: firstValue('author'), title: firstValue('title'), content: firstValue('content'), summary_vi: firstValue('summary_vi'), published_at: originalPostTime(rows) });
+  const hotAssessments = ordered.flatMap(row => row.hot_assessments ?? []);
+  const uniqueAssessments = [...new Map(hotAssessments.map(assessment => [assessment.profileId, assessment])).values()];
   return { ...record, agent_name: null, sources: ordered.map(sourceOf), deliveredAt: ordered.map(row => row.delivered_at).filter(Boolean).map(value => new Date(value!).toISOString()).sort()[0] ?? null,
+    hotAssessments: uniqueAssessments,
     eligibility: { basis: 'source_linked_search', relevance: 'selected_by_search', independentlyVerified: false } };
 }
 

@@ -9,6 +9,7 @@ import {
   isAllowedPushEndpoint,
   isPushConfigured,
   newLeadsPayload,
+  hotLeadPayload,
   testPushPayload,
   pushRequestOptions,
   type PushSubscriptionInput,
@@ -69,6 +70,9 @@ test('notification payloads carry real count, safe authenticated destination and
   });
   assert.equal(newLeadsPayload(5, id).url, '/app/bai-viet');
   assert.equal(newLeadsPayload(5, id).count, 5);
+  assert.deepEqual(hotLeadPayload(id), { v: 1, kind: 'hot_lead', title: 'QLead vừa phát hiện Hot Lead!',
+    body: 'Một khách hàng đang có nhu cầu rõ ràng và bài đăng còn rất mới. Xem ngay để tiếp cận sớm.',
+    url: `/app/bai-viet/${id}`, tag: `hot-lead-${id}` });
   assert.deepEqual(testPushPayload(), { v: 1, kind: 'test', title: 'QLead', body: 'Thông báo đã bật trên thiết bị này.', url: '/app', tag: 'push-test' });
   assert.equal(JSON.stringify(newLeadsPayload(1, id)).includes('synthetic lead body'), false);
 });

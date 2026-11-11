@@ -61,6 +61,8 @@ test('database delivery is capped, idempotent under concurrent refresh, tenant-s
     await client.query(`UPDATE lead_distribution_cycles SET cycle_key = cycle_key || ':fixture_previous' WHERE search_profile_id = $1`, [profile.id]);
     const second = await distribute(user.id, profile.id);
     assert.equal(second?.delivered, 10);
+    const hotId = (await client.query<{ id: string }>(`SELECT fp.id FROM facebook_posts fp WHERE fp.agent_connection_id=$1 AND fp.normalized_url=$2`, [profile.id, better])).rows[0]?.id;
+    assert.ok(hotId && second?.hotPostIds.includes(hotId), 'recent explicit request is classified Hot for this matching profile');
     const { rows: [newLead] } = await client.query(`SELECT state FROM profile_lead_deliveries d JOIN facebook_posts fp ON fp.id=d.post_id
       WHERE d.search_profile_id=$1 AND fp.normalized_url=$2`, [profile.id, better]);
     assert.equal(newLead.state, 'delivered');

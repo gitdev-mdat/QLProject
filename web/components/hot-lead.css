@@ -1,0 +1,60 @@
+/* Hot Lead: QLead green stays the brand; one restrained warm accent marks urgency. No red fills, no blinking. */
+:root { --hot-500: #D9692B; --hot-100: #FDEBDD; --hot-50: #FFF7F0; --hot-ink: #8A3A10; --hot-line: #F3C9A8; }
+
+.hot-tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px 2px 7px; border-radius: 999px; background: var(--hot-100); color: var(--hot-ink); font-size: 12.5px; font-weight: 700; white-space: nowrap; letter-spacing: .01em; }
+.hot-tag.is-compact { padding: 1px 7px 1px 5px; font-size: 12px; }
+.hot-mark { flex: none; color: var(--hot-500); }
+
+/* Band above the ordinary list */
+.hot-band { position: relative; margin: 0 0 16px; padding: 16px 18px; border: 1px solid var(--hot-line); border-left: 4px solid var(--hot-500); border-radius: var(--radius, 14px); background: linear-gradient(180deg, var(--hot-50), var(--surface, #fff) 70%); }
+.hot-band-head { display: flex; align-items: flex-start; gap: 10px; }
+.hot-band-head h2 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 17px; color: var(--hot-ink); }
+.hot-band-head h2 .hot-mark { width: 16px; height: 16px; }
+.hot-band-head p { margin: 2px 0 0; color: var(--ink-2, #344); font-size: 14px; }
+.hot-band-goat { flex: none; }
+.hot-band-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+.hot-row { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 12px; background: var(--surface, #fff); border: 1px solid var(--line, #e5e8e6); }
+.hot-row-main { min-width: 0; }
+.hot-row-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0; }
+.hot-row-top b { overflow-wrap: anywhere; }
+.hot-row-reason { margin: 3px 0 0; color: var(--ink-2, #344); font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+.hot-row-actions { display: flex; flex: none; gap: 8px; }
+.hot-posted { color: var(--hot-ink); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.hot-posted.is-unknown { color: var(--muted, #667); font-weight: 500; }
+.hot-band-more { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; color: var(--hot-ink); font-weight: 600; font-size: 14px; }
+
+.hot-install { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--hot-line); font-size: 14px; }
+.hot-install b { display: block; color: var(--ink, #1b2a26); }
+.hot-install span { color: var(--muted, #667); }
+.hot-install-actions { display: flex; gap: 6px; }
+
+/* One-time greeting: a soft warm halo and a goat hop, about two seconds, then still. */
+.hot-band.is-celebrating { animation: hot-halo 1.6s ease-out 1; }
+.hot-band.is-celebrating .hot-band-goat { animation: hot-hop .7s cubic-bezier(.3,1.6,.5,1) 2; }
+@keyframes hot-halo { 0% { box-shadow: 0 0 0 0 rgba(217,105,43,.35); } 70% { box-shadow: 0 0 0 12px rgba(217,105,43,0); } 100% { box-shadow: none; } }
+@keyframes hot-hop { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-7px) rotate(-6deg); } }
+@media (prefers-reduced-motion: reduce) { .hot-band.is-celebrating, .hot-band.is-celebrating .hot-band-goat { animation: none; } }
+
+
+/* Rows and cards in the ordinary list keep their layout; a Hot one gets a warm edge and the tag. */
+.lead-table tr.is-hot td:first-child { box-shadow: inset 3px 0 0 var(--hot-500); }
+.lead-item.is-hot { box-shadow: inset 3px 0 0 var(--hot-500); }
+.lead-cell .hot-tag, .lead-item-author .hot-tag { margin-left: 6px; vertical-align: 1px; }
+
+@media (max-width: 640px) {
+  .hot-band { padding: 14px; }
+  .hot-row { flex-direction: column; align-items: stretch; }
+  .hot-row-actions { flex-wrap: wrap; }
+  .hot-row-actions .btn { flex: 1 1 auto; justify-content: center; }
+}
+
+.toggle-chips .hot-chip { border-color: var(--hot-line); color: var(--hot-ink); }
+.toggle-chips .hot-chip[aria-pressed='true'] { background: var(--hot-100); border-color: var(--hot-500); color: var(--hot-ink); }
+
+/* Narrow screens: the tag must never push a card wider than the screen. */
+.lead-item-main, .lead-item-top, .hot-band, .hot-row, .hot-row-main { min-width: 0; }
+.lead-item.is-hot .lead-item-author { display: inline-flex; align-items: center; gap: 0; }
+@media (max-width: 480px) { .lead-item.is-hot .lead-item-top { flex-wrap: wrap; row-gap: 4px; } }
+
+/* Lead detail: the tag alone marks a Hot Lead; the reason was already shown where the lead was picked. */
+.lead-detail-head > .hot-tag { margin-bottom: 6px; font-size: 13px; padding: 3px 10px 3px 8px; }

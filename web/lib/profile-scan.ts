@@ -1,3 +1,5 @@
+import { quietHoursState } from '../../src/quiet-hours';
+
 /**
  * Customer-facing progress of the latest scan of one search profile, derived on the server from search_jobs and
  * scan_runs (never from browser state), so it survives refresh, navigation and other devices.
@@ -21,6 +23,8 @@ export type ProfileScan = {
   finishedAt: string | null;
   newPosts: number | null;
   totalFound: number | null;
+  scheduledFor: string | null;
+  quietHours: ReturnType<typeof quietHoursState>;
 };
 
 export const SCAN_OPEN: ProfileScanState[] = ['queued', 'running', 'delayed'];
@@ -32,6 +36,7 @@ export type ScanRow = {
   kind: ProfileScanKind; configuration_version: number; status: string; attempts: number; created_at: Date | string;
   lease_expires_at: Date | string | null; claimed_at: Date | string | null;
   run_status: string | null; run_at: Date | string | null; new_posts: number | null; total_found: number | null;
+  scheduled_for: Date | string;
 };
 
 const iso = (value: Date | string | null) => (value ? new Date(value).toISOString() : null);
@@ -42,11 +47,13 @@ export function deriveProfileScan(row: ScanRow, now: number): ProfileScan {
   else if (row.status === 'failed') state = 'failed';
   else if (row.status === 'claimed') state = row.lease_expires_at && new Date(row.lease_expires_at).getTime() >= now ? 'running' : 'delayed';
   else if (row.status === 'blocked' || row.status === 'needs_reauthorization') state = 'delayed';
-  else state = row.attempts > 0 || now - new Date(row.created_at).getTime() > QUEUED_GRACE_MINUTES * 60_000 ? 'delayed' : 'queued';
+  else state = quietHoursState(new Date(now)).active ? 'queued'
+    : row.attempts > 0 || now - new Date(row.created_at).getTime() > QUEUED_GRACE_MINUTES * 60_000 ? 'delayed' : 'queued';
   return {
     state, kind: row.kind, version: row.configuration_version, queuedAt: iso(row.created_at)!,
     startedAt: iso(row.claimed_at), finishedAt: iso(row.run_at),
     newPosts: row.run_at ? row.new_posts : null, totalFound: row.run_at ? row.total_found : null,
+    scheduledFor: iso(row.scheduled_for), quietHours: quietHoursState(new Date(now)),
   };
 }
 
@@ -61,7 +68,7 @@ export const SCAN_COPY: Record<ProfileScanState, { title: string; text: string }
 
 /** Request outcomes returned by POST /api/profiles/:id/scan and by "Lưu và tìm lại". */
 export type ScanRequestOutcome =
-  | { outcome: 'queued' | 'existing' }
+  | { outcome: 'queued' | 'existing'; quietHoursActive?: boolean; nextAllowedScanAt?: string | null }
   | { outcome: 'cooldown'; retryAfterSeconds: number; lastFinishedAt: string }
   | { outcome: 'daily_limit' | 'paused' | 'suspended' };
 

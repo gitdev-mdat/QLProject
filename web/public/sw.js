@@ -5,7 +5,7 @@
  * through it or get stored by it; the browser loads everything from the network exactly as without a worker.
  * Bump SW_VERSION when this file changes (the browser re-checks /sw.js on every navigation; see next.config.ts).
  */
-const SW_VERSION = '2026-11-06.2';
+const SW_VERSION = '2026-11-11.1';
 const FALLBACK_URL = '/app/bai-viet';
 const ICON = '/icons/icon-192.png';
 const BADGE = '/icons/badge-96.png';
@@ -45,12 +45,13 @@ function text(value, fallback, max) {
 self.addEventListener('push', event => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch { data = {}; }
-  const kind = data.kind === 'test' ? 'test' : data.kind === 'account_status' ? 'account_status' : 'new_leads';
-  const title = text(data.title, kind === 'test' ? 'QLead' : 'QLead có cơ hội mới', 80);
-  const body = text(data.body, kind === 'test' ? 'Thông báo đã bật trên thiết bị này.' : 'Nhấn để xem khách hàng tiềm năng mới.', 180);
-  const tag = text(data.tag, kind === 'test' ? 'qlead-test' : 'new-leads', 64);
+  const kind = data.kind === 'test' ? 'test' : data.kind === 'account_status' ? 'account_status' : data.kind === 'hot_lead' ? 'hot_lead' : 'new_leads';
+  const hot = kind === 'hot_lead';
+  const title = text(data.title, kind === 'test' ? 'QLead' : hot ? 'QLead vừa phát hiện Hot Lead!' : 'QLead có cơ hội mới', 80);
+  const body = text(data.body, kind === 'test' ? 'Thông báo đã bật trên thiết bị này.' : hot ? 'Một khách hàng đang có nhu cầu rõ ràng. Xem ngay để tiếp cận sớm.' : 'Nhấn để xem khách hàng tiềm năng mới.', 180);
+  const tag = text(data.tag, kind === 'test' ? 'qlead-test' : hot ? 'hot-lead' : 'new-leads', 64);
   const url = kind === 'test' ? safeAppPath(data.url || '/app') : safeAppPath(data.url);
-  event.waitUntil(self.registration.showNotification(title, {
+  const options = {
     body,
     icon: ICON,
     badge: BADGE,
@@ -59,8 +60,12 @@ self.addEventListener('push', event => {
     renotify: true,
     lang: 'vi',
     timestamp: Date.now(),
-    data: { url },
-  }).then(async () => {
+    data: { url, kind },
+  };
+  // A Hot Lead has its own tag (one per lead, so the next ordinary batch never replaces it) and, where the browser
+  // supports it, stays on screen until the person acts. Sound and vibration remain the device's own settings.
+  if (hot) { options.requireInteraction = true; options.actions = [{ action: 'open', title: 'Xem Hot Lead' }]; }
+  event.waitUntil(self.registration.showNotification(title, options).then(async () => {
     // Open QLead windows refresh their notification badge now instead of waiting for their next poll.
     const windows = await self.clients.matchAll({ type: 'window' });
     windows.forEach(client => client.postMessage({ type: 'qlead:push', kind }));

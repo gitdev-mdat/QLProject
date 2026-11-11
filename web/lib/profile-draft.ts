@@ -8,9 +8,9 @@ import type { SearchProfile } from './profile-state';
  */
 export const LOCATIONS = ['TP.HCM', 'Hà Nội', 'Đà Nẵng', 'Cần Thơ', 'Hải Phòng', 'Bình Dương', 'Đồng Nai', 'Đà Lạt', 'Nha Trang', 'Vũng Tàu', 'Huế', 'Miền Nam', 'Miền Trung', 'Miền Bắc'];
 export const EXAMPLES = [
-  'Quán cafe, trà sữa sắp khai trương ở TP.HCM',
-  'Nhà hàng chuẩn bị khai trương hoặc đang tuyển nhân viên',
-  'Khách sạn, homestay mới khai trương ở Đà Lạt',
+  'Tôi đang bán phần mềm quản lý, tính tiền và muốn tìm các quán cafe, trà sữa sắp khai trương ở TP.HCM.',
+  'Tôi bán chén, đũa và dụng cụ ăn uống, muốn tìm nhà hàng chuẩn bị khai trương hoặc đang tuyển nhân viên.',
+  'Tôi cung cấp dịch vụ chụp ảnh, quay phim và muốn tìm khách sạn, homestay mới khai trương ở Đà Lạt.',
 ];
 
 export type Draft = {
