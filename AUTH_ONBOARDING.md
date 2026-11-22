@@ -40,5 +40,5 @@ Ownership scoping itself was correct: every lead, profile and scan query filters
 
 ## Not done
 
-- No email verification or password reset yet.
+- No email verification yet. Password reset: see `docs/password-reset/REPORT-PASSWORD-RESET.md`.
 - The login rate limit is per process, in memory.

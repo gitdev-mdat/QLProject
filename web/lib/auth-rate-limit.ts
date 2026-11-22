@@ -47,3 +47,20 @@ export function requestAddress(headers: Pick<Headers, 'get'>): string {
   const forwarded = headers.get('x-forwarded-for')?.split(',')[0]?.trim();
   return forwarded && forwarded.length <= 64 ? forwarded : 'unknown';
 }
+
+/**
+ * Forgot-password requests: counted per email and per address whether or not the email has an account, so a 429 says
+ * nothing about registration. The database separately caps links per account (src/password-reset.ts).
+ */
+export function allowPasswordResetRequest(email: string, address: string, now = Date.now()): boolean {
+  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedAddress = address.trim().toLowerCase() || 'unknown';
+  const emailAllowed = limiter.allow(`reset:email:${normalizedEmail}`, 5, HOUR, now);
+  const addressAllowed = limiter.allow(`reset:ip:${normalizedAddress}`, 10, HOUR, now);
+  return emailAllowed && addressAllowed;
+}
+
+/** Setting a new password through a link (guessing a 256-bit token is not feasible; this only bounds the load). */
+export function allowPasswordResetAttempt(address: string, now = Date.now()): boolean {
+  return limiter.allow(`reset:set:${address.trim().toLowerCase() || 'unknown'}`, 20, LOGIN_WINDOW, now);
+}

@@ -41,6 +41,7 @@ function AuthForm({ mode, returnTo = null }: { mode: 'login' | 'register'; retur
     {mode === 'register' && <label className="field">Tên của bạn<span className="input-adorned"><Icon name="user" size={18}/><input type="text" autoComplete="name" placeholder="Ví dụ: Linh Nguyễn" value={form.name} onChange={set('name')} maxLength={200} required/></span></label>}
     <label className="field">Email công việc<span className="input-adorned"><Icon name="mail" size={18}/><input type="email" autoComplete="email" placeholder="ban@congty.vn" value={form.email} onChange={set('email')} required/></span></label>
     <label className="field">Mật khẩu<span className="input-adorned"><Icon name="lock" size={18}/><input type={showPassword ? 'text' : 'password'} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={mode === 'register' ? 8 : undefined} maxLength={200} placeholder={mode === 'register' ? 'Ít nhất 8 ký tự' : 'Mật khẩu của bạn'} value={form.password} onChange={set('password')} required/><button className="input-toggle" type="button" aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}><Icon name={showPassword ? 'eyeOff' : 'eye'} size={18}/></button></span></label>
+    {mode === 'login' && <p className="auth-forgot"><Link href="/quen-mat-khau">Quên mật khẩu?</Link></p>}
     <button className="btn btn-primary btn-lg full" type="submit" disabled={busy}>{busy ? 'Đang xử lý…' : mode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản'} {!busy && <Icon name="arrow" size={18}/>}</button>
     {error && <p className="warning-line" role="alert"><Icon name="info" size={16}/>{error}</p>}
   </form>;
@@ -72,14 +73,14 @@ function DevQuickLogin({ users }: { users: DevLoginOption[] }) {
   </section>;
 }
 
-export function AuthScreen({ mode, devUsers = [], signedInAs = null, returnTo = null, context = null }: { mode: 'login' | 'register'; devUsers?: DevLoginOption[]; signedInAs?: string | null; returnTo?: string | null; context?: 'landing' | null }) {
-  const isLogin = mode === 'login';
+/** Shared two-column frame of the sign-in pages (login, register, forgot and reset password). */
+export function AuthShell({ title, subtitle, asideTitle = 'Lead mới đang chờ bạn xem.', children }: { title: string; subtitle: React.ReactNode; asideTitle?: string; children: React.ReactNode }) {
   return <div className="auth-layout">
     <section className="auth-aside">
       <Brand/>
       <div className="auth-aside-body">
         <div className="auth-goat"><GoatMascot size="lg"/></div>
-        <h2>{isLogin ? 'Lead mới đang chờ bạn xem.' : 'Thời gian là vàng bạc'}</h2>
+        <h2>{asideTitle}</h2>
         <ul>
           <li><span><Icon name="radar" size={18}/></span>Bài đăng có tín hiệu kinh doanh theo ngành bạn bán</li>
           <li><span><Icon name="eye" size={18}/></span>Biết bài nào mới đăng, bài nào chưa xem</li>
@@ -92,14 +93,25 @@ export function AuthScreen({ mode, devUsers = [], signedInAs = null, returnTo = 
       <div className="auth-mobile-brand"><Brand/></div>
       <div className="auth-card">
         <div className="auth-card-head">
-          <h1>{isLogin ? 'Chào mừng trở lại' : 'Tạo tài khoản QLead'}</h1>
-          <p>{isLogin ? 'Đăng nhập để tiếp tục xem lead mới của bạn.' : context === 'landing' ? 'Miễn phí. Xem thêm lead cho nhu cầu bạn vừa tìm, không cần nhập lại.' : 'Thiết lập nhu cầu theo dõi đầu tiên trong vài phút.'}</p>
+          <h1>{title}</h1>
+          <p>{subtitle}</p>
         </div>
-        {signedInAs && <p className="auth-signed-in" role="status"><Icon name="info" size={16}/><span>Trình duyệt đang đăng nhập với tên <b>{signedInAs}</b>. {isLogin ? 'Đăng nhập' : 'Tạo tài khoản'} sẽ thay phiên này. <Link href={returnTo ?? '/app'}>Tiếp tục với {signedInAs}</Link></span></p>}
-        <AuthForm mode={mode} returnTo={returnTo}/>
-        {isLogin && devUsers.length > 0 && <DevQuickLogin users={devUsers}/>}
-        <p className="auth-switch">{isLogin ? <>Chưa có tài khoản? <Link href="/dang-ky">Tạo tài khoản</Link></> : <>Đã có tài khoản? <Link href={context === 'landing' ? '/dang-nhap?tiep=/app/thu-tim' : '/dang-nhap'}>Đăng nhập</Link></>}</p>
+        {children}
       </div>
     </main>
   </div>;
+}
+
+export function AuthScreen({ mode, devUsers = [], signedInAs = null, returnTo = null, context = null, notice = null }: { mode: 'login' | 'register'; devUsers?: DevLoginOption[]; signedInAs?: string | null; returnTo?: string | null; context?: 'landing' | null; notice?: 'password_changed' | null }) {
+  const isLogin = mode === 'login';
+  return <AuthShell
+    asideTitle={isLogin ? 'Lead mới đang chờ bạn xem.' : 'Thời gian là vàng bạc'}
+    title={isLogin ? 'Chào mừng trở lại' : 'Tạo tài khoản QLead'}
+    subtitle={isLogin ? 'Đăng nhập để tiếp tục xem lead mới của bạn.' : context === 'landing' ? 'Miễn phí. Xem thêm lead cho nhu cầu bạn vừa tìm, không cần nhập lại.' : 'Thiết lập nhu cầu theo dõi đầu tiên trong vài phút.'}>
+    {isLogin && notice === 'password_changed' && <p className="auth-success" role="status"><Icon name="check" size={16}/><span>Đã đổi mật khẩu. Hãy đăng nhập bằng mật khẩu mới.</span></p>}
+    {signedInAs && <p className="auth-signed-in" role="status"><Icon name="info" size={16}/><span>Trình duyệt đang đăng nhập với tên <b>{signedInAs}</b>. {isLogin ? 'Đăng nhập' : 'Tạo tài khoản'} sẽ thay phiên này. <Link href={returnTo ?? '/app'}>Tiếp tục với {signedInAs}</Link></span></p>}
+    <AuthForm mode={mode} returnTo={returnTo}/>
+    {isLogin && devUsers.length > 0 && <DevQuickLogin users={devUsers}/>}
+    <p className="auth-switch">{isLogin ? <>Chưa có tài khoản? <Link href="/dang-ky">Tạo tài khoản</Link></> : <>Đã có tài khoản? <Link href={context === 'landing' ? '/dang-nhap?tiep=/app/thu-tim' : '/dang-nhap'}>Đăng nhập</Link></>}</p>
+  </AuthShell>;
 }
