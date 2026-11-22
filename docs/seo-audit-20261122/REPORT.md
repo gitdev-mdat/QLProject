@@ -10,6 +10,10 @@ Phạm vi: production `https://qlead.vn`, repo `gitdev-mdat/QLProject`, Vercel p
 - **Nguyên nhân chính của việc gần như không có traffic organic là nội dung, không phải kỹ thuật:** site chỉ có một trang index được (~580 từ, chủ yếu là trang sản phẩm), domain mới (sitemap gửi 09/11), không có trang nào nhắm vào truy vấn có nhu cầu thực tế.
 - **UNVERIFIED:** 19 lượt hiển thị đến từ truy vấn nào, Google đã index URL nào, canonical Google chọn (cần Search Console).
 
+### Sơ đồ deploy (đã xác minh)
+
+`github.com/gitdev-mdat/QLProject` nhánh `main` (758ae72) → Vercel project `qlead` (rootDirectory `web`, Next.js 16.4.3 App Router, function region hnd1) → production deployment `dpl_HLEEVMCuAY2a9hnyNSe8V7ard9NQ` → domain `qlead.vn` (`www` và `http` 308 về apex). Landing, blog, đăng nhập, app và admin nằm chung một ứng dụng Next.js (`web/app`). PR #21 đã merge vào `codex/technical-seo-foundation` (7ecbd54), nhánh này đã vào `main` qua PR #22 (291121c), nên mọi thay đổi SEO foundation đều đã ở production. Thư mục `muse-local-bridge` là nhánh `master` cục bộ lệch lịch sử, có nhiều thay đổi chưa commit không thuộc nhiệm vụ này: chỉ đọc, không đụng tới. `qlead-seo-foundation` sạch, ở `claude/blog-launch` (đã merge).
+
 ## B. Phát hiện
 
 | ID | Vấn đề | Bằng chứng | Mức độ | Trạng thái | Hướng xử lý |
@@ -51,6 +55,16 @@ Ghi chú: `next build` và `npm audit` báo Next.js 16.4.3 có các advisory m�
 1. Search Console → Performance: xem tab Queries và Pages cho 19 lượt hiển thị (thương hiệu hay không).
 2. Indexing → Pages: xác nhận trang chủ đã "Indexed"; URL Inspection cho `https://qlead.vn/`.
 3. Sau khi xuất bản bài: URL Inspection + Request indexing cho `/blog` và từng bài. Không cần gửi lại sitemap; Google đọc lại `sitemap.xml` cùng địa chỉ.
+
+## G. Chiến lược SEO tiếp theo (tách khỏi phần kỹ thuật)
+
+Sửa kỹ thuật không bảo đảm lên top. Năm ưu tiên:
+
+1. **Xuất bản hai bài Cẩm nang** sau khi chủ sản phẩm duyệt nội dung. Đây là bước duy nhất tăng số URL index được ngay.
+2. **Thêm bài theo nhu cầu đa ngành**, không chỉ F&B: mỗi bài nhắm một truy vấn người bán thật sự gõ (ví dụ tìm khách cho thiết bị, nội thất, in ấn, phân phối, dịch vụ B2B), có ví dụ cụ thể và CTA tới QLead. Ưu tiên chất lượng hơn số lượng.
+3. **Liên kết nội bộ**: mỗi bài mới link tới bài trụ cột "tìm khách hàng tiềm năng trên Facebook" và ngược lại; landing đã tự hiện link "Cẩm nang" khi có bài.
+4. **Đo lường trước khi mở rộng**: sau 4–6 tuần xem Search Console Queries/Pages, chỉ đầu tư thêm vào chủ đề đã có lượt hiển thị.
+5. **Tín hiệu thương hiệu và backlink thật**: hồ sơ doanh nghiệp, trang Facebook/Zalo của QLead, đối tác, cộng đồng bán hàng link về `qlead.vn`.
 
 ## F. Bàn giao
 
