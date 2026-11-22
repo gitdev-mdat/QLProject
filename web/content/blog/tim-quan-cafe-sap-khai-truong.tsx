@@ -7,14 +7,14 @@ const slug = 'tim-quan-cafe-sap-khai-truong';
 
 export const meta: BlogPostMeta = {
   slug,
-  status: 'draft',
+  status: 'published',
   topic: 'theo-nganh',
   title: 'Cách tìm quán cafe sắp khai trương trên Facebook để chào hàng sớm',
   h1: 'Cách tìm quán cafe sắp khai trương trên Facebook',
   description: 'Quán cafe thường để lộ dấu hiệu sắp mở trên Facebook trước ngày khai trương. Cách nhận ra, cụm từ nên tìm, cách loại bài lạc đề và nhắn tin không bị coi là spam.',
   primaryKeyword: 'tìm quán cafe sắp khai trương',
   secondaryKeywords: ['quán cafe sắp khai trương', 'tìm quán mới mở để chào hàng', 'khách hàng cho phần mềm quản lý quán cafe'],
-  publishedAt: null,
+  publishedAt: '2026-11-22',
   updatedAt: '2026-11-09',
   author: BLOG_EDITOR,
   reviewedBy: null,

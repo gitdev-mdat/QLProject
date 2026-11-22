@@ -7,14 +7,14 @@ const slug = 'tim-khach-hang-tiem-nang-tren-facebook';
 
 export const meta: BlogPostMeta = {
   slug,
-  status: 'draft',
+  status: 'published',
   topic: 'tin-hieu',
   title: 'Cách tìm khách hàng tiềm năng trên Facebook qua tín hiệu kinh doanh',
   h1: 'Tìm khách hàng tiềm năng trên Facebook qua tín hiệu kinh doanh',
   description: 'Thay vì chờ khách thấy quảng cáo, hãy tìm những cơ sở đang sắp mở, tuyển người hay mở chi nhánh. Sáu tín hiệu, cách ghép với ngành và khu vực, và cách loại bài lạc đề.',
   primaryKeyword: 'cách tìm khách hàng tiềm năng trên Facebook',
   secondaryKeywords: ['tìm khách hàng trên Facebook', 'tín hiệu mua hàng', 'tìm khách hàng B2B trên Facebook'],
-  publishedAt: null,
+  publishedAt: '2026-11-22',
   updatedAt: '2026-11-09',
   author: BLOG_EDITOR,
   reviewedBy: null,
