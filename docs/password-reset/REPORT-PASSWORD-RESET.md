@@ -61,3 +61,13 @@ Khi chưa cấu hình: `next dev` in email ra console để thử ở máy; bả
 1. Tạo tài khoản Resend, xác minh tên miền `qlead.vn`, đặt `RESEND_API_KEY` và `MAIL_FROM` trên Vercel Production.
 2. Review và merge PR.
 3. Chạy migration 026 trên Production: `npx tsx ops/production-db.ts check`, `migrate`, `verify`. Nếu deploy code trước migration, yêu cầu quên mật khẩu chỉ ghi lỗi vào log và không gửi email; đăng nhập không bị ảnh hưởng.
+
+## Thử ở máy mà không cần tài khoản email
+
+`web/e2e/mail-catcher.mjs` giả lập API gửi email của Resend và có hộp thư xem email tại `http://127.0.0.1:3099/`. Không email nào rời khỏi máy.
+
+```
+node web/e2e/mail-catcher.mjs 3099
+# trong web/:
+RESEND_API_KEY=local MAIL_FROM='QLead <no-reply@qlead.vn>' RESEND_API_URL=http://127.0.0.1:3099/emails npm run dev -- -p 3001
+```
