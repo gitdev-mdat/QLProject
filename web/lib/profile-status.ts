@@ -140,5 +140,6 @@ export function requestNote(request: ScanRequestOutcome): { text: string; tone: 
     case 'daily_limit': return { text: 'Hôm nay bạn đã dùng hết lượt tìm lại. QLead vẫn tự tìm theo lịch.', tone: 'warn' };
     case 'paused': return { text: 'Nhu cầu đang tạm dừng. Bật lại theo dõi để tìm.', tone: 'warn' };
     case 'suspended': return { text: 'Tài khoản đang tạm ngưng tìm khách mới nên chưa tìm lại được.', tone: 'warn' };
+    case 'usage_gated': return null;
   }
 }

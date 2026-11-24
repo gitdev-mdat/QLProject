@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { isSameOrigin } from '@/lib/server/request-guard';
 import { getSession } from '@/lib/server/session';
-import { changeProfile, getProfileScan } from '@/lib/server/profiles';
+import { changeProfile, getProfileLeadEngagement, getProfileScan } from '@/lib/server/profiles';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +12,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const { id } = await params;
   const result = await getProfileScan(session.userId, id);
   if (!result) return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  return NextResponse.json(result, { headers: { 'cache-control': 'no-store' } });
+  const engagement = await getProfileLeadEngagement(session.userId, id);
+  return NextResponse.json({ ...result, engagement }, { headers: { 'cache-control': 'no-store' } });
 }
 
 /**

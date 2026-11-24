@@ -70,7 +70,7 @@ export const SCAN_COPY: Record<ProfileScanState, { title: string; text: string }
 export type ScanRequestOutcome =
   | { outcome: 'queued' | 'existing'; quietHoursActive?: boolean; nextAllowedScanAt?: string | null }
   | { outcome: 'cooldown'; retryAfterSeconds: number; lastFinishedAt: string }
-  | { outcome: 'daily_limit' | 'paused' | 'suspended' };
+  | { outcome: 'daily_limit' | 'paused' | 'suspended' | 'usage_gated' };
 
 export function scanRequestMessage(request: ScanRequestOutcome): string {
   switch (request.outcome) {
@@ -80,5 +80,6 @@ export function scanRequestMessage(request: ScanRequestOutcome): string {
     case 'daily_limit': return 'Hôm nay bạn đã dùng hết lượt tìm lại. Lịch theo dõi tự động vẫn chạy bình thường.';
     case 'paused': return 'Nhu cầu đang tạm dừng. Bật lại theo dõi để tìm.';
     case 'suspended': return 'Tính năng tìm lead của tài khoản đang tạm dừng. Lượt tìm mới chưa được tạo.';
+    case 'usage_gated': return '';
   }
 }

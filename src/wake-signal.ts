@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { pool } from './db.js';
+import { profileMaySearchSql } from './lead-engagement.js';
 
 const WINDOW_MS = 60_000;
 const MAX_REQUESTS_PER_WINDOW = 30;
@@ -131,6 +132,7 @@ async function readWakeSignal(log: Log): Promise<WakeResult> {
             * sc.frequency_minutes * 60) AS start) slot
           CROSS JOIN sole_worker w
           WHERE ac.kind = 'search_profile' AND ac.status = 'active' AND sc.enabled
+            AND ${profileMaySearchSql('ac.id')}
             AND w.authorized_sources @> sc.sources
             AND NOT EXISTS (SELECT 1 FROM search_jobs j WHERE j.search_profile_id = ac.id AND j.status <> 'cancelled'
               AND (j.scheduled_for >= slot.start OR (j.kind IN ('initial', 'manual')
