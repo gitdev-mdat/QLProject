@@ -491,7 +491,8 @@ function plainPreview(item: AnalyzedCandidate, match: string, key: string): Land
 export function showcasePreviews(pins: Array<LandingCandidate & { pinned_at: string }>): LandingMatch[] {
   const analyzed = analyzeCandidates(pins);
   return analyzed.slice(0, LANDING_MAX_RESULTS).map((item, index) => {
-    const at = Date.parse((item.candidate as LandingCandidate & { pinned_at: string }).pinned_at) || Date.now();
+    // Rank as of the post's own time so the "why it fits" line does not depend on how old the pinned post is.
+    const at = (Date.parse(String(item.candidate.published_at ?? '')) || Date.parse(String(item.candidate.discovered_at ?? '')) || Date.now()) + 3_600_000;
     const ranked = rankLandingCandidates(DEFAULT_LANDING_REQUEST, [item], at)[0];
     const preview = ranked ? { ...ranked.preview, key: String(index + 1) } : plainPreview(item, NEAREST_MATCH_LABEL, String(index + 1));
     return { candidate: item.candidate, score: ranked?.score ?? 0, preview };

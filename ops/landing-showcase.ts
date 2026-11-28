@@ -44,28 +44,52 @@ export async function landingShowcaseStatus(db: pg.Client) {
 
 /** Picks the two best demo leads for the default request (or --post-ids=a,b), pins them, and pauses the demo search. */
 export async function landingShowcasePin(db: pg.Client, argv: string[] = process.argv) {
-  const { DEFAULT_LANDING_REQUEST, analyzeCandidates, rankLandingCandidates, nearestLandingCandidates } = await import('../web/lib/landing-search.ts');
+  const { DEFAULT_LANDING_REQUEST, analyzeCandidates, rankLandingCandidates } = await import('../web/lib/landing-search.ts');
   const { sourceLinkedPostSql } = await import('../src/lead-eligibility.ts');
   const demo = await demoProfile(db);
   if (!demo) throw new Error('No demo search. Run landing-showcase-start first.');
-  const chosen = argv.find(a => a.startsWith('--post-ids='))?.split('=')[1]?.split(',').map(s => s.trim()).filter(Boolean);
+  // --summaries-file=<json {postId: 'Vietnamese summary'}>: the admin's own Vietnamese summary for chosen posts whose
+  // collected text is unaccented or English (stored as summary_vi only where it is empty; shown as 'QLead tóm tắt').
+  const summariesFile = argv.find(a => a.startsWith('--summaries-file='))?.slice('--summaries-file='.length);
+  const summaries: Record<string, string> = summariesFile ? JSON.parse((await import('node:fs')).readFileSync(summariesFile, 'utf8')) : {};
+  const chosen = argv.find(a => a.startsWith('--post-ids='))?.split('=')[1]?.split(',').map(s => s.trim()).filter(Boolean)
+    ?? (Object.keys(summaries).length ? Object.keys(summaries) : undefined);
   const { rows } = await db.query(`SELECT fp.id, fp.normalized_url, fp.original_url, fp.title, fp.content, fp.summary_vi, fp.published_at, fp.first_seen_at AS discovered_at
     FROM facebook_posts fp WHERE fp.agent_connection_id = $1 AND ${sourceLinkedPostSql('fp')}`, [demo.profile_id]);
   const pool = analyzeCandidates(rows);
-  let picks = chosen?.length ? chosen.map(id => rows.find(row => row.id === id)).filter(Boolean)
-    : rankLandingCandidates(DEFAULT_LANDING_REQUEST, pool).map(match => match.candidate);
-  if (!chosen?.length && picks.length < 2) for (const match of nearestLandingCandidates(pool)) if (picks.length < 2 && !picks.some(p => p!.id === match.candidate.id)) picks.push(match.candidate);
-  picks = picks.slice(0, 2);
-  if (!picks.length) throw new Error(`No usable demo leads yet (${rows.length} source-linked posts). Check landing-showcase-status.`);
+  // Pinned forever, so a post's age does not matter here: rank each post as of its own publication (or discovery) time.
+  const refTime = (c: { published_at: string | null; discovered_at: string | null }) =>
+    (Date.parse(String(c.published_at ?? '')) || Date.parse(String(c.discovered_at ?? '')) || Date.now()) + 3_600_000;
+  const ranked = pool.map(item => ({ item, score: rankLandingCandidates(DEFAULT_LANDING_REQUEST, [item], refTime(item.candidate))[0]?.score ?? -1 }))
+    .sort((x, y) => y.score - x.score || refTime(y.item.candidate) - refTime(x.item.candidate));
+  let picks: any[] = [];
+  if (chosen?.length) {
+    picks = chosen.map(id => rows.find(row => row.id === id)).filter(Boolean);
+    if (picks.length !== chosen.length) throw new Error('Some --post-ids are not source-linked demo posts.');
+    const { displayableText } = await import('../web/lib/landing-search.ts');
+    const unreadable = picks.filter(post => !displayableText(post) && !summaries[post.id]?.trim());
+    if (unreadable.length) throw new Error(`No Vietnamese text for ${unreadable.map(p => p.id).join(', ')}: add it in --summaries-file.`);
+  }
+  else for (const { item } of ranked) if (picks.length < 2 && !picks.some(p => p.normalized_url === item.candidate.normalized_url)) picks.push(item.candidate);
+  if (!picks.length) {
+    const sample = rows.slice(0, 12).map(row => ({ id: row.id, published_at: row.published_at, has_summary_vi: Boolean(row.summary_vi),
+      text: String(row.summary_vi ?? row.content ?? row.title ?? '(empty)').replace(/\s+/g, ' ').slice(0, 110) }));
+    console.log(JSON.stringify({ source_linked_posts: rows.length, with_vietnamese_text: pool.length, sample }, null, 2));
+    throw new Error('None of the demo posts has Vietnamese text QLead can show. Send this output to Claude.');
+  }
   try {
     await db.query('BEGIN');
+    for (const post of picks) if (summaries[post.id]?.trim()) {
+      await db.query('UPDATE facebook_posts SET summary_vi = $2 WHERE id = $1 AND nullif(btrim(summary_vi), \'\') IS NULL', [post.id, summaries[post.id]!.trim()]);
+      post.summary_vi = post.summary_vi?.trim() || summaries[post.id]!.trim();
+    }
     await db.query('DELETE FROM landing_showcase_pins');
     for (const [index, post] of picks.entries()) await db.query('INSERT INTO landing_showcase_pins(position, post_id) VALUES ($1, $2)', [index + 1, post!.id]);
     if (!argv.includes('--keep-scanning')) {
       // The showcase is fixed now: stop the demo search so it does not use Muse capacity. Re-enable to refresh.
       await db.query(`INSERT INTO scan_configs (agent_connection_id, version, enabled, keywords, keywords_source, location, sources, frequency_minutes, description, created_by_user_id)
         SELECT agent_connection_id, version + 1, false, keywords, keywords_source, location, sources, frequency_minutes, description, created_by_user_id
-        FROM scan_configs WHERE agent_connection_id = $1 AND enabled ORDER BY version DESC LIMIT 1`, [demo.profile_id]);
+        FROM (SELECT * FROM scan_configs WHERE agent_connection_id = $1 ORDER BY version DESC LIMIT 1) latest WHERE latest.enabled`, [demo.profile_id]);
       await db.query("UPDATE search_jobs SET status = 'cancelled', last_error = 'paused_by_customer', updated_at = now(), completed_at = now() WHERE search_profile_id = $1 AND status IN ('pending', 'blocked')", [demo.profile_id]);
     }
     await db.query('COMMIT');
