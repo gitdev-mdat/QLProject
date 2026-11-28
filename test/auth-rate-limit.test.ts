@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { allowLoginAttempt, allowRegistrationAttempt, createAttemptLimiter, requestAddress } from '../web/lib/auth-rate-limit.js';
+import { allowLoginAttempt, allowPasswordResetAttempt, allowPasswordResetRequest, allowRegistrationAttempt, createAttemptLimiter, requestAddress } from '../web/lib/auth-rate-limit.js';
 
 test('registration is capped by email and by source address', () => {
   const now = 1_000_000;
@@ -32,4 +32,15 @@ test('Cloudflare address takes precedence over forwarded address', () => {
   assert.equal(requestAddress(headers), '203.0.113.4');
   assert.equal(requestAddress(new Headers({ 'x-forwarded-for': '198.51.100.9, 10.0.0.1' })), '198.51.100.9');
   assert.equal(requestAddress(new Headers()), 'unknown');
+});
+
+test('forgot-password requests are capped per email and per address, independent of accounts', () => {
+  const now = Date.parse('2026-11-22T00:00:00Z');
+  for (let i = 0; i < 5; i++) assert.equal(allowPasswordResetRequest('Reset-Cap@Example.com', `10.9.0.${i}`, now), true);
+  assert.equal(allowPasswordResetRequest(' reset-cap@example.com ', '10.9.0.99', now), false);
+  assert.equal(allowPasswordResetRequest('reset-cap@example.com', '10.9.0.99', now + 61 * 60_000), true);
+  for (let i = 0; i < 10; i++) assert.equal(allowPasswordResetRequest(`reset-ip-${i}@example.com`, '10.9.1.1', now), true);
+  assert.equal(allowPasswordResetRequest('reset-ip-new@example.com', '10.9.1.1', now), false);
+  for (let i = 0; i < 20; i++) assert.equal(allowPasswordResetAttempt('10.9.2.2', now), true);
+  assert.equal(allowPasswordResetAttempt('10.9.2.2', now), false);
 });

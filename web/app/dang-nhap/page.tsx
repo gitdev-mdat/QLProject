@@ -16,7 +16,8 @@ export const metadata = pageMetadata({
 
 /** `?tiep=/app/…` (from a notification tap while signed out) is where a successful sign-in continues. */
 export default async function Login({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const returnTo = safeAppPath((await searchParams).tiep);
+  const params = await searchParams;
+  const returnTo = safeAppPath(params.tiep);
   const session = await getSession().catch(() => null);
   const requestHeaders = await headers();
   const gate = evaluateDevLogin({
@@ -24,5 +25,5 @@ export default async function Login({ searchParams }: { searchParams: Promise<Re
     host: requestHeaders.get('host'), headers: headersToRecord(requestHeaders),
   });
   const devUsers = gate.allowed ? devQuickLoginUsers().map(({ key, label }) => ({ key, label })) : [];
-  return <AuthScreen mode="login" devUsers={devUsers} signedInAs={session?.displayName ?? null} returnTo={returnTo}/>;
+  return <AuthScreen mode="login" devUsers={devUsers} signedInAs={session?.displayName ?? null} returnTo={returnTo} notice={params['doi-mat-khau'] === '1' ? 'password_changed' : null}/>;
 }
